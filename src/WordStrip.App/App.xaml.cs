@@ -26,6 +26,7 @@ public partial class App : System.Windows.Application
     private TypingSession? _typingSession;
     private SuggestionController? _suggestionController;
     private SingleInstance? _singleInstance;
+    private System.Windows.Threading.DispatcherTimer? _focusWatchdog;
 
     protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -93,13 +94,40 @@ public partial class App : System.Windows.Application
         // accepting a suggestion needs to read TypingSession.CurrentWord before TypingSession's own Tab
         // handling clears it. Router subscribes here; TypingSession only subscribes on the explicit Attach() below.
         var router = new BarInputRouter(_keyboardHook, _suggestionController, _barWindow);
+
+        // Same reasoning on the mouse hook, and just as load-bearing. A click outside the bar dismisses it,
+        // and TypingSession reacts to the same click by resetting its buffer — which republishes the idle
+        // list. Dismissing first means that republish is suppressed; dismissing second makes the bar flash
+        // back on for one frame before disappearing. (The hook already ignores clicks on our own windows,
+        // so clicking a suggestion doesn't come through here.)
+        _mouseHook.MouseButtonDown += (_, _) => _suggestionController.Dismiss();
         _typingSession.Attach();
 
         _suggestionController.SuggestionsChanged += (_, update) => _barWindow.ShowSuggestions(update.Suggestions, update.Caret);
         _barWindow.SuggestionClicked += (_, suggestion) => _suggestionController.AcceptSuggestion(suggestion);
 
+        StartFocusWatchdog();
+
         _keyboardHook.Install();
         _mouseHook.Install();
+    }
+
+    /// <summary>
+    /// Alt+Tab, a window closing, or focus moving by any means other than a click or a keystroke produces no
+    /// event this app can see, so a persistent bar would sit over the new window until the user typed
+    /// something. Polling focus is the pragmatic fix — one GetGUIThreadInfo call a second, and only while the
+    /// bar is actually up. A DispatcherTimer rather than a threadpool one because the handler ends in a
+    /// WPF window update, which has to happen on this thread anyway.
+    /// </summary>
+    private void StartFocusWatchdog()
+    {
+        _focusWatchdog = new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromSeconds(1),
+            System.Windows.Threading.DispatcherPriority.Background,
+            (_, _) => _suggestionController?.PollFocus(),
+            Dispatcher);
+
+        _focusWatchdog.Start();
     }
 
     private void ShowSettingsWindow()
@@ -121,6 +149,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        _focusWatchdog?.Stop();
         _keyboardHook?.Dispose();
         _mouseHook?.Dispose();
         _typingSession?.Dispose();

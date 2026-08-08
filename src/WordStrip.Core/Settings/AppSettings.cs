@@ -79,5 +79,15 @@ public sealed class AppSettings
 
     public bool AutocorrectEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether the strip stays on screen between words, showing common words when nothing is part-typed,
+    /// the way a phone keyboard's suggestion row does. Off restores the original behaviour, where the strip
+    /// appears for the duration of each word and vanishes the moment it is committed.
+    ///
+    /// <para>Defaults to on: the strip reappearing and disappearing on every space is the thing that reads
+    /// as flicker while typing at speed, and a row that simply stays put is calmer to type alongside.</para>
+    /// </summary>
+    public bool PersistentBar { get; set; } = true;
+
     public bool StartWithWindows { get; set; }
 }

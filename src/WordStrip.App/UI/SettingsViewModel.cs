@@ -181,6 +181,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(PositionTop));
     }
 
+    public bool PersistentBar
+    {
+        get => _settings.PersistentBar;
+        set
+        {
+            if (_settings.PersistentBar == value) return;
+            _settings.PersistentBar = value;
+            Persist();
+            OnPropertyChanged();
+        }
+    }
+
     public bool AutocorrectEnabled
     {
         get => _settings.AutocorrectEnabled;

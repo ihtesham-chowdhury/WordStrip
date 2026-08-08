@@ -62,10 +62,13 @@ public sealed class BarInputRouter
                     _controller.AcceptSuggestion(selected);
                 break;
 
+            // Routed through the controller rather than hiding the window directly: with a persistent bar,
+            // hiding the window alone doesn't stick — the controller would put the idle list straight back
+            // on the next buffer reset. Dismiss() is what keeps it away until the user types again. The
+            // resulting SuggestionsChanged clears _isBarActive through the subscription above.
             case VK_ESCAPE:
                 e.Suppress = true;
-                _barWindow.HideBar();
-                _isBarActive = false;
+                _controller.Dismiss();
                 break;
         }
     }

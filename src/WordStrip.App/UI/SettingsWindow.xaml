@@ -123,6 +123,10 @@
                         IsSnapToTickEnabled="True"
                         Margin="0,0,0,14" />
 
+                <CheckBox Content="Keep the bar on screen between words" IsChecked="{Binding PersistentBar}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
+                           Text="Shows common words when you're between words, like a phone keyboard. Turn this off to have the bar appear only while you're part-way through a word. Either way, Esc or a click elsewhere puts it away." />
+
                 <CheckBox Content="Autocorrect misspelled words" IsChecked="{Binding AutocorrectEnabled}" />
             </StackPanel>
         </Border>
