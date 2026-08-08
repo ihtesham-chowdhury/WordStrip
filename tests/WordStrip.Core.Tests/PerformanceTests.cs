@@ -1,0 +1,113 @@
+using System.Diagnostics;
+using WordStrip.Core.Prediction;
+
+namespace WordStrip.Core.Tests;
+
+/// <summary>
+/// Timings against the real 60,000-word vocabulary, not the toy test list.
+///
+/// <para>The assertions are deliberately loose — these run on shared CI-style hardware and are meant to
+/// catch an order-of-magnitude regression, not to police microseconds. The measured numbers are written to
+/// the test output, which is where the actual value is.</para>
+/// </summary>
+public sealed class PerformanceTests
+{
+    private const int MaxVocabulary = 60_000;
+
+    private readonly Xunit.Abstractions.ITestOutputHelper _output;
+
+    public PerformanceTests(Xunit.Abstractions.ITestOutputHelper output) => _output = output;
+
+    private static string? FindDictionary()
+    {
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 8 && dir is not null; i++)
+        {
+            var candidate = Path.Combine(dir, "assets", "dict", "frequency_dictionary_en_82_765.txt");
+            if (File.Exists(candidate)) return candidate;
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+
+        return null;
+    }
+
+    [Fact]
+    public void MeasureRealVocabularyPerformance()
+    {
+        var path = FindDictionary();
+        if (path is null)
+        {
+            // The dictionary lives in the repo, not the test output; skip rather than fail if it moved.
+            _output.WriteLine("Real dictionary not found next to the test binary — skipping timings.");
+            return;
+        }
+
+        var loadWatch = Stopwatch.StartNew();
+        var dictionary = FrequencyDictionary.LoadFromFile(path, MaxVocabulary);
+        loadWatch.Stop();
+
+        var prefixWatch = Stopwatch.StartNew();
+        var prefixIndex = PrefixIndex.Build(dictionary);
+        prefixWatch.Stop();
+
+        var symSpellWatch = Stopwatch.StartNew();
+        var symSpell = SymSpellIndex.Build(dictionary, maxEditDistance: 2);
+        symSpellWatch.Stop();
+
+        var engine = new PredictionEngine(dictionary, symSpell, prefixIndex);
+
+        _output.WriteLine($"vocabulary          : {dictionary.WordFrequency.Count:N0} words");
+        _output.WriteLine($"dictionary load     : {loadWatch.ElapsedMilliseconds} ms");
+        _output.WriteLine($"prefix index build  : {prefixWatch.ElapsedMilliseconds} ms");
+        _output.WriteLine($"symspell index build: {symSpellWatch.ElapsedMilliseconds} ms");
+
+        _output.WriteLine($"live suggestions    : {MeasureMicroseconds(() => engine.GetLiveSuggestions("wor", 5)):F1} µs/call");
+        _output.WriteLine($"  single letter     : {MeasureMicroseconds(() => engine.GetLiveSuggestions("a", 5)):F1} µs/call");
+        _output.WriteLine($"  long prefix       : {MeasureMicroseconds(() => engine.GetLiveSuggestions("intern", 5)):F1} µs/call");
+        _output.WriteLine($"fuzzy lookup        : {MeasureMicroseconds(() => symSpell.Lookup("recieve", 5)):F1} µs/call");
+        _output.WriteLine($"autocorrection      : {MeasureMicroseconds(() => engine.GetAutocorrection("recieve")):F1} µs/call");
+        _output.WriteLine($"frequent words      : {MeasureMicroseconds(() => engine.GetFrequentWords(5)):F1} µs/call");
+
+        // Before/after for the change that replaced a full-vocabulary scan with a binary-searched range.
+        // The old implementation is reproduced here rather than kept in the product, purely to measure it.
+        _output.WriteLine("");
+        _output.WriteLine("prefix lookup, old full-scan vs new indexed:");
+        foreach (var prefix in new[] { "a", "wor", "intern" })
+        {
+            var scan = MeasureMicroseconds(() => LegacyPrefixScan(dictionary, prefix, 5));
+            var indexed = MeasureMicroseconds(() => prefixIndex.FindByPrefix(prefix, 64));
+            _output.WriteLine($"  \"{prefix,-6}\" scan {scan,8:F1} µs   indexed {indexed,7:F1} µs   {scan / Math.Max(indexed, 0.001),5:F1}x faster");
+        }
+
+        // A keystroke budget of one millisecond leaves the UI thread entirely free at any realistic typing
+        // speed; the real figures are far below this.
+        var liveMicroseconds = MeasureMicroseconds(() => engine.GetLiveSuggestions("wor", 5));
+        Assert.True(liveMicroseconds < 1000,
+            $"Live suggestions took {liveMicroseconds:F1} µs/call, which is too slow for per-keystroke use.");
+
+        // The persistent bar asks for this every time it reappears between words.
+        var frequentMicroseconds = MeasureMicroseconds(() => engine.GetFrequentWords(5));
+        Assert.True(frequentMicroseconds < 1000,
+            $"Frequent-word lookup took {frequentMicroseconds:F1} µs/call; it must be served from cache.");
+    }
+
+    /// <summary>The pre-Phase-1 prefix lookup, kept only as a performance baseline.</summary>
+    private static List<Suggestion> LegacyPrefixScan(FrequencyDictionary dictionary, string prefix, int maxResults) =>
+        dictionary.WordFrequency
+            .Where(kv => kv.Key.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(kv => new Suggestion(kv.Key, kv.Value, kv.Key == prefix ? 0 : 1))
+            .OrderByDescending(s => s.Frequency)
+            .Take(maxResults)
+            .ToList();
+
+    private static double MeasureMicroseconds(Action action, int iterations = 200)
+    {
+        for (var i = 0; i < 20; i++) action(); // let the JIT settle before timing
+
+        var watch = Stopwatch.StartNew();
+        for (var i = 0; i < iterations; i++) action();
+        watch.Stop();
+
+        return watch.Elapsed.TotalMilliseconds * 1000 / iterations;
+    }
+}

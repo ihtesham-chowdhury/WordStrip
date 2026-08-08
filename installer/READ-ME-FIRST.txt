@@ -1,0 +1,101 @@
+WordStrip — early preview
+=========================
+
+Thanks for testing this. It adds phone-keyboard-style word suggestions and autocorrect
+to the normal Windows keyboard.
+
+
+WHICH FILE DO I RUN?
+--------------------
+
+  WordStrip-Setup-*.exe       Installs it properly (Start Menu entry, optional start-with-Windows,
+                              uninstall from Add/Remove Programs). No admin password needed.
+                              Recommended.
+
+  portable\WordStrip.exe      No installation. Just double-click it. Delete the file to remove it.
+
+Either one works on its own. You do NOT need to install .NET or anything else.
+
+
+"WINDOWS PROTECTED YOUR PC" — THIS IS EXPECTED
+---------------------------------------------
+
+The app isn't code-signed (a certificate costs a few hundred dollars a year), so Windows
+shows a blue SmartScreen warning the first time.
+
+To run it anyway:
+
+  1. Click "More info"
+  2. Click "Run anyway"
+
+You'll only see this once.
+
+
+HOW TO USE IT
+-------------
+
+1. Start WordStrip. It has no window — it lives in the system tray (bottom-right,
+   you may need to click the "^" arrow to see it).
+
+2. First launch takes about 10-20 seconds while it builds its spelling index.
+   After that it starts quickly.
+
+3. Open Notepad and start typing. A glass bar appears with suggested words.
+
+     Tab            highlight the next word (hold it to scrub through them quickly)
+     Space          insert the highlighted word      <-- the main one
+     Esc            dismiss the bar
+     Click a word   inserts it straight away, no need to press Tab first
+
+   Using the keyboard, you press Tab first and then Space. If nothing is highlighted,
+   Space is just a normal space, so your ordinary typing is never affected.
+
+4. Autocorrect fixes obvious misspellings when you finish a word
+   ("recieve" becomes "receive").
+
+5. Right-click the tray icon -> Settings. There's a live preview, and you can change:
+
+     - how many words are shown (3 to 7)
+     - how thick the bar is
+     - how thick/transparent the glass looks, and how much it blurs the background
+     - how fast the animation is
+     - where the bar sits: bottom of the screen, top, or following your text cursor
+
+
+WHAT DOESN'T WORK YET — PLEASE DON'T REPORT THESE
+-------------------------------------------------
+
+* It only works in standard Windows text boxes: Notepad, and most desktop app text
+  fields and dialogs.
+* It does NOT work in Chrome, Edge, or any browser. It does not work in Electron apps
+  (Slack, Discord, VS Code) or in Microsoft Office. This is the single biggest known
+  gap and it's being worked on.
+* English only.
+* Suggestions are based on how common words are, not on the meaning of your sentence.
+
+
+PRIVACY
+-------
+
+Everything runs on your own machine. There is no internet connection, no account, and
+no telemetry of any kind. Nothing you type is saved to disk or sent anywhere.
+
+The app deliberately turns itself off inside password fields.
+
+
+WHAT FEEDBACK IS USEFUL
+-----------------------
+
+* Did the suggestions actually help, or get in the way?
+* Is Tab-then-Space comfortable, or would you prefer something else?
+* Did text ever get inserted wrongly, or in the wrong colour/font? If so, which app?
+* Does the animation feel right — too fast, too slow, or fine?
+* Does the bar sit in a sensible place, or is it in the way?
+* Anything that felt slow, ugly, or confusing.
+
+
+TO UNINSTALL
+------------
+
+Installed version:  Settings -> Apps -> Installed apps -> WordStrip -> Uninstall
+Portable version:   Right-click the tray icon -> Exit, then delete WordStrip.exe

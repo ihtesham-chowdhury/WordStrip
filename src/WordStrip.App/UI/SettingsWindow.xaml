@@ -1,0 +1,218 @@
+<Window x:Class="WordStrip.App.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WordStrip"
+        Width="500"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal"
+        Background="#F5F6F8"
+        FontFamily="Segoe UI Variable Text, Segoe UI">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#6A6F7A" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#E4E6EA" />
+        </Style>
+
+        <Style x:Key="RowLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="#1B1D21" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="ValueLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#1B1D21" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+
+        <!-- WPF sliders default to stepping by one page when the track is clicked, which reads as "clicking
+             does nothing much, I have to drag it". IsMoveToPointEnabled makes the thumb jump to where the
+             pointer actually went, which is what every other slider on the platform does. -->
+        <Style TargetType="Slider">
+            <Setter Property="IsMoveToPointEnabled" Value="True" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Height" Value="24" />
+        </Style>
+
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="#8A8F99" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </Window.Resources>
+
+    <!-- The action bar is docked outside the scroll area so it stays reachable no matter how short the
+         screen is; on a 1080p display at 150% scaling the full settings content is taller than the desktop. -->
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="#F5F6F8" BorderThickness="0,1,0,0" BorderBrush="#E4E6EA" Padding="20,12">
+            <Button Content="Done" HorizontalAlignment="Right" Padding="24,7" Click="OnCloseClick" IsDefault="True" />
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0">
+            <StackPanel Margin="20,20,20,4">
+
+        <!-- Live preview, drawn with the real renderers. Shown over both a light and a dark page because the
+             bar floats over whatever app the user is in, and a theme that only works over one is not done. -->
+        <TextBlock Text="PREVIEW" Style="{StaticResource SectionTitle}" />
+        <Border CornerRadius="14" Margin="0,0,0,16" ClipToBounds="True" BorderThickness="1" BorderBrush="#E4E6EA">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Background="#FFFFFF" Height="86">
+                    <TextBlock Text="a light document, like Notepad or Word"
+                               Foreground="#C8CCD4" FontSize="15"
+                               VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    <ContentPresenter x:Name="PreviewLight" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid Grid.Row="1" Background="#1C1D21" Height="86">
+                    <TextBlock Text="a dark app, like an editor or IDE"
+                               Foreground="#4A4D55" FontSize="15"
+                               VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    <ContentPresenter x:Name="PreviewDark" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <TextBlock Text="THEME" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <ComboBox ItemsSource="{Binding Themes}"
+                          SelectedItem="{Binding SelectedTheme}"
+                          DisplayMemberPath="Name"
+                          Padding="8,6"
+                          Margin="0,0,0,8" />
+                <TextBlock Style="{StaticResource Hint}" Text="{Binding SelectedThemeDescription}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="SUGGESTIONS" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="{Binding SuggestionCount}" Width="28" DockPanel.Dock="Right" Style="{StaticResource ValueLabel}" />
+                    <TextBlock Text="Words shown on the bar" Style="{StaticResource RowLabel}" />
+                </DockPanel>
+                <Slider Minimum="{Binding MinSuggestionCount}"
+                        Maximum="{Binding MaxSuggestionCount}"
+                        Value="{Binding SuggestionCount}"
+                        TickFrequency="1"
+                        TickPlacement="BottomRight"
+                        IsSnapToTickEnabled="True"
+                        Margin="0,0,0,14" />
+
+                <CheckBox Content="Autocorrect misspelled words" IsChecked="{Binding AutocorrectEnabled}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="GLASS" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="{Binding GlassTintPercent}" Width="46" DockPanel.Dock="Right" Style="{StaticResource ValueLabel}" />
+                    <TextBlock Text="Material thickness" Style="{StaticResource RowLabel}" />
+                </DockPanel>
+                <Slider Minimum="{Binding MinGlassTint}"
+                        Maximum="{Binding MaxGlassTint}"
+                        Value="{Binding GlassTint}"
+                        TickFrequency="0.05"
+                        IsSnapToTickEnabled="True"
+                        Margin="0,0,0,4" />
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
+                           Text="Thicker glass is easier to read. Thinner glass shows more of what's behind it." />
+
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="{Binding BarScaleLabel}" Width="112" DockPanel.Dock="Right" Style="{StaticResource ValueLabel}" />
+                    <TextBlock Text="Bar thickness" Style="{StaticResource RowLabel}" />
+                </DockPanel>
+                <Slider Minimum="{Binding MinBarScale}"
+                        Maximum="{Binding MaxBarScale}"
+                        Value="{Binding BarScale}"
+                        TickFrequency="0.05"
+                        IsSnapToTickEnabled="True"
+                        Margin="0,0,0,4" />
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
+                           Text="A thinner bar gets in the way less, which matters most when it follows the text cursor." />
+
+                <Border Background="#FFF4E5" CornerRadius="8" Padding="10,8" Margin="0,12,0,0"
+                        Visibility="{Binding TransparencyDisabledBySystem, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{StaticResource Hint}" Foreground="#8A5A00"
+                               Text="Windows currently has transparency effects turned off (or a High Contrast theme is active), so the bar is drawn as a solid panel." />
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="MOTION" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="{Binding MotionSpeedLabel}" Width="112" DockPanel.Dock="Right" Style="{StaticResource ValueLabel}" />
+                    <TextBlock Text="Animation speed" Style="{StaticResource RowLabel}" />
+                </DockPanel>
+                <Slider Minimum="{Binding MinMotionSpeed}"
+                        Maximum="{Binding MaxMotionSpeed}"
+                        Value="{Binding MotionSpeed}"
+                        TickFrequency="0.1"
+                        IsSnapToTickEnabled="True"
+                        Margin="0,0,0,4" />
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="How long the highlight takes to move between words. Holding Tab always scrubs faster than this." />
+
+                <Border Background="#FFF4E5" CornerRadius="8" Padding="10,8" Margin="0,12,0,0"
+                        Visibility="{Binding MotionDisabledBySystem, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{StaticResource Hint}" Foreground="#8A5A00"
+                               Text="Windows currently has animation effects turned off, so the bar moves instantly and this setting has no effect." />
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="POSITION" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <RadioButton GroupName="Pos" Content="Fixed at the bottom of the screen" IsChecked="{Binding PositionBottom}" Margin="0,0,0,8" />
+                <RadioButton GroupName="Pos" Content="Follow the text cursor" IsChecked="{Binding PositionNearCaret}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,8"
+                           Text="Sits just under where you're typing. Falls back to the bottom of the screen in apps that don't report a cursor position." />
+                <RadioButton GroupName="Pos" Content="Fixed at the top of the screen" IsChecked="{Binding PositionTop}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="STARTUP" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <CheckBox Content="Start WordStrip when Windows starts" IsChecked="{Binding StartWithWindows}" />
+        </Border>
+
+        <Border Background="#EDF1F7" CornerRadius="10" Padding="12" Margin="0,0,0,4">
+            <TextBlock Style="{StaticResource Hint}" Foreground="#4A5060">
+                <Run Text="Press" /><Run Text=" Tab " FontWeight="Bold" /><Run Text="to highlight a word, then" /><Run Text=" Space " FontWeight="Bold" /><Run Text="to insert it. Esc dismisses the bar." />
+                <LineBreak />
+                <Run Text="Suggestions are always disabled in password fields. This preview build works in standard Windows text boxes such as Notepad; browser support is not available yet." />
+            </TextBlock>
+        </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

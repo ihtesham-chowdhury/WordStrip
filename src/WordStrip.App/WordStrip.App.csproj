@@ -1,0 +1,49 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\WordStrip.Core\WordStrip.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded rather than shipped loose so the portable build is genuinely one file: a tester who copies
+         only WordStrip.exe out of the folder still gets a working app. An external dict\ file next to the
+         exe still wins if present, which keeps the dictionary swappable. -->
+    <EmbeddedResource Include="..\..\assets\dict\frequency_dictionary_en_82_765.txt">
+      <LogicalName>WordStrip.dictionary.en.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- The published file is named WordStrip.exe; "WordStrip.App" is only the project name. -->
+    <AssemblyName>WordStrip</AssemblyName>
+    <ApplicationIcon>..\..\assets\wordstrip.ico</ApplicationIcon>
+
+    <!-- Shown in the file's Properties → Details and in Add/Remove Programs. -->
+    <Product>WordStrip</Product>
+    <AssemblyTitle>WordStrip</AssemblyTitle>
+    <Description>Word suggestions and autocorrect for the Windows physical keyboard.</Description>
+    <Company>WordStrip</Company>
+    <Version>0.3.0</Version>
+    <FileVersion>0.3.0.0</FileVersion>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+
+    <!-- Per-monitor DPI awareness: without it Windows bitmap-stretches the bar on scaled displays and the
+         glass edges and text go soft. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- WFAC010 tells WinForms apps to set DPI awareness via ApplicationHighDpiMode instead of the manifest.
+         This is a WPF app that only references WinForms for the tray NotifyIcon, and WPF reads DPI awareness
+         from the manifest, so the manifest is the correct mechanism here. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+</Project>
+
+
