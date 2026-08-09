@@ -110,6 +110,30 @@ public class SuggestionControllerTests
     }
 
     [Fact]
+    public void Common_words_are_flagged_idle_so_the_bar_does_not_claim_the_keyboard_for_them()
+    {
+        using var h = NewHarness();
+        h.Settings.PersistentBar = true;
+
+        h.Controller.AcceptSuggestion(new Suggestion("world", 1, 0));
+
+        // BarInputRouter keys Tab/Space/Enter/Esc handling off this. Flag it wrongly and a bar sitting there
+        // between words would swallow Tab in every text field on the system.
+        Assert.True(h.Last.IsIdle);
+    }
+
+    [Fact]
+    public void An_empty_update_is_never_flagged_idle()
+    {
+        using var h = NewHarness();
+        h.Settings.PersistentBar = false;
+
+        h.Controller.AcceptSuggestion(new Suggestion("world", 1, 0));
+
+        Assert.False(h.Last.IsIdle);
+    }
+
+    [Fact]
     public void The_bar_shows_as_many_common_words_as_the_user_asked_for()
     {
         using var h = NewHarness();

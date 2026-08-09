@@ -210,7 +210,8 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        Publish(new SuggestionUpdate(_predictionEngine.GetFrequentWords(_settings.SuggestionCount), focus.Caret));
+        Publish(new SuggestionUpdate(
+            _predictionEngine.GetFrequentWords(_settings.SuggestionCount), focus.Caret, IsIdle: true));
     }
 
     private static bool IsSuggestible(FocusedControlInfo focus) =>
