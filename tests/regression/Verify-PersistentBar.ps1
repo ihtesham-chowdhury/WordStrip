@@ -11,11 +11,17 @@
     Checks:
       1. Typing produces the typed text, and autocorrect fixes an obvious misspelling.
       2. The bar STAYS VISIBLE after a word is committed — the persistent-bar feature itself.
-      3. Tab still inserts a tab character between words, i.e. a visible-but-idle bar does not swallow it.
+      3. Tab reaches the bar with nothing typed, and Space inserts a next-word prediction.
       4. Tab cycles and Space accepts while a word IS in progress.
       5. Esc puts the bar away.
 
 .NOTES
+    Keep non-ASCII out of string literals in this file. It is saved as UTF-8, and Windows PowerShell reads a
+    file with no byte-order mark as Windows-1252 — under which an em dash's third byte decodes to a smart
+    closing quote, which the parser honours as a string delimiter. The result is a "missing terminator" error
+    pointing at the bottom of the file, hundreds of lines from the actual dash. Harmless in comments, fatal
+    inside a string.
+
     Takes over the keyboard and the foreground window for roughly half a minute. It types into a throwaway
     window it creates itself, never into the user's apps, and every batch of keystrokes re-verifies that the
     target still has focus before sending — without that, a stray focus change sends the test's typing into
@@ -272,17 +278,30 @@ try {
     Write-Host "`n2. Persistent bar"
     Check 'bar is visible after the word was committed' ([W]::HasVisibleWpfWindow($app.Id))
 
-    # --- 3. An idle bar must not swallow Tab ----------------------------------------------------------
-    # The regression this guards: keying the router off "bar is visible" rather than "bar is completing"
-    # means a persistent bar holds Tab hostage in every text field on the system.
-    Write-Host "`n3. Tab passes through while the bar is idle"
-    $before = [W]::TextOf($edit)
-    Send $edit '{TAB}'
-    $after = [W]::TextOf($edit)
-    Check 'Tab inserts a tab character between words' ($after -eq ($before + "`t")) "before='$before' after='$after'"
+    # --- 3. Next-word prediction, taken from the keyboard ---------------------------------------------
+    # The end-to-end proof that the language model reaches the bar AND is reachable without the mouse.
+    # "how are" predicts "you" overwhelmingly, so Tab-then-Space must produce it with nothing typed.
+    #
+    # This check previously asserted the opposite — that Tab fell through to the app between words — back
+    # when the idle bar deliberately claimed no keys. That was reversed after real use.
+    Write-Host "`n3. Tab cycles next-word predictions and Space inserts one"
+    [W]::ClearText($edit)
+    Start-Sleep -Milliseconds 300
+    Send $edit 'how are '
+    $beforePrediction = [W]::TextOf($edit)
+    Send $edit '{TAB}'          # highlight the first prediction
+    Send $edit ' '              # insert it
+    $afterPrediction = [W]::TextOf($edit)
+
+    Check 'Tab reaches the bar with nothing typed' ($afterPrediction -ne $beforePrediction) `
+        "text unchanged at '$beforePrediction' - Tab did not reach the bar"
+    Check 'the predicted word after "how are" is "you"' ($afterPrediction -eq 'how are you ') `
+        "got '$afterPrediction'"
 
     # --- 4. Tab cycles and Space accepts while completing ---------------------------------------------
     Write-Host "`n4. Tab cycles / Space accepts a completion"
+    [W]::ClearText($edit)
+    Start-Sleep -Milliseconds 300
     Send $edit 'wor'
     $beforeAccept = [W]::TextOf($edit)
     Send $edit '{TAB}'          # highlight the first candidate

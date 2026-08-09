@@ -9,11 +9,13 @@ namespace WordStrip.Core.Suggestions;
 /// report one.
 /// </summary>
 /// <param name="IsIdle">
-/// True when these are the common words shown between words rather than completions for something the user
-/// is part-way through typing. The distinction decides whether the bar is allowed to claim keystrokes: a bar
-/// full of completions owns Tab/Space/Enter/Esc, but an idle one must not, or Tab would stop indenting and
-/// moving between fields and Esc would stop closing dialogs for as long as the bar is on screen — which,
-/// once it persists, is nearly always.
+/// True when these are next-word predictions shown between words, false when they complete something the
+/// user is part-way through typing. Purely descriptive of the payload — both kinds behave identically at the
+/// keyboard, since the bar claims Tab whenever it is showing anything.
+///
+/// <para>It did briefly gate key handling, back when the between-words bar deliberately claimed nothing.
+/// That was reversed after use: it left the predictions reachable only by mouse, on exactly the path where
+/// they matter most. See <c>BarInputRouter</c>.</para>
 /// </param>
 public readonly record struct SuggestionUpdate(
     IReadOnlyList<Suggestion> Suggestions,

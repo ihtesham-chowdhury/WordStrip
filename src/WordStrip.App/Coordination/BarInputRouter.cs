@@ -17,9 +17,18 @@ namespace WordStrip.App.Coordination;
 /// skips entirely (it bails on <c>e.Suppress</c>). Reverse the order and TypingSession would process the same
 /// Tab first — resetting its buffer and tearing the bar down before the user finishes cycling candidates.
 ///
-/// <para>"The bar is visible" and "the bar owns the keyboard" are deliberately not the same condition. They
-/// used to be, because the bar was only ever up while a word was being typed; a persistent bar is up almost
-/// continuously, and a router keyed on mere visibility would hold Tab and Esc hostage the entire time.</para>
+/// <para><b>A visible bar owns Tab.</b> Whenever the strip is showing candidates — whether they complete a
+/// word in progress or predict the next one — Tab cycles them and Space inserts the highlighted one. There
+/// was a period where the between-words bar deliberately claimed nothing, to keep Tab indenting and moving
+/// between dialog fields; in use that turned out to be the wrong trade, because it made the predictions
+/// unreachable from the keyboard on the very path where they are most useful, immediately after inserting a
+/// word. Esc is the escape hatch: it puts the bar away, and Tab behaves normally again until the next
+/// keystroke brings the bar back.</para>
+///
+/// <para>Two guards keep ordinary typing intact. Space and Enter are only claimed once something is actually
+/// highlighted, so an unselected bar never turns a space into a word. And Esc is only swallowed when there
+/// is a selection to cancel — with nothing highlighted it dismisses the bar <em>and</em> reaches the app, so
+/// it still closes a dialog.</para>
 /// </summary>
 public sealed class BarInputRouter
 {
@@ -32,11 +41,8 @@ public sealed class BarInputRouter
     private readonly SuggestionController _controller;
     private readonly SuggestionBarWindow _barWindow;
 
-    /// <summary>The bar is showing completions for a word in progress, and therefore owns Tab/Space/Enter/Esc.</summary>
-    private bool _isCompleting;
-
-    /// <summary>The bar is on screen between words. Visible, but claims no keys — see <see cref="OnKeyDown"/>.</summary>
-    private bool _isIdleVisible;
+    /// <summary>The bar is on screen with candidates on it, so Tab cycles and Space inserts.</summary>
+    private bool _isBarActive;
 
     public BarInputRouter(LowLevelKeyboardHook keyboardHook, SuggestionController controller, SuggestionBarWindow barWindow)
     {
@@ -44,30 +50,12 @@ public sealed class BarInputRouter
         _barWindow = barWindow;
 
         keyboardHook.KeyDown += OnKeyDown;
-        _controller.SuggestionsChanged += (_, update) =>
-        {
-            var visible = update.Suggestions.Count > 0;
-            _isCompleting = visible && !update.IsIdle;
-            _isIdleVisible = visible && update.IsIdle;
-        };
+        _controller.SuggestionsChanged += (_, update) => _isBarActive = update.Suggestions.Count > 0;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.IsInjected) return;
-
-        // A persistent bar is on screen for most of the time the user spends in a text field, so it must not
-        // behave like a modal input surface while it sits there between words: swallowing Tab would stop it
-        // indenting and moving between dialog fields, and swallowing Esc would stop it closing dialogs. Only
-        // a bar offering completions for a word in progress claims keys. Between words the mouse is the way
-        // in — clicking a word inserts it — and Esc is honoured without being consumed, so pressing it in a
-        // dialog both puts the bar away and closes the dialog, which is what the user meant either way.
-        if (!_isCompleting)
-        {
-            if (_isIdleVisible && e.VirtualKeyCode == VK_ESCAPE)
-                _controller.Dismiss();
-            return;
-        }
+        if (e.IsInjected || !_isBarActive) return;
 
         switch (e.VirtualKeyCode)
         {
@@ -89,12 +77,17 @@ public sealed class BarInputRouter
                     _controller.AcceptSuggestion(selected);
                 break;
 
+            // Esc means "cancel this selection" when there is one, and is swallowed accordingly. With nothing
+            // highlighted it means "go away", which is worth honouring without consuming the key — pressing
+            // Esc in a dialog then both dismisses the bar and closes the dialog, which is what was intended
+            // either way. Without that distinction a permanently visible bar would permanently eat Esc.
+            //
             // Routed through the controller rather than hiding the window directly: with a persistent bar,
             // hiding the window alone doesn't stick — the controller would put the idle list straight back
             // on the next buffer reset. Dismiss() is what keeps it away until the user types again. The
-            // resulting SuggestionsChanged clears the state flags through the subscription above.
+            // resulting SuggestionsChanged clears _isBarActive through the subscription above.
             case VK_ESCAPE:
-                e.Suppress = true;
+                e.Suppress = _barWindow.HasSelection;
                 _controller.Dismiss();
                 break;
         }
