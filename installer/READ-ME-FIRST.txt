@@ -50,9 +50,24 @@ HOW TO USE IT
    Using the keyboard, you press Tab first and then Space. If nothing is highlighted,
    Space is just a normal space, so your ordinary typing is never affected.
 
-4. NEW IN 0.4: the bar now STAYS ON SCREEN between words instead of vanishing every
-   time you press space, the way a phone keyboard's suggestion row does. When you're
-   between words it shows common words, which you can click to insert.
+4. NEW IN 0.5: between words, the bar now PREDICTS WHAT COMES NEXT from the words you
+   just typed, instead of showing the same handful of common words every time.
+
+   Type "how are" and it offers: you, we, they
+   Type "let me"  and it offers: see, go, have, know
+
+   It also reorders suggestions while you're typing a word. After "I am", typing "wor"
+   ranks "working" above "work", even though "work" is the more common word on its own.
+
+   This is a statistical model built from public-domain books, running entirely on your
+   machine. It has three words of context and no understanding of meaning, so it's good
+   at ordinary English sentences and weak on technical or work jargon.
+
+   Click a predicted word to insert it. (Between words the bar deliberately doesn't
+   capture Tab — see below.)
+
+   The bar STAYS ON SCREEN between words rather than vanishing every time you press
+   space, the way a phone keyboard's suggestion row does.
 
    While it's just sitting there between words it doesn't take over any keys — Tab
    still indents and moves between fields, Esc still closes dialogs. It only takes
@@ -86,7 +101,9 @@ WHAT DOESN'T WORK YET — PLEASE DON'T REPORT THESE
   (Slack, Discord, VS Code) or in Microsoft Office. This is the single biggest known
   gap and it's being worked on.
 * English only.
-* Suggestions are based on how common words are, not on the meaning of your sentence.
+* Predictions come from word statistics, not from understanding your sentence. The
+  books they were built from are mostly 19th-century novels, so ordinary English is
+  well covered and modern/technical phrasing is not.
 
 
 PRIVACY
@@ -102,6 +119,11 @@ WHAT FEEDBACK IS USEFUL
 -----------------------
 
 * Did the suggestions actually help, or get in the way?
+* Are the next-word predictions any good? Which ones were obviously wrong or silly?
+* Do you WANT to reach the predicted words from the keyboard? Right now you have to
+  click them, because capturing Tab between words would stop Tab indenting and moving
+  between fields everywhere else. If clicking is annoying, say so and it can get its
+  own shortcut.
 * Does the bar staying on screen between words feel calmer than it flickering away
   after every word, or is it just clutter? Did you end up turning it off?
 * Is Tab-then-Space comfortable, or would you prefer something else?

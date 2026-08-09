@@ -9,9 +9,10 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.4.0. Verified two ways:
+Working preview, 0.5.0. Verified two ways:
 
-- **79 unit tests** over the prediction primitives and the suggestion controller.
+- **126 unit tests** over the prediction primitives, the language model, the suggestion controller and the
+  typing-history rules.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
   `Edit` control and reads the text back with `WM_GETTEXT` — not screenshots, which are meaningless here
   (see [Why screenshots can't verify this](#why-screenshots-cant-verify-this)). It covers live suggestions,
@@ -82,9 +83,12 @@ space you typed would rewrite the word you just finished. With nothing highlight
 
 ### The bar stays put between words
 
-By default the strip behaves like a phone keyboard's suggestion row: it stays on screen and shows common
-words when you're between words, rather than vanishing after every space. The strip appearing and
+By default the strip behaves like a phone keyboard's suggestion row: it stays on screen and predicts what
+comes next when you're between words, rather than vanishing after every space. The strip appearing and
 disappearing on every word is the thing that reads as flicker when typing at speed.
+
+Type `how are` and it offers *you, we, they*. Type `let me` and it offers *see, go, have, know*. See
+[Context-aware prediction](#context-aware-prediction) for where that comes from.
 
 It goes away when you click elsewhere, press `Esc`, or focus leaves a text field. Typing brings it back.
 Turn it off with **Settings → Suggestions → Keep the bar on screen between words** to get the original
@@ -102,6 +106,110 @@ entire time you were in a text field. `SuggestionUpdate.IsIdle` is what keeps th
 
 Autocorrect fires when you finish a word with space, Enter, or punctuation, and only when the typed word
 isn't in the dictionary *and* a confident correction exists. It won't silently rewrite a low-confidence guess.
+
+## Context-aware prediction
+
+Suggestions are conditioned on the words before the cursor, not just on the letters typed so far. Two
+questions, two modes:
+
+| You are | The question | What answers it |
+|---|---|---|
+| `wor⎸` | which words start like this? | prefix + fuzzy matching, reordered by context |
+| `I am looking ⎸` | what usually comes next? | the n-gram model |
+
+The two are kept apart deliberately. While there is a partial word the user has told us something concrete
+and completion leads; context only reorders the candidates it produces, never adds to them, because
+offering a word that doesn't match the letters on screen is worse than offering nothing. Once the word is
+finished there is nothing to complete and the model leads.
+
+### The model
+
+Trigrams and bigrams, built offline into two tab-separated text files (`assets/ngram/`) holding conditional
+log probabilities. 120k bigram and 227k trigram entries over the same 60,000-word vocabulary the completion
+engine uses — the model can only ever suggest a word the rest of the app knows.
+
+Text rather than a binary blob so it stays diffable and hand-editable, and so a regenerated model shows up
+in a diff as a real change. It costs load time against a packed layout, but loading happens once on the
+background thread that already builds the spelling index.
+
+### Probabilities, not counts
+
+Two sources, and their raw counts are not comparable: SymSpell's bigram counts come from Google Books and
+run to the billions, while counts from a few dozen novels run to the thousands. Summing them would let one
+source erase the other. Conditional probabilities mix directly, so each source is reduced to a distribution
+first and the blend is a genuine mixture. Where only one source knows a context, that source is the whole
+distribution rather than half of it — mixing against an implicit zero would penalise contexts the other
+source simply never saw, which is not evidence against them.
+
+### Backoff
+
+Stupid backoff (Brants et al., 2007): try the trigram, fall back to the bigram, then to plain word
+frequency, multiplying by a fixed penalty at each step down.
+
+```
+S(w | w₁w₂) = P(w | w₁w₂)          if the trigram is known
+            = 0.4 · S(w | w₂)       otherwise
+S(w | w₂)   = P(w | w₂)             if the bigram is known
+            = 0.4 · S(w)            otherwise
+```
+
+It is a score, not a normalised distribution, and does not pretend otherwise. Proper discounting
+(Kneser-Ney and relatives) buys accuracy that matters when measuring perplexity over a corpus and buys
+nothing when ordering seven words on a strip.
+
+A trigram hit doesn't end the search. If a trigram context knows only three continuations and the bar has
+room for seven, the rest come from the bigram tier and then from raw frequency — each penalised so it can
+never displace better-evidenced words above it.
+
+### How context is scored
+
+`ContextualRanker` wraps `FrequencyRanker` rather than replacing it. The base score is Phase 1's, unchanged,
+so exact matches still beat prefix completions and prefix completions still beat fuzzy ones no matter what
+the model thinks. That ordering is about what the user is demonstrably typing; context is only ever an
+opinion about what they might mean.
+
+**The bonus is capped below the gap between bands.** Context reorders candidates within a band; it cannot
+lift one out of it. Without that cap a confidently predicted word could outrank one whose letters are
+already on screen, and the bar would start fighting the typist.
+
+Within a band, probability is weighted well above frequency — because a conditional probability has
+*already* accounted for how common a word is, and letting raw frequency speak again double-counts it. That
+was not a theoretical concern: at a low weight, "I am" suggested *the* and *to* — real continuations, and
+useless ones — while burying *sure* and *going*.
+
+### Where the context comes from
+
+`TypingSession` keeps the last two finished words, held to exactly the same standard as the in-progress word
+buffer: it is a shadow of text the app cannot read, so it is dropped rather than guessed at the moment
+anything could have moved the caret — a click, an arrow key, a Ctrl combo, a backspace into untracked text.
+
+**Stale context does not degrade gracefully.** It produces confident, specific suggestions conditioned on
+words that are no longer behind the cursor, which is indistinguishable from the model being broken. Dropping
+it is always the better failure.
+
+A full stop clears the history too, and substitutes a sentence-start marker, so the model answers "what
+opens a sentence?" instead of carrying the previous sentence's last word across the boundary. The marker is
+a valid context but never a suggestion — it was briefly the single most probable continuation of "thank
+you", which would have shown the user a blank chip.
+
+Autocorrect rewrites the last history entry to the corrected word, and accepting a suggestion adds it to the
+history rather than clearing it. Both matter: the model must predict from what is on screen, not from what
+was typed.
+
+### Regenerating the model
+
+```bash
+powershell -File "D:\Claude Code\WordStrip\tools\ngram\Fetch-Corpus.ps1"
+```
+
+```bash
+dotnet run --project "D:\Claude Code\WordStrip\tools\WordStrip.NGramBuilder" -c Release
+```
+
+The corpus lands in `.corpus\` (gitignored, ~47MB); only the generated model is committed. Pruning is
+tunable — `--min-bigram`, `--min-trigram`, `--top` — and every setting is recorded in the output file's
+header. Output is deterministically sorted, so rebuilding from the same corpus produces a byte-identical
+file.
 
 ## Settings
 
@@ -251,9 +359,13 @@ equivalents of those settings (`SystemAppearance`) and degrades honestly rather 
 
 ## Testing
 
-Prediction primitives and the suggestion controller are unit-tested (`tests\WordStrip.Core.Tests`, 79
-tests). Everything that depends on a system-wide hook, live focus inspection or `SendInput` reaching
-another process is covered by the end-to-end regression instead.
+Prediction primitives, the language model and the suggestion controller are unit-tested
+(`tests\WordStrip.Core.Tests`, 126 tests). Everything that depends on a system-wide hook, live focus
+inspection or `SendInput` reaching another process is covered by the end-to-end regression instead.
+
+The language-model tests run against a hand-written fixture model, not the shipped one. Asserting on the
+real model would be asserting on what a few dozen novels happen to contain, and every assertion would break
+the next time the corpus changed.
 
 ```bash
 dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj"
@@ -301,11 +413,17 @@ covers Notepad and most desktop app text boxes and dialogs. It does **not** yet 
 
 Other known gaps:
 
-- English only (single bundled dictionary)
-- Suggestions are dictionary frequency + edit distance — no context awareness, no phrase prediction,
-  and no learning from your own writing
-- The word buffer is a best-effort shadow of the caret. Arrow keys, clicks, and Ctrl/Alt combos reset it
-  rather than risk drifting out of sync with the real text
+- English only (single bundled dictionary and corpus)
+- **The between-words bar is mouse-only.** It shows predictions but claims no keys, so a predicted word has
+  to be clicked — see [the input rule above](#the-bar-stays-put-between-words). Keyboard cycling returns the
+  moment you are part-way through a word. This was the right trade when the bar showed generic common words;
+  now that it makes real predictions, a chord that doesn't collide with Tab is worth considering.
+- **The corpus skews literary.** It is mostly 19th- and early-20th-century novels, so it is good at ordinary
+  English sentences and weak on modern, technical or workplace phrasing. It has never seen "pull request".
+- Predictions are statistical, not semantic: three words of context, no understanding, no phrase
+  prediction, and no learning from your own writing
+- The word buffer and its history are a best-effort shadow of the caret. Arrow keys, clicks, and Ctrl/Alt
+  combos reset both rather than risk drifting out of sync with the real text
 
 ## Architecture
 
@@ -313,6 +431,7 @@ Other known gaps:
 WordStrip.Core/          no UI dependencies
   Input/                 WH_KEYBOARD_LL hook, SendInput injection, key→char translation, word buffer
   Prediction/            prefix index, SymSpell-style delete index + Damerau-Levenshtein, ranking
+    NGram/               trigram/bigram model, shared tokenizer, on-disk format
   Automation/            focused-control + password-field detection, behind IFocusedControlProvider
   Suggestions/           SuggestionController — the only class the UI talks to
   Settings/, Platform/   JSON settings store, autostart registration
@@ -324,8 +443,12 @@ WordStrip.App/           WPF, net8.0-windows
   Tray/                  NotifyIcon and context menu
 
 tests/
-  WordStrip.Core.Tests/  xUnit, 79 tests
+  WordStrip.Core.Tests/  xUnit, 126 tests
   regression/            end-to-end scripts driving a real Win32 edit control
+
+tools/                   build-time only, never shipped
+  ngram/                 corpus fetcher
+  WordStrip.NGramBuilder/  turns the corpus into the model files
 ```
 
 Two design decisions worth knowing before changing anything:
@@ -375,3 +498,9 @@ does nothing. `Win32TextInjector.Send` now throws when fewer events are inserted
 
 Word frequencies from [SymSpell](https://github.com/wolfgarbe/SymSpell) (MIT),
 `frequency_dictionary_en_82_765.txt`, top 60,000 entries loaded.
+
+Bigram frequencies from the same project, `frequency_bigramdictionary_en_243_342.txt` (MIT).
+
+Trigrams, and a second opinion on bigrams, derived from public-domain texts from
+[Project Gutenberg](https://www.gutenberg.org/). Only the derived counts are redistributed here; the book
+IDs used are listed in `tools/ngram/Fetch-Corpus.ps1` and the texts themselves are not committed.
