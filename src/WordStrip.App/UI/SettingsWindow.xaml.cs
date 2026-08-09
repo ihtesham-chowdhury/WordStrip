@@ -151,4 +151,80 @@ public partial class SettingsWindow : Window
     }
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+
+    // --- Personal vocabulary and learning -----------------------------------------------------------
+
+    private SettingsViewModel ViewModel => (SettingsViewModel)DataContext;
+
+    private void OnAddPersonalWordClick(object sender, RoutedEventArgs e) => AddPersonalWord();
+
+    private void OnNewWordKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        // Enter adds, because typing a word and reaching for the mouse to confirm it is the wrong shape for
+        // a box someone will use several times in a row.
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+
+        AddPersonalWord();
+        e.Handled = true;
+    }
+
+    private void AddPersonalWord()
+    {
+        if (!ViewModel.AddPersonalWord()) return;
+        NewWordBox.Focus();
+    }
+
+    private void OnRemovePersonalWordClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string word })
+            ViewModel.RemovePersonalWord(word);
+    }
+
+    private void OnImportWordsClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import personal words",
+            Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        var added = ViewModel.ImportPersonalWords(dialog.FileName);
+        System.Windows.MessageBox.Show(this,
+            added == 0 ? "No new words were found in that file." : $"Added {added} new word{(added == 1 ? "" : "s")}.",
+            "WordStrip", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OnExportWordsClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export personal words",
+            Filter = "Text files (*.txt)|*.txt",
+            FileName = "wordstrip-personal-words.txt",
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        ViewModel.ExportPersonalWords(dialog.FileName);
+    }
+
+    private void OnClearLearnedDataClick(object sender, RoutedEventArgs e)
+    {
+        // Confirmed because it cannot be undone, and because the user may not realise how much has built up.
+        var confirmed = System.Windows.MessageBox.Show(
+            this,
+            "Delete everything WordStrip has learned from your typing?\n\n" +
+            "This cannot be undone. Your personal word list is not affected.",
+            "Clear learned data",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (confirmed != MessageBoxResult.Yes) return;
+
+        ViewModel.ClearLearnedData();
+    }
 }

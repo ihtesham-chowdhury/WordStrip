@@ -3,6 +3,7 @@ using WordStrip.App.Coordination;
 using WordStrip.App.Tray;
 using WordStrip.App.UI;
 using WordStrip.Core.Input;
+using WordStrip.Core.Personal;
 using WordStrip.Core.Prediction;
 using WordStrip.Core.Settings;
 using WordStrip.Core.Suggestions;
@@ -27,6 +28,9 @@ public partial class App : System.Windows.Application
     private SuggestionController? _suggestionController;
     private SingleInstance? _singleInstance;
     private System.Windows.Threading.DispatcherTimer? _focusWatchdog;
+    private System.Windows.Threading.DispatcherTimer? _learningSaveTimer;
+    private PersonalVocabularyStore? _personalVocabulary;
+    private PersonalLanguageModel? _personalLearning;
 
     protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -58,13 +62,30 @@ public partial class App : System.Windows.Application
                 _suggestionController.IsPaused = _trayIcon.IsPaused;
         };
 
+        // The user's own words and, if they have switched it on, what has been learned from their typing.
+        // Both live under %LOCALAPPDATA%\WordStrip and are loaded before the engine so the very first
+        // keystroke already benefits from them.
+        _personalVocabulary = new PersonalVocabularyStore();
+        _personalLearning = new PersonalLanguageModel();
+
         // Optional loose files beside the exe override the copies compiled into the assembly, for both the
         // dictionary and the n-gram model — so either can be swapped and tried without a rebuild.
         var dictionaryPath = Path.Combine(AppContext.BaseDirectory, "dict", "frequency_dictionary_en_82_765.txt");
         var nGramDirectory = Path.Combine(AppContext.BaseDirectory, "ngram");
         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-        var predictionEngine = await System.Threading.Tasks.Task.Run(
-            () => PredictionEngine.LoadDefault(dictionaryPath, assembly, nGramDirectory: nGramDirectory));
+
+        var predictionEngine = await System.Threading.Tasks.Task.Run(() =>
+        {
+            _personalVocabulary.Load();
+            _personalLearning.Load();
+
+            return PredictionEngine.LoadDefault(
+                dictionaryPath,
+                assembly,
+                nGramDirectory: nGramDirectory,
+                personalVocabulary: _personalVocabulary,
+                personalLearning: _personalLearning);
+        });
 
         StartSuggestionEngine(predictionEngine);
 
@@ -87,7 +108,9 @@ public partial class App : System.Windows.Application
         var postToMessageLoop = new Action<Action>(action =>
             _barWindow.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, action));
 
-        _suggestionController = new SuggestionController(_typingSession, predictionEngine, textInjector, _settings, postToMessageLoop)
+        _suggestionController = new SuggestionController(
+            _typingSession, predictionEngine, textInjector, _settings, postToMessageLoop,
+            personalLearning: _personalLearning)
         {
             IsPaused = _trayIcon?.IsPaused ?? false,
         };
@@ -109,9 +132,42 @@ public partial class App : System.Windows.Application
         _barWindow.SuggestionClicked += (_, suggestion) => _suggestionController.AcceptSuggestion(suggestion);
 
         StartFocusWatchdog();
+        StartLearningSaveTimer();
 
         _keyboardHook.Install();
         _mouseHook.Install();
+    }
+
+    /// <summary>
+    /// Flushes anything newly learned to disk every half minute.
+    ///
+    /// <para>Batched rather than written per word: learning fires on every committed word, and rewriting the
+    /// file that often would put disk I/O on the typing path for no benefit. The store tracks whether
+    /// anything actually changed, so an idle machine does no work at all. Worst case a crash loses half a
+    /// minute of learning, which costs the user nothing they will notice.</para>
+    /// </summary>
+    private void StartLearningSaveTimer()
+    {
+        _learningSaveTimer = new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromSeconds(30),
+            System.Windows.Threading.DispatcherPriority.Background,
+            (_, _) => SavePersonalData(),
+            Dispatcher);
+
+        _learningSaveTimer.Start();
+    }
+
+    private void SavePersonalData()
+    {
+        try
+        {
+            _personalLearning?.SaveIfDirty();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A failed background save must never take the app down mid-typing. The data is still in memory
+            // and the next tick will try again.
+        }
     }
 
     /// <summary>
@@ -144,7 +200,15 @@ public partial class App : System.Windows.Application
 
         var executablePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? string.Empty;
         var viewModel = new SettingsViewModel(_settings, _settingsStore, executablePath,
-            onAppearanceChanged: () => _barWindow?.ApplyAppearance());
+            onAppearanceChanged: () => _barWindow?.ApplyAppearance(),
+            personalVocabulary: _personalVocabulary,
+            personalLearning: _personalLearning);
+
+        // The learned-data summary is a snapshot, and typing carries on behind the settings window. Flushing
+        // and refreshing on open means the figure shown is current rather than whatever it was last time.
+        SavePersonalData();
+        viewModel.RefreshLearnedDataLabel();
+
         _settingsWindow = new SettingsWindow(viewModel, _settings);
         _settingsWindow.Show();
     }
@@ -152,6 +216,11 @@ public partial class App : System.Windows.Application
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
         _focusWatchdog?.Stop();
+        _learningSaveTimer?.Stop();
+
+        // Last chance to persist what was learned since the previous tick.
+        SavePersonalData();
+
         _keyboardHook?.Dispose();
         _mouseHook?.Dispose();
         _typingSession?.Dispose();

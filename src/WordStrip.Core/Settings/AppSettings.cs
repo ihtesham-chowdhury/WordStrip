@@ -89,5 +89,16 @@ public sealed class AppSettings
     /// </summary>
     public bool PersistentBar { get; set; } = true;
 
+    /// <summary>
+    /// Whether WordStrip learns from what you type — personal word, pair and triple counts, kept on this
+    /// machine and used to bias suggestions toward your own writing.
+    ///
+    /// <para>Defaults to <b>off</b>. Everything else in this file changes how the app looks or behaves;
+    /// this one changes what it records about the person using it, and that is not a reasonable thing to
+    /// switch on for someone without asking. The feature is worth having, which is why it exists — but
+    /// opting in is the user's decision to make, not a default to be discovered later.</para>
+    /// </summary>
+    public bool PersonalLearningEnabled { get; set; }
+
     public bool StartWithWindows { get; set; }
 }

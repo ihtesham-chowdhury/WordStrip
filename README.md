@@ -9,10 +9,10 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.5.0. Verified two ways:
+Working preview, 0.6.0. Verified two ways:
 
-- **126 unit tests** over the prediction primitives, the language model, the suggestion controller and the
-  typing-history rules.
+- **191 unit tests** over the prediction primitives, the language model, personal vocabulary and learning,
+  the suggestion controller and the typing-history rules.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
   `Edit` control and reads the text back with `WM_GETTEXT` — not screenshots, which are meaningless here
   (see [Why screenshots can't verify this](#why-screenshots-cant-verify-this)). It covers live suggestions,
@@ -81,6 +81,13 @@ Start typing in a supported text field. The bar appears above the taskbar with c
 **Tab first, then Space.** Space only inserts when a candidate is actually highlighted — otherwise every
 space you typed would rewrite the word you just finished. With nothing highlighted, Space is just a space.
 
+**The bar owns Tab whenever it is showing anything** — completing a word or predicting the next one. That
+was not always so: the between-words bar briefly claimed no keys at all, to keep Tab indenting and moving
+between dialog fields. In use that was the wrong trade, because it put the predictions out of reach on
+exactly the path where they are most useful, straight after inserting a word. Esc is the escape hatch:
+dismiss the bar and Tab behaves normally again until the next keystroke brings it back. Esc itself is only
+swallowed when there is a highlighted candidate to cancel, so it still closes a dialog otherwise.
+
 ### The bar stays put between words
 
 By default the strip behaves like a phone keyboard's suggestion row: it stays on screen and predicts what
@@ -94,15 +101,8 @@ It goes away when you click elsewhere, press `Esc`, or focus leaves a text field
 Turn it off with **Settings → Suggestions → Keep the bar on screen between words** to get the original
 per-word behaviour.
 
-**A visible bar is not an input mode.** The bar only intercepts `Tab`, `Space`, `Enter` and `Esc` while it
-is offering completions for a word you are part-way through typing. Sitting there between words it claims
-nothing: `Tab` still indents and moves between form fields, `Esc` still closes dialogs, `Space` is a space.
-Between words, clicking is how you take a word.
-
-That distinction only became load-bearing when the bar started persisting. Previously "the bar is visible"
-and "a word is in progress" were the same condition, so routing on visibility was harmless. A persistent
-bar is up almost continuously, and a router keyed on visibility would hold `Tab` and `Esc` hostage the
-entire time you were in a text field. `SuggestionUpdate.IsIdle` is what keeps the two apart.
+Tab cycles these exactly as it cycles completions — see [Using it](#using-it) for why that ended up being
+the right call, and what Esc does about it.
 
 Autocorrect fires when you finish a word with space, Enter, or punctuation, and only when the typed word
 isn't in the dictionary *and* a confident correction exists. It won't silently rewrite a low-confidence guess.
@@ -211,6 +211,79 @@ tunable — `--min-bigram`, `--min-trigram`, `--top` — and every setting is re
 header. Output is deterministically sorted, so rebuilding from the same corpus produces a byte-identical
 file.
 
+## Your own words, and learning
+
+Two separate features, deliberately: one you fill in, one that fills itself in. Both are local, both are
+plain files you can read and delete, and neither has any network code beneath it.
+
+### Personal vocabulary — words you add
+
+Names, products, jargon, project codenames: anything the 60,000-word dictionary has never heard of. Added
+through **Settings → Your words**, or imported from a word-per-line text file.
+
+They do two things:
+
+- **They become suggestable.** Type `qn` and `QNAP` is offered, even though no general dictionary contains it.
+- **They are protected from autocorrect.** An unknown word a few edits from a real one is exactly what
+  autocorrect exists to fix, so without this, mentioning your NAS would rename it. Adding a word is the
+  user saying it is spelled correctly, and `IsCorrectlySpelled` consults the personal list first.
+
+**Casing is preserved separately from the lookup form.** `QNAP`, `GitHub` and `iPhone` are the sort of word
+a personal vocabulary is *for*, and half of them are words the dictionary gets wrong about capitalisation
+rather than spelling. Entries store a normalized key and a display form, so matching is case-insensitive
+while insertion is not. The casing first chosen wins over whatever gets typed later — deliberate beats
+incidental.
+
+Personal words are competitive without being automatic. Carrying no corpus frequency, they would otherwise
+sink below every common word sharing their prefix; a bounded bonus clears that gap and puts them just above.
+It cannot lift them out of their band, so a word you have actually finished typing still wins.
+
+### Personal learning — what it picks up
+
+**Off by default.** Everything else in Settings changes how the app looks or behaves; this changes what it
+records about the person using it, and that is not a reasonable thing to switch on for someone without
+asking.
+
+Switched on, it counts words, pairs and triples as you finish them, and leans suggestions toward how you
+write. Type "Northfield Data Systems" enough times and `British` starts predicting `Council`.
+
+What it does **not** do:
+
+- No sentences, documents or keystroke log. The file holds counts against sequences of at most three words
+  — enough to know what tends to follow what, not enough to reconstruct anything you wrote.
+- **Never learns from a password field**, or from any control the app could not positively identify as an
+  ordinary text box. The learning call sits behind the same focus check that decides whether to suggest at
+  all, so "we could not tell what this field is" always means "do not learn from it".
+- No network, no account, no telemetry, no sync.
+
+**It forgets.** Counts saturate at 1,000 and the whole model decays by 10% every 20,000 words, so a phrase
+hammered last year fades instead of owning the bar forever. Tables are capped at 20,000 entries per order
+and pruned by usage when full. Measured growth: **394 KB after 100,000 words**, and flat thereafter.
+
+**It arrives gradually.** A personal model built from a few sentences is not evidence, so its influence
+ramps linearly to full weight at 2,000 learned words. Without that, switching the feature on would visibly
+change behaviour a paragraph later and then change it again — the cold-start problem.
+
+**Settings → Learning** shows exactly how much has been learned and offers a single button to delete all of
+it. Clearing removes the file rather than blanking it: "delete my data" should not leave a tidy record that
+there used to be data.
+
+### Where it all lives
+
+| File | What it holds |
+|---|---|
+| `%LOCALAPPDATA%\WordStrip\settings.json` | Preferences |
+| `%LOCALAPPDATA%\WordStrip\personal-vocabulary.json` | Words you added, with casing and usage counts |
+| `%LOCALAPPDATA%\WordStrip\personal-language-model.json` | Learned counts, only if learning is on |
+
+Both stores write via a temporary file and then replace the original, so an interrupted write cannot leave a
+truncated file behind — the learning model saves on a timer, which makes that a question of when rather
+than if. A corrupt file loads as empty rather than failing startup, and is left on disk for recovery instead
+of being overwritten.
+
+⚠️ **Uninstalling deletes all three.** The installer removes `%LOCALAPPDATA%\WordStrip` entirely. Export
+your word list first if you want to keep it.
+
 ## Settings
 
 Right-click the tray icon → Settings. Everything applies live and the window shows a real preview of the
@@ -231,6 +304,8 @@ and a theme that only works over one of them isn't finished.
 - **Bar position** — fixed at the bottom, following the text cursor, or fixed at the top.
   Cursor-following uses the caret rectangle the focused control reports and falls back to the bottom
   when an app doesn't report one.
+- **Your words** — add, remove, import and export your personal vocabulary
+- **Learning** — off by default; shows what has been learned and clears it
 - **Start with Windows** — registers under `HKCU\...\CurrentVersion\Run`
 
 Settings persist to `%LOCALAPPDATA%\WordStrip\settings.json` and take effect on the next keystroke.
@@ -238,9 +313,11 @@ Settings persist to `%LOCALAPPDATA%\WordStrip\settings.json` and take effect on 
 
 ## Privacy and safety
 
-- The suggestion bar and autocorrect are **disabled in password fields** (`ES_PASSWORD` style),
-  checked on every keystroke.
-- The keyboard hook keeps only the word currently being typed, in memory. Nothing is written to disk.
+- The suggestion bar, autocorrect **and personal learning** are **disabled in password fields**
+  (`ES_PASSWORD` style), checked on every keystroke. Learning sits behind the same check that gates
+  suggesting, so a field the app cannot identify is never learned from.
+- The keyboard hook keeps only the word currently being typed plus the two before it, in memory. Nothing is
+  written to disk unless you switch learning on, and then only counts — never text.
 - The bar never takes keyboard focus (`WS_EX_NOACTIVATE`), so it can't steal input from the app you're in.
 - No network access of any kind. The prediction engine and dictionary are entirely local.
 
@@ -359,9 +436,13 @@ equivalents of those settings (`SystemAppearance`) and degrades honestly rather 
 
 ## Testing
 
-Prediction primitives, the language model and the suggestion controller are unit-tested
-(`tests\WordStrip.Core.Tests`, 126 tests). Everything that depends on a system-wide hook, live focus
-inspection or `SendInput` reaching another process is covered by the end-to-end regression instead.
+Prediction primitives, the language model, the personal stores and the suggestion controller are
+unit-tested (`tests\WordStrip.Core.Tests`, 191 tests). Everything that depends on a system-wide hook, live
+focus inspection or `SendInput` reaching another process is covered by the end-to-end regression instead.
+
+The personal-store tests write real files to a temporary directory rather than using an in-memory fake.
+Persistence is most of what those classes do, and the failures worth catching — a corrupt file, an
+interrupted save, a hand-edited entry — only exist on disk.
 
 The language-model tests run against a hand-written fixture model, not the shipped one. Asserting on the
 real model would be asserting on what a few dozen novels happen to contain, and every assertion would break
@@ -414,14 +495,17 @@ covers Notepad and most desktop app text boxes and dialogs. It does **not** yet 
 Other known gaps:
 
 - English only (single bundled dictionary and corpus)
-- **The between-words bar is mouse-only.** It shows predictions but claims no keys, so a predicted word has
-  to be clicked — see [the input rule above](#the-bar-stays-put-between-words). Keyboard cycling returns the
-  moment you are part-way through a word. This was the right trade when the bar showed generic common words;
-  now that it makes real predictions, a chord that doesn't collide with Tab is worth considering.
+- **Tab is claimed while the bar is visible.** That is deliberate and was chosen over the alternative, but
+  it does mean Tab will not indent or move between fields until you press Esc. If you spend more time
+  tabbing between fields than taking suggestions, turn off "keep the bar on screen between words".
 - **The corpus skews literary.** It is mostly 19th- and early-20th-century novels, so it is good at ordinary
-  English sentences and weak on modern, technical or workplace phrasing. It has never seen "pull request".
-- Predictions are statistical, not semantic: three words of context, no understanding, no phrase
-  prediction, and no learning from your own writing
+  English sentences and weak on modern, technical or workplace phrasing. It has never seen "pull request" —
+  though personal learning will pick that up from you if you switch it on.
+- Predictions are statistical, not semantic: three words of context, no understanding, and no phrase
+  prediction (that is Phase 5)
+- **Autocorrect cannot correct *into* a personal word.** Personal words are protected from being corrected
+  away and are offered as completions, but the fuzzy index is built from the general dictionary at startup,
+  so typing "githb" will not produce "GitHub".
 - The word buffer and its history are a best-effort shadow of the caret. Arrow keys, clicks, and Ctrl/Alt
   combos reset both rather than risk drifting out of sync with the real text
 
@@ -432,6 +516,7 @@ WordStrip.Core/          no UI dependencies
   Input/                 WH_KEYBOARD_LL hook, SendInput injection, key→char translation, word buffer
   Prediction/            prefix index, SymSpell-style delete index + Damerau-Levenshtein, ranking
     NGram/               trigram/bigram model, shared tokenizer, on-disk format
+  Personal/              the user's own vocabulary and learned counts — local files, no network
   Automation/            focused-control + password-field detection, behind IFocusedControlProvider
   Suggestions/           SuggestionController — the only class the UI talks to
   Settings/, Platform/   JSON settings store, autostart registration
@@ -443,7 +528,7 @@ WordStrip.App/           WPF, net8.0-windows
   Tray/                  NotifyIcon and context menu
 
 tests/
-  WordStrip.Core.Tests/  xUnit, 126 tests
+  WordStrip.Core.Tests/  xUnit, 191 tests
   regression/            end-to-end scripts driving a real Win32 edit control
 
 tools/                   build-time only, never shipped

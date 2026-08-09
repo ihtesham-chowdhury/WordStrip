@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using WordStrip.Core.Personal;
 using WordStrip.Core.Prediction;
 using WordStrip.Core.Prediction.NGram;
 
@@ -158,6 +159,68 @@ public sealed class PerformanceTests
         var contextualMicroseconds = MeasureMicroseconds(() => engine.GetLiveSuggestions("wor", 5, trigramContext));
         Assert.True(contextualMicroseconds < 1000,
             $"Contextual completion took {contextualMicroseconds:F1} µs/call, which is too slow for per-keystroke use.");
+    }
+
+    [Fact]
+    public void MeasurePersonalLearningStorageGrowth()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "wordstrip-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "personal-language-model.json");
+
+        try
+        {
+            // Realistic-ish prose rather than random tokens: what the store actually costs depends on how
+            // much a person repeats themselves, and random words would model the worst case that no real
+            // typing produces.
+            var vocabulary = new[]
+            {
+                "the", "and", "for", "that", "with", "this", "have", "from", "council", "british",
+                "northfield", "exams", "candidate", "please", "thank", "you", "support", "regards", "morning",
+                "attached", "report", "venue", "session", "schedule", "confirm", "invoice", "payment",
+            };
+
+            var random = new Random(20260810);   // fixed seed: the figures below must be reproducible
+            var model = new PersonalLanguageModel(path);
+
+            var checkpoints = new[] { 1_000, 5_000, 20_000, 100_000 };
+            var written = 0;
+
+            _output.WriteLine("words learned -> file size / entries");
+
+            foreach (var checkpoint in checkpoints)
+            {
+                var context = new List<string>();
+
+                while (written < checkpoint)
+                {
+                    var word = vocabulary[random.Next(vocabulary.Length)];
+                    model.Learn(word, context.ToArray());
+
+                    context.Add(word);
+                    if (context.Count > 2) context.RemoveAt(0);
+                    written++;
+                }
+
+                model.SaveIfDirty();
+                var size = new FileInfo(path).Length;
+
+                _output.WriteLine(
+                    $"  {checkpoint,7:N0} -> {size / 1024.0,7:N1} KB   " +
+                    $"({model.UnigramCount:N0} words, {model.BigramCount:N0} pairs, {model.TrigramCount:N0} triples)");
+            }
+
+            var finalSize = new FileInfo(path).Length;
+
+            // The point of the caps is that this cannot become a database. A few hundred kilobytes after a
+            // hundred thousand words is the promise; a megabyte would mean the bounds are not working.
+            Assert.True(finalSize < 4 * 1024 * 1024,
+                $"personal model reached {finalSize / 1024.0 / 1024.0:F1} MB, which suggests the bounds are not holding");
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { /* best effort */ }
+        }
     }
 
     private static string? FindNGramDirectory()

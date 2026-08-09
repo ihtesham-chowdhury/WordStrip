@@ -219,6 +219,10 @@ public sealed class TypingSession : IDisposable
         var word = CurrentWord;
         _currentWord.Clear();
 
+        // Captured before the history moves on, because the two branches below leave it in incompatible
+        // states and personal learning needs the context this word was actually typed in.
+        var precedingWords = _recentWords.ToArray();
+
         // A full stop ends the context as surely as a click does. The previous sentence's last words say
         // nothing useful about how the next one opens, so they are dropped and the model is told a sentence
         // is beginning — which it can answer far better than raw word frequency can.
@@ -233,7 +237,13 @@ public sealed class TypingSession : IDisposable
             _atSentenceStart = false;
         }
 
-        WordCommitted?.Invoke(this, new WordCommittedEventArgs { Word = word, BoundaryChar = boundaryChar });
+        WordCommitted?.Invoke(this, new WordCommittedEventArgs
+        {
+            Word = word,
+            BoundaryChar = boundaryChar,
+            PrecedingWords = precedingWords,
+        });
+
         CurrentWordChanged?.Invoke(this, CurrentWord);
     }
 

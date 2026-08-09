@@ -203,6 +203,69 @@
             </StackPanel>
         </Border>
 
+        <!-- Everything below this point is about the user's own data rather than the app's appearance, which
+             is why it sits together and why each card says plainly where the data lives. -->
+        <TextBlock Text="YOUR WORDS" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                           Text="Names, products, jargon — anything the built-in dictionary doesn't know. Added words are suggested as you type, and are never autocorrected into something else." />
+
+                <DockPanel Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="Add" Padding="16,5" Margin="8,0,0,0"
+                            Click="OnAddPersonalWordClick" IsEnabled="{Binding CanAddPersonalWord}" />
+                    <TextBox x:Name="NewWordBox"
+                             Text="{Binding NewPersonalWord, UpdateSourceTrigger=PropertyChanged}"
+                             Padding="8,6" VerticalContentAlignment="Center"
+                             KeyDown="OnNewWordKeyDown" />
+                </DockPanel>
+
+                <Border BorderThickness="1" BorderBrush="#E4E6EA" CornerRadius="8" MinHeight="60" MaxHeight="180">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding PersonalWords}" Margin="4">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="4,3">
+                                        <Button DockPanel.Dock="Right" Content="Remove" Padding="10,2" FontSize="11"
+                                                Click="OnRemovePersonalWordClick" Tag="{Binding}" />
+                                        <TextBlock Text="{Binding}" Style="{StaticResource RowLabel}" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <DockPanel Margin="0,10,0,0">
+                    <TextBlock Text="{Binding PersonalWordCountLabel}" Style="{StaticResource Hint}" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Import…" Padding="12,4" Margin="0,0,8,0" Click="OnImportWordsClick" />
+                        <Button Content="Export…" Padding="12,4" Click="OnExportWordsClick" />
+                    </StackPanel>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="LEARNING" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <CheckBox Content="Learn from what I type" IsChecked="{Binding PersonalLearningEnabled}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,10"
+                           Text="Off by default. When on, WordStrip counts which words you use and which words tend to follow each other, and leans suggestions towards how you actually write. It stores counts only — never sentences, documents or a record of your keystrokes — and it never learns from password fields." />
+
+                <Border Background="#EDF1F7" CornerRadius="8" Padding="10,8">
+                    <StackPanel>
+                        <TextBlock Text="{Binding LearnedDataLabel}" Style="{StaticResource Hint}" Foreground="#4A5060" />
+                        <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                                   Text="All of this stays on this computer. Nothing is uploaded, and there is no account or telemetry." />
+                    </StackPanel>
+                </Border>
+
+                <Button Content="Clear everything WordStrip has learned" Padding="12,5" Margin="0,10,0,0"
+                        HorizontalAlignment="Left" Click="OnClearLearnedDataClick" />
+            </StackPanel>
+        </Border>
+
         <TextBlock Text="STARTUP" Style="{StaticResource SectionTitle}" />
         <Border Style="{StaticResource Card}">
             <CheckBox Content="Start WordStrip when Windows starts" IsChecked="{Binding StartWithWindows}" />

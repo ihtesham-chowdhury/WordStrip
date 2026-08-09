@@ -1,3 +1,4 @@
+using WordStrip.Core.Personal;
 using WordStrip.Core.Prediction.NGram;
 
 namespace WordStrip.Core.Prediction;
@@ -53,9 +54,50 @@ public sealed class ContextualRanker : ICandidateRanker
     /// <summary>Ceiling on the total bonus, asserted by tests. Bands are 100 apart and the frequency term reaches ~10, so 40 leaves ample headroom.</summary>
     public const double MaxContextBonus = TrigramBonus;
 
-    private readonly NGramLanguageModel _model;
+    /// <summary>
+    /// What being one of the user's own words is worth before usage is taken into account.
+    ///
+    /// <para>Sized to make a personal word competitive without making it automatic. A word the general
+    /// dictionary has never heard of carries no corpus frequency at all, so without this it would sit at the
+    /// bottom of its band beneath every common word sharing the prefix — type "qn" and see nothing useful.
+    /// With it, a freshly added word clears the ~10-point spread the frequency term can produce and lands
+    /// just above the common words, which is where something the user deliberately taught the app belongs.
+    /// It does not lift anything out of its band: an exact match still wins.</para>
+    /// </summary>
+    private const double PersonalBase = 12;
 
-    public ContextualRanker(NGramLanguageModel model) => _model = model;
+    /// <summary>Weight on log₁₀ of personal usage, so a word typed hundreds of times outranks one added yesterday.</summary>
+    private const double PersonalFrequencyWeight = 6;
+
+    /// <summary>
+    /// Ceiling on the personal bonus. Bounded so no amount of repetition can let a personal word escape its
+    /// band, and so a word accidentally added once and then hammered cannot permanently own the bar.
+    /// </summary>
+    public const double MaxPersonalBonus = 30;
+
+    /// <summary>
+    /// Ceiling on what learned usage can add, before the model's own confidence scales it down further.
+    ///
+    /// <para>Smaller than the trigram bonus on purpose. The general model was built from millions of words;
+    /// the personal one from however many its owner has typed since switching it on. It should shade the
+    /// ordering toward how this person writes, not overrule a well-evidenced general prediction — and a
+    /// single word typed by accident must never be able to take over the bar.</para>
+    /// </summary>
+    public const double MaxLearnedBonus = 15;
+
+    private readonly NGramLanguageModel _model;
+    private readonly PersonalVocabularyStore? _personalVocabulary;
+    private readonly PersonalLanguageModel? _personalLearning;
+
+    public ContextualRanker(
+        NGramLanguageModel model,
+        PersonalVocabularyStore? personalVocabulary = null,
+        PersonalLanguageModel? personalLearning = null)
+    {
+        _model = model;
+        _personalVocabulary = personalVocabulary;
+        _personalLearning = personalLearning;
+    }
 
     public IReadOnlyList<Suggestion> Rank(RankingContext context, IReadOnlyList<Suggestion> candidates, int maxResults)
     {
@@ -71,7 +113,11 @@ public sealed class ContextualRanker : ICandidateRanker
         var scored = new List<Suggestion>(candidates.Count);
         foreach (var candidate in candidates)
         {
-            var score = FrequencyRanker.Score(candidate, prefixLength) + ContextBonus(lookup, candidate.Word);
+            var score = FrequencyRanker.Score(candidate, prefixLength)
+                      + ContextBonus(lookup, candidate.Word)
+                      + PersonalBonus(candidate.Word)
+                      + LearnedBonus(candidate.Word, context.Context);
+
             scored.Add(candidate.WithScore(score));
         }
 
@@ -104,6 +150,39 @@ public sealed class ContextualRanker : ICandidateRanker
             NGramOrder.Bigram => BigramBonus + refinement,
             _ => 0,
         };
+    }
+
+    /// <summary>
+    /// How much this being one of the user's own words is worth. Zero for anything not in the personal
+    /// vocabulary, so an engine without one ranks exactly as it did before Phase 3.
+    /// </summary>
+    /// <remarks>Public so tests can assert the bound directly rather than inferring it from output ordering.</remarks>
+    public double PersonalBonus(string word)
+    {
+        if (_personalVocabulary is null) return 0;
+
+        var frequency = _personalVocabulary.GetFrequency(word);
+        if (frequency <= 0) return 0;
+
+        return Math.Min(PersonalBase + (PersonalFrequencyWeight * Math.Log10(frequency + 1)), MaxPersonalBonus);
+    }
+
+    /// <summary>
+    /// How much the user's own writing argues for this word here. Zero when learning is off, when nothing
+    /// has been learned yet, or when this word has never been seen — so the ranking is unchanged until
+    /// there is genuine evidence to change it.
+    ///
+    /// <para>The model's <see cref="PersonalLanguageModel.Confidence"/> is already folded into the score it
+    /// returns, which is what makes learning arrive as a gradual drift rather than a sudden change in
+    /// behaviour a few sentences after switching it on.</para>
+    /// </summary>
+    /// <remarks>Public so tests can assert the bound and the cold-start ramp directly.</remarks>
+    public double LearnedBonus(string word, PredictionContext context)
+    {
+        if (_personalLearning is null) return 0;
+
+        var score = _personalLearning.GetPersonalScore(word, context.PrecedingWords);
+        return score <= 0 ? 0 : Math.Min(score * MaxLearnedBonus, MaxLearnedBonus);
     }
 
     /// <summary>Same tiebreak as <see cref="FrequencyRanker"/>: score, then the shorter word, then ordinal. Identical input always produces identical output.</summary>

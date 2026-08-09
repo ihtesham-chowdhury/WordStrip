@@ -36,8 +36,8 @@ while a word is in progress, a small glass strip appears showing ranked candidat
 3. `Tab` highlights the next candidate (hold to scrub quickly); `Space` inserts the highlighted one;
    `Esc` puts the bar away; clicking a word inserts it directly with no need to press Tab first.
 4. On finishing a word (space/punctuation), conservative autocorrect may replace an obvious misspelling.
-5. The strip **stays on screen between words** showing common words (default; switchable). While idle it
-   claims no keys — see §12 item 4 and §13, this distinction is load-bearing.
+5. The strip **stays on screen between words**, predicting what comes next (default; switchable). Tab
+   cycles those predictions too — see §12 item 4, which records the cost of that.
 6. Right-click the tray icon → Settings for theme, word count, persistent bar, bar thickness, glass tint,
    animation speed and bar position, all applying live with a preview.
 
@@ -45,14 +45,17 @@ while a word is in progress, a small glass strip appears showing ranked candidat
 The owner's motivation is that they mistype often and Windows has no equivalent of the Android/iOS
 suggestion bar. **[fact — stated by the owner]**
 
-**Privacy posture:** entirely local. No network calls, no telemetry, no account. The strip disables itself
-inside password fields (`ES_PASSWORD`). The typing buffer holds only the in-progress word, in memory. **[fact]**
+**Privacy posture:** entirely local. No network calls at runtime, no telemetry, no account. The strip
+disables itself inside password fields (`ES_PASSWORD`), and so does personal learning. By default nothing
+typed is written to disk at all; with learning switched on, what is written is counts of words, pairs and
+triples — never text. Everything lives in `%LOCALAPPDATA%\WordStrip` as plain files the user can read and
+delete. **[fact]**
 
 ## 3. Current Status
 
-- **Overall status:** **Phase 2 is complete and built as 0.5.0.** The installer exists at
-  `publish\WordStrip-Setup-0.5.0.exe` but has **not** been installed — 0.4.0 is what is installed and
-  running on the dev machine. **[fact]**
+- **Overall status:** **Phases 3 and 4 are complete and built as 0.6.0.** The installer exists at
+  `publish\WordStrip-Setup-0.6.0.exe` but has **not** been installed — 0.4.0 is still what is installed on
+  the dev machine, so 0.5.0 and 0.6.0 have both been built and neither has been trialled. **[fact]**
 - **Completed:**
   - Keyboard hook, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -64,13 +67,18 @@ inside password fields (`ES_PASSWORD`). The typing buffer holds only the in-prog
     `Suggestion` metadata, performance harness **[fact]**
   - Persistent bar + settings toggle, `IFocusedControlProvider` seam, an end-to-end regression script,
     and the 0.4.0 installer **[fact]**
-  - **Phase 2: trigram/bigram language model, contextual ranking, typing-history capture, an offline model
-    builder, 126 unit tests, and the 0.5.0 build** **[fact]**
-- **In progress:** Nothing. Phase 2 is closed out.
+  - Phase 2: trigram/bigram language model, contextual ranking, typing-history capture, an offline model
+    builder, and the 0.5.0 build **[fact]**
+  - **Tab fix: the bar claims Tab whenever it is visible** (reported from real use — see §14) **[fact]**
+  - **Phase 3: personal vocabulary with casing preservation, autocorrect protection and a settings UI** **[fact]**
+  - **Phase 4: personal learning with bounding, decay, cold-start ramp and privacy controls** **[fact]**
+  - **191 unit tests and the 0.6.0 build** **[fact]**
+- **In progress:** Nothing. Phases 3 and 4 are closed out.
 - **Blocked:** Nothing is blocked. The largest *limitation* (browser/Electron support) is a known
   architectural gap, addressed by Phase 7 (TSF), not a blocker.
-- **Next priority:** Owner decision. 0.5.0 is built but not installed, and the open interaction question
-  from §15 is now much more pressing — see §12 item 4. Do **not** start Phase 3 unasked.
+- **Next priority:** Owner decision. Install 0.6.0 and trial it — three versions of unvalidated work have
+  now stacked up, and personal learning in particular can only be judged by living with it. Do **not**
+  start Phase 5 unasked.
 
 ## 4. Directory Structure
 
@@ -111,6 +119,10 @@ D:\Claude Code\WordStrip\
 │   │   ├── Win32TextInjector.cs      SendInput; minimal-diff + case preservation
 │   │   ├── ITextInjector.cs          Seam for a future TSF implementation
 │   │   └── KeyTranslator.cs          vkCode → character via layout
+│   ├── Personal/                     ← Phases 3 and 4. Local files only; no network code anywhere below.
+│   │   ├── PersonalWord.cs           NEW: key + display casing + usage
+│   │   ├── PersonalVocabularyStore.cs NEW: the user's own words; atomic writes, corruption-tolerant
+│   │   └── PersonalLanguageModel.cs  NEW: learned counts, bounded, decaying, cold-start ramped
 │   ├── Prediction/                   ← Phases 1 and 2 both landed here
 │   │   ├── FrequencyDictionary.cs    Vocabulary + frequency source
 │   │   ├── PrefixIndex.cs            Sorted array + binary search; cached top-frequency list
@@ -154,7 +166,7 @@ D:\Claude Code\WordStrip\
 │   ├── Interop/GlassWindowBehavior.cs      No-activate, no-taskbar window
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-├── tests/WordStrip.Core.Tests/       xUnit, 126 tests
+├── tests/WordStrip.Core.Tests/       xUnit, 191 tests
 │   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
 │   ├── PrefixCompletionTests.cs
 │   ├── FuzzyMatchingTests.cs
@@ -164,8 +176,10 @@ D:\Claude Code\WordStrip\
 │   ├── SuggestionControllerTests.cs  Persistent-bar state machine
 │   ├── TestLanguageModel.cs          NEW: hand-written n-gram fixture + its own vocabulary
 │   ├── NGramLanguageModelTests.cs    NEW: backoff, sentence boundaries, determinism, parsing
-│   ├── ContextualPredictionTests.cs  NEW: the two modes and the ranking contract
-│   ├── TypingHistoryTests.cs         NEW: when context must be forgotten
+│   ├── ContextualPredictionTests.cs  The two modes and the ranking contract
+│   ├── TypingHistoryTests.cs         When context must be forgotten
+│   ├── PersonalVocabularyTests.cs    NEW: store, casing, corruption, autocorrect protection (36)
+│   ├── PersonalLearningTests.cs      NEW: counts, bounds, decay, cold start, privacy (28)
 │   └── PerformanceTests.cs           Timings against the real vocabulary and the real model
 │
 └── tests/regression/                 NEW: end-to-end, drives a real Win32 edit control
@@ -296,7 +310,7 @@ powershell -File "D:\Claude Code\WordStrip\build-release.ps1"
 # In-place upgrade. Same AppId, so it replaces the existing install and PRESERVES settings.
 # /TASKS=startupicon keeps the autostart entry; /TASKS= (empty) would leave an existing one untouched.
 # Do NOT verify by uninstalling and reinstalling — uninstall deletes %LOCALAPPDATA%\WordStrip (§9).
-Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.4.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=startupicon" -Wait
+Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.6.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=startupicon" -Wait
 ```
 
 **Debugging aids (opt-in via environment variable, off by default):**
@@ -316,6 +330,8 @@ Stop-Process -Name "WordStrip*" -Force -ErrorAction SilentlyContinue
 | Name | Kind | Purpose |
 |---|---|---|
 | `%LOCALAPPDATA%\WordStrip\settings.json` | File | User settings, written by the app |
+| `%LOCALAPPDATA%\WordStrip\personal-vocabulary.json` | File | Phase 3: the user's own words, casing and usage |
+| `%LOCALAPPDATA%\WordStrip\personal-language-model.json` | File | Phase 4: learned counts. Absent unless learning is on |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WordStrip` | Registry | Autostart entry |
 | `WORDSTRIP_FRAMELOG` | Env var (optional) | `1` enables frame-time diagnostics |
 
@@ -334,7 +350,8 @@ Stop-Process -Name "WordStrip*" -Force -ErrorAction SilentlyContinue
   "BackdropBlur": 3,        // Auto=3 (see §12 — this setting is currently inert)
   "BarPosition": 0,         // 0 bottom, 1 follow caret, 2 top
   "AutocorrectEnabled": true,
-  "PersistentBar": true,    // strip stays on screen between words
+  "PersistentBar": true,          // strip stays on screen between words
+  "PersonalLearningEnabled": false, // Phase 4 — deliberately off until asked for
   "StartWithWindows": false
 }
 ```
@@ -368,7 +385,25 @@ Inspect these first, roughly in this order:
 
 ## 11. Recent Work
 
-**Most recent session (Phase 2 — contextual prediction, 0.5.0):**
+**Most recent session (Tab fix + Phases 3 and 4, 0.6.0):**
+
+| File | Change | Reason |
+|---|---|---|
+| `Coordination/BarInputRouter.cs` | Single `_isBarActive`; Esc suppressed only with a selection | Reported: Tab did nothing on the predictions that appear after inserting a word |
+| `Personal/PersonalVocabularyStore.cs` | **New.** JSON store, atomic writes, normalized key + display casing | Phase 3; the casing split is what keeps "GitHub" from becoming "github" |
+| `Personal/PersonalWord.cs` | **New.** Entry record | Date-only recency, so the file can't become a timeline of someone's day |
+| `Personal/PersonalLanguageModel.cs` | **New.** Learned uni/bi/trigram counts, bounded and decaying | Phase 4 |
+| `Prediction/PredictionEngine.cs` | Personal completions merged in; `IsCorrectlySpelled` consults them | Personal words must be suggestable and must not be autocorrected away |
+| `Prediction/ContextualRanker.cs` | `PersonalBonus` (≤30) and `LearnedBonus` (≤15) | Bounded so neither can cross a band |
+| `Settings/AppSettings.cs` | `PersonalLearningEnabled`, default **off** | It changes what is recorded about the user, not how the app looks |
+| `Input/WordCommittedEventArgs.cs` | Added `PrecedingWords`, snapshotted pre-update | The history is mutated differently per boundary char; learning needs the exact pair |
+| `Suggestions/SuggestionController.cs` | Learning behind the existing focus check; learns the corrected word | Never learn from a field we could not identify, or teach back a typo we just fixed |
+| `App.xaml.cs` | Loads both stores; 30 s save timer; final flush on exit | Batched so disk I/O stays off the typing path |
+| `UI/SettingsWindow.xaml(.cs)`, `SettingsViewModel.cs` | "Your words" and "Learning" cards | Without a UI the vocabulary is unreachable and learning is unauditable |
+| `tests/Personal*Tests.cs` | **New**, 64 tests | Real files in a temp dir — persistence is most of what these classes do |
+| `tests/PerformanceTests.cs` | Storage-growth measurement | Phase 4 requires measured growth |
+
+**Session before that (Phase 2 — contextual prediction, 0.5.0):**
 
 | File | Change | Reason |
 |---|---|---|
@@ -385,7 +420,7 @@ Inspect these first, roughly in this order:
 | `assets/ngram/*.txt` | **New**, committed, 7.25 MB | Generated output; the corpus itself stays out of the repo |
 | `tests/*` | 4 new files, 47 new tests | Backoff, boundaries, ranking contract, history expiry |
 
-**Session before that (persistent bar, 0.4.0):**
+**Session before those (persistent bar, 0.4.0):**
 
 | File | Change | Reason |
 |---|---|---|
@@ -427,33 +462,35 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 3. **No semantic understanding.** Since Phase 2 there is contextual prediction, but it is three words of
    statistics, not meaning: no phrase prediction, no learning from your writing, no idea what a sentence is
    about. Phases 3–6 address this.
-4. **The idle bar is mouse-only — and Phase 2 made this matter much more.** Between words you must click a
-   predicted word; you cannot Tab to it, because a persistent bar that captured Tab would stop Tab indenting
-   and moving between fields system-wide (§13). That was an easy trade when the bar showed generic common
-   words. Now that it makes genuine predictions, **the headline feature of Phase 2 is reachable only by
-   mouse**, which for a typing aid is a real gap. **[fact]**
-   *[recommendation: this is the highest-value open question. A dedicated chord that doesn't collide with
-   Tab is the obvious fix, but which one is the owner's call — ask before implementing. Flagged for tester
-   feedback in READ-ME-FIRST.txt.]*
+4. **Tab belongs to the bar whenever the bar is visible.** Since 0.6.0, at the owner's request. The cost is
+   that Tab will not indent or move between dialog fields while the strip is up — which, with the persistent
+   bar on, is most of the time you are in a text field. Esc releases it until the next keystroke. **[fact]**
+   *[recommendation: this reversed the opposite decision made in 0.4.0, on one report and before the new
+   behaviour had been lived with. Watch it. If it grates, a modifier chord is the fallback and
+   `BarInputRouter` is the only file involved.]*
 5. **The corpus skews literary.** Mostly 19th- and early-20th-century novels, so ordinary English sentences
    are well covered and modern, technical or workplace phrasing is not. The model has never seen "pull
-   request". **[fact]** *[recommendation: a modern conversational corpus would help more than any amount of
-   further tuning.]*
+   request" — though Phase 4's learning will pick that up from the user if they switch it on. **[fact]**
+   *[recommendation: a modern conversational corpus would help more than any amount of further tuning.]*
+6. **Autocorrect cannot correct *into* a personal word.** Personal words are protected from correction and
+   offered as completions, but `SymSpellIndex` is built from the general dictionary at startup and never
+   rebuilt, so "githb" will not become "GitHub". **[fact]** *[recommendation: rebuild the fuzzy index when
+   the personal vocabulary changes — deliberately out of scope for Phase 3.]*
 
 ### Technical debt / known issues
 
-6. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
+7. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
    DWM Mica/Acrylic impossible, because they cannot apply to a layered window. The UI control was removed
    but the enum and the `AppSettings.BackdropBlur` property remain and are read nowhere meaningful.
    **[fact]** *[recommendation: delete the property and enum, or reintroduce blur via
    `SetWindowCompositionAttribute`, which does work on layered windows but paints a square-cornered
    region.]*
-7. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
+8. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
    on a background thread so the tray icon appears immediately, but first-run feels slow. **[fact]**
-8. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
+9. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
    pixels just outside the bar, which is a heuristic and can mis-read over unusual backgrounds.
-9. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
-10. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
+10. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
+11. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
    `HKCU\...\Run` value directly, while the settings window writes both the registry and
    `AppSettings.StartWithWindows`. On the dev machine the Run key is set while `StartWithWindows` is
    `false`, so the settings checkbox shows the wrong state. **[fact — observed 2026-08-09]**
@@ -461,29 +498,34 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 
 ### Testing gotchas discovered the hard way — read before writing UI tests
 
-11. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
+12. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
     translucency from a `PrintWindow` grab is meaningless. **[fact]**
-12. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
+13. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
     into undersized bitmaps and silently cropped. The dev display is at 150%. **[fact]**
-13. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
+14. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
     technique, and always verify the foreground window class before sending keystrokes — otherwise test
     input lands in whatever the user is actually using. **[fact]**
-14. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
+15. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
     packaged single-instance app: `notepad.exe` exits immediately and `MainWindowHandle` is empty. A
     WinForms `TextBox` reports class `WindowsForms10.EDIT.app.0.<hash>`, which does **not** start with
     `Edit`, so `FocusedControlInspector` ignores it and no bar ever appears. `TestTarget.ps1` creates a
     real `EDIT` control with `CreateWindowEx` instead. **[fact — both tried and discarded]**
-15. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
+16. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
     microseconds; replacements are deferred onto the message loop, so the burst is still draining into the
     target when the replacement fires and the two interleave — `helo ` came out as `healo`. Send one key at
     a time. This is the harness outrunning hardware, **not** a product defect. **[fact]**
-16. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
+17. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
     path and can land after the check that reads the text back, which looks like a half-applied correction.
     The self-contained single-file build is worse, since it also self-extracts. **[fact]**
-17. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
+18. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
     *and* from `hello`, so the tie falls to frequency and `help` wins — correct behaviour, useless
     assertion. `teh` → `the` is unambiguous. **[fact]**
-18. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
+19. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no
+    byte-order mark, and Windows PowerShell decodes such a file as Windows-1252 — where an em dash's third
+    byte becomes a smart closing quote that the parser honours as a string delimiter. It reports as
+    "missing terminator" at the *bottom* of the file, hundreds of lines from the dash. Harmless in comments,
+    fatal inside a string. **[fact — cost a debugging cycle]**
+20. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
     deliberately doesn't run (its pump omits `IsDialogMessage` so Tab reaches the control as a character).
     Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
 
@@ -537,6 +579,18 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 - **Don't add raw word frequency on top of a conditional probability.** `P(word | context)` already
   accounts for how common the word is. Double-counting it promotes function words and buries the useful
   predictions — this is why `ProbabilityWeight` is 8 and not 2.
+- **Every ranking bonus must stay under the 100-point band gap, and they are cumulative.** Context ≤40,
+  personal word ≤30, learned usage ≤15 — 85 in the worst case, plus ~10 of frequency. Add another signal
+  without checking the total and a suggestion could outrank a word the user has finished typing.
+- **Learning is gated on the same focus check as suggesting.** `SuggestionController.Learn` is the only
+  call site, and it sits after `IsSuggestible`. A field the app cannot positively identify must never be
+  learned from — "we're not sure" has to mean "don't record it", not "probably fine".
+- **`WordCommittedEventArgs.PrecedingWords` is snapshotted before the history updates.** The two branches of
+  `CommitIfNonEmpty` leave the history in incompatible states — an ordinary space appends the word, a full
+  stop clears it — so reconstructing the context afterwards is wrong in a different way in each case.
+- **Both personal stores write via a temp file and `File.Replace`.** The learning model saves on a timer,
+  which makes an interrupted write a question of when, not if. A corrupt file loads as empty and is left on
+  disk for recovery rather than overwritten.
 
 ### UI/UX rules
 
@@ -551,7 +605,7 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 - Prediction primitives are unit-tested; keep them that way.
 - UI and input behaviour is verified end-to-end with `tests\regression\Verify-PersistentBar.ps1`, which
   drives a real Win32 `Edit` control and reads text back with `WM_GETTEXT` (**not** screenshots — §12).
-  Add a check there for anything a unit test cannot reach; §12 items 14–18 are the traps that cost the most
+  Add a check there for anything a unit test cannot reach; §12 items 15–19 are the traps that cost the most
   time, so read them before extending it.
 - When behaviour in `Core` can't be tested because it reads live Win32 state through a static, add a seam
   for it — `ITextInjector` and `IFocusedControlProvider` are both precedents.
@@ -559,14 +613,41 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 
 ## 14. Current Task
 
-**None — Phase 2 is closed out and built as 0.5.0.** The next move belongs to the owner. Do **not** start
-Phase 3 without being asked; the phase documents say so explicitly.
+**None — Phases 3 and 4 are closed out and built as 0.6.0.** The next move belongs to the owner. Do **not**
+start Phase 5 without being asked; the phase documents say so explicitly.
 
 The 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` (outside the project) as
-`PHASE_1..7_*.md`. Phase 2 explicitly **excluded** personal vocabulary, personal learning, neural models
-and TSF.
+`PHASE_1..7_*.md`. Phase 4 explicitly **excluded** neural models, cloud/federated learning, raw document
+storage, keystroke logging and TSF.
 
-**Delivered in the most recent session (Phase 2) [fact]:**
+**Delivered in the most recent session (Tab fix + Phases 3 and 4) [fact]:**
+
+- **Tab fix.** Reported from use: after inserting a word the predictions appear immediately but Tab did
+  nothing, because the router only claimed keys while a word was in progress. The bar now owns Tab whenever
+  it is showing anything. Two guards keep typing intact — Space/Enter only claimed with a selection, Esc
+  only swallowed with a selection to cancel.
+- **Phase 3.** `PersonalVocabularyStore` (JSON, atomic writes, corruption-tolerant), casing preserved
+  separately from the lookup key, personal words folded into completion and protected from autocorrect, a
+  bounded personal ranking bonus, and a settings card with add/remove/import/export.
+- **Phase 4.** `PersonalLanguageModel` — personal uni/bi/trigram counts learned only from committed words in
+  suggestible controls, with count saturation, periodic decay, table pruning, a cold-start confidence ramp,
+  and settings for on/off plus clear-everything.
+- 65 new unit tests (191 total), storage growth measured, and the regression updated to test next-word
+  insertion end to end now that Tab reaches the idle bar.
+
+**Measured results, Phases 3 and 4 [fact]:**
+
+| Metric | Value |
+|---|---|
+| Personal model growth | 45 KB @ 1k words · 164 KB @ 5k · 193 KB @ 20k · **394 KB @ 100k** |
+| Bounds | 20,000 entries per order, counts capped at 1,000 |
+| Decay | ×0.9 every 20,000 learned words |
+| Cold start | linear ramp to full weight at 2,000 learned words |
+| Personal vocabulary cap | 5,000 words, least-used evicted |
+| Ranking bonuses | personal word ≤30, learned usage ≤15, context ≤40 — all under the 100-point band gap |
+| Installer | 66.1 MB, unchanged from 0.5.0 |
+
+**Delivered in the session before that (Phase 2) [fact]:**
 
 - `NGramLanguageModel` — trigram/bigram tables with stupid-backoff scoring through to a unigram tier
 - `PredictionContext` and `NGramTokenizer`, shared by the offline builder and the running app
@@ -606,48 +687,58 @@ scan), autocorrection 274.5 µs, dictionary load 185 ms, SymSpell index build 61
 
 **Design decisions taken during implementation, worth knowing about:**
 
-1. **The idle bar claims no keys.** Keeping the bar visible while letting the router carry on as before
-   makes Tab and Esc unusable system-wide, because "is the bar visible" is true almost continuously once
-   the bar persists. Keyboard cycling is scoped to completions; the idle bar is click-only. **Phase 2 made
-   this a real cost** — see §12 item 4.
-2. **Accepting with an empty buffer inserts rather than replaces.** Between words there is nothing to
+1. **The bar claims Tab whenever it is visible.** *Reversed in 0.6.0.* It originally claimed nothing between
+   words, to keep Tab indenting and moving between dialog fields. Phase 2 changed the calculus — the idle
+   bar now holds real predictions, and mouse-only put them out of reach on the path where they matter most.
+   Esc is the release valve, and Esc itself is only swallowed when there is a selection to cancel.
+2. **Personal learning is off by default, and everything else about it is opt-in-shaped.** It is the only
+   setting that changes what the app records about its user rather than how it looks or behaves. Clearing
+   deletes the file rather than blanking it; the export carries words but no frequencies or dates; learning
+   is gated on the same focus check as suggesting, so an unidentifiable field is never learned from.
+3. **Personal signals are bounded and cannot cross bands.** A personal word gets at most +30 and learned
+   usage at most +15, against a 100-point gap between ranking bands. A word the user has finished typing
+   always wins, however much personal evidence argues otherwise.
+4. **Accepting with an empty buffer inserts rather than replaces.** Between words there is nothing to
    replace, so the chosen word is simply typed with a trailing space. The guard moved from buffer length to
    focus, so an accept can never inject into a surface we would not have suggested for.
-3. **The model stores probabilities, not counts.** Two sources whose raw counts differ by six orders of
+5. **The model stores probabilities, not counts.** Two sources whose raw counts differ by six orders of
    magnitude cannot be summed — Google Books would erase Gutenberg. Each is reduced to a conditional
    distribution and mixed. Where only one source knows a context it is the whole distribution, not half.
-4. **Context is weighted above frequency, deliberately.** A conditional probability already accounts for
+6. **Context is weighted above frequency, deliberately.** A conditional probability already accounts for
    how common a word is; adding `log10(frequency)` on top double-counts it. At the original weight, "i am"
    predicted *the* and *to* — real continuations, useless suggestions — and buried *sure*.
-5. **The sentence-start marker is a context but never a suggestion.** It was briefly the most probable
+7. **The sentence-start marker is a context but never a suggestion.** It was briefly the most probable
    continuation of "thank you", which would have rendered a blank chip.
 
 ## 15. Recommended Next Steps
 
-**Wait for the owner's feedback on 0.4.0 before doing any of this.** They are using it for a few days, and
-the persistent bar is the thing under evaluation.
-
-1. **Decide how a predicted word gets taken from the keyboard** (§12 item 4). This is the biggest open
-   question and the one Phase 2 created: the between-words bar now makes real predictions, and they can
-   only be clicked. A chord that doesn't collide with Tab is the obvious fix, but *which* is the owner's
-   call. **[recommendation — ask, don't guess]**
-2. **Install and trial 0.5.0.** It is built but not installed; 0.4.0 is what is running. The corpus skew
-   (§12 item 5) is best judged by using it on real writing.
-3. **Fix the autostart split-brain** (§12 item 10) — the settings checkbox can disagree with the registry.
+1. **Install 0.6.0 and actually live with it.** Three versions of work are now built and untrialled, and
+   two of the newest features can only be judged by use: whether the bar owning Tab is comfortable, and
+   whether personal learning improves anything within a plausible amount of typing. Everything below is
+   less valuable than this. **[recommendation]**
+2. **Watch the Tab decision specifically.** It was reversed on the strength of one report; the cost —
+   Tab not indenting or moving between fields while the bar is up — lands on every text field, not just the
+   moments the predictions are wanted. If it grates, a modifier chord is the fallback, and
+   `BarInputRouter` is the only file that would change.
+3. **Fix the autostart split-brain** (§12 item 11) — the settings checkbox can disagree with the registry.
 4. **Resolve the inert `BackdropBlur` setting** — remove it or reimplement blur.
-5. **Only then** consider Phase 3 (personal vocabulary). Do **not** start it without being asked; the phase
-   documents say so explicitly. The integration point is ready: `ICandidateRanker` takes a
-   `RankingContext` that already carries the full `PredictionContext`, so a personal-vocabulary signal
-   arrives as another ranker, and `PredictionContext` itself was built to grow.
+5. **Consider letting autocorrect correct *into* personal words** (§12 item 6). Personal words are protected
+   and suggestible, but the fuzzy index is built from the dictionary at startup, so "githb" will not become
+   "GitHub". Rebuilding the index when the vocabulary changes is the obvious approach and was out of scope.
+6. **Only then** consider Phase 5 (phrase / multi-word suggestions). Do **not** start it without being
+   asked. The integration point is ready: `PersonalLanguageModel` already holds personal trigrams, which is
+   what Phase 5 needs to propose multi-word completions, and `ICandidateRanker` takes the whole
+   `PredictionContext` so another signal arrives as another ranker.
 
 **Release checklist, for whenever the next build ships:**
 
 - Stop the running app first (it locks its own exe).
 - Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
-- `dotnet test` (79), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- `dotnet test` (191), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
 - Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
   single-file build is a different code path (embedded dictionary) and starts more slowly.
-- Back up `%LOCALAPPDATA%\WordStrip\settings.json` before touching the installer (§9).
+- Back up **the whole of** `%LOCALAPPDATA%\WordStrip` before touching the installer (§9). It now holds the
+  user's personal vocabulary and learned data as well as settings, and uninstall deletes the lot.
 
 ## 16. Fresh-Chat Startup Prompt
 
@@ -663,10 +754,11 @@ Then:
    (Recommended Next Steps).
 5. Ask questions only if something is genuinely ambiguous or unsafe. Do not ask about
    anything already answered in the context file.
-6. Note that section 14 currently says there is no active task: Phase 2 is built as
-   0.5.0 but not installed. Ask what they want next rather than assuming, and do NOT
-   start Phase 3 unprompted. The open question worth raising is section 12 item 4 —
-   predicted words can only be clicked, not reached from the keyboard.
+6. Note that section 14 currently says there is no active task: Phases 3 and 4 are
+   built as 0.6.0 but not installed, and 0.5.0 was never trialled either. Ask what they
+   want next rather than assuming, and do NOT start Phase 5 unprompted. The thing worth
+   raising is that three versions of work are now unvalidated by use — installing and
+   living with 0.6.0 is more valuable than any further feature.
 7. Respect the "load-bearing details" in section 13 — several of them look like harmless
    code but will silently break text insertion, the layout, or Tab and Esc system-wide
    if changed.

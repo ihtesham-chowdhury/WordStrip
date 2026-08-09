@@ -50,8 +50,8 @@ HOW TO USE IT
    Using the keyboard, you press Tab first and then Space. If nothing is highlighted,
    Space is just a normal space, so your ordinary typing is never affected.
 
-4. NEW IN 0.5: between words, the bar now PREDICTS WHAT COMES NEXT from the words you
-   just typed, instead of showing the same handful of common words every time.
+4. Between words, the bar PREDICTS WHAT COMES NEXT from the words you just typed,
+   instead of showing the same handful of common words every time.
 
    Type "how are" and it offers: you, we, they
    Type "let me"  and it offers: see, go, have, know
@@ -63,29 +63,59 @@ HOW TO USE IT
    machine. It has three words of context and no understanding of meaning, so it's good
    at ordinary English sentences and weak on technical or work jargon.
 
-   Click a predicted word to insert it. (Between words the bar deliberately doesn't
-   capture Tab — see below.)
+   FIXED IN 0.6: Tab now works on these predictions. Previously Tab only did anything
+   while you were part-way through typing a word, so the predictions that appear right
+   after you insert a word could only be clicked. Tab now cycles whenever the bar is
+   showing anything, and Space inserts the highlighted word.
+
+   The trade-off: while the bar is visible, Tab belongs to it and won't indent or move
+   between fields. Press Esc to put the bar away and Tab goes back to normal until you
+   type again. If that bothers you, turn off "keep the bar on screen between words".
 
    The bar STAYS ON SCREEN between words rather than vanishing every time you press
    space, the way a phone keyboard's suggestion row does.
 
-   While it's just sitting there between words it doesn't take over any keys — Tab
-   still indents and moves between fields, Esc still closes dialogs. It only takes
-   over Tab and Space once you're part-way through typing a word and it's offering
-   you completions.
+5. NEW IN 0.6: YOUR OWN WORDS.  Settings -> Your words
 
-   It goes away when you click somewhere else, press Esc, or leave the text box.
+   Add names, products, jargon - anything the built-in dictionary doesn't know. Added
+   words get suggested as you type, AND they stop being autocorrected into something
+   else. If you type "QNAP" and watch it turn into "snap", adding it fixes that.
 
-   If you preferred the old behaviour, there's a switch for it:
-   Settings -> Suggestions -> "Keep the bar on screen between words".
+   Capitalisation is kept exactly as you enter it, so "GitHub" stays "GitHub".
 
-5. Autocorrect fixes obvious misspellings when you finish a word
-   ("recieve" becomes "receive").
+   You can import a list from a text file (one word per line) or export what you have.
 
-6. Right-click the tray icon -> Settings. There's a live preview, and you can change:
+6. NEW IN 0.6: LEARNING FROM YOUR TYPING.  Settings -> Learning
+
+   This one is OFF unless you turn it on. It changes what the app records about you,
+   which isn't something to switch on for someone without asking.
+
+   With it on, WordStrip counts which words you use and which words tend to follow each
+   other, and gradually leans suggestions towards how you actually write. Type
+   "Northfield Data Systems" enough times and it starts predicting it.
+
+   What it stores: counts of single words, word pairs and word triples. That's all.
+   No sentences, no documents, no record of your keystrokes, and nothing at all from
+   password fields. It never leaves your computer - there's no account, no upload and
+   no telemetry of any kind.
+
+   It also forgets: old counts fade over time, so something you typed a lot months ago
+   won't dominate forever.
+
+   The Learning page shows exactly how much has been learned, and there's one button to
+   delete all of it.
+
+7. Autocorrect fixes obvious misspellings when you finish a word
+   ("recieve" becomes "receive"). Words you've added to Your words are left alone.
+
+8. The bar goes away when you click somewhere else, press Esc, or leave the text box.
+
+9. Right-click the tray icon -> Settings. There's a live preview, and you can change:
 
      - whether the bar stays on screen between words
      - how many words are shown (3 to 7)
+     - your own word list (add / remove / import / export)
+     - whether WordStrip learns from your typing, and clearing what it has learned
      - how thick the bar is
      - how thick/transparent the glass looks
      - how fast the animation is
@@ -110,9 +140,21 @@ PRIVACY
 -------
 
 Everything runs on your own machine. There is no internet connection, no account, and
-no telemetry of any kind. Nothing you type is saved to disk or sent anywhere.
+no telemetry of any kind.
 
-The app deliberately turns itself off inside password fields.
+By default nothing you type is saved to disk at all. If you switch Learning on, what
+gets saved is counts - how often you use each word, and which words follow which - and
+never the text itself. No sentences, no documents, no keystroke log.
+
+The app deliberately turns itself off inside password fields, and that applies to
+learning too: it will not learn anything from a password box, or from any field it
+can't positively identify as an ordinary text box.
+
+Your files live in:  %LOCALAPPDATA%\WordStrip
+You can open that folder, read them, and delete anything you like.
+
+Note: uninstalling WordStrip deletes that folder, including your word list. Export it
+first if you want to keep it.
 
 
 WHAT FEEDBACK IS USEFUL
@@ -120,12 +162,14 @@ WHAT FEEDBACK IS USEFUL
 
 * Did the suggestions actually help, or get in the way?
 * Are the next-word predictions any good? Which ones were obviously wrong or silly?
-* Do you WANT to reach the predicted words from the keyboard? Right now you have to
-  click them, because capturing Tab between words would stop Tab indenting and moving
-  between fields everywhere else. If clicking is annoying, say so and it can get its
-  own shortcut.
+* Now that Tab belongs to the bar whenever it's visible - does that get in the way?
+  Did you find yourself pressing Tab expecting to move between fields and getting a
+  word instead? Esc releases it, but say so if that's a nuisance in practice.
 * Does the bar staying on screen between words feel calmer than it flickering away
   after every word, or is it just clutter? Did you end up turning it off?
+* Did you turn Learning on? Did suggestions noticeably improve, and how long did it
+  take before you noticed?
+* Is anything about what gets stored unclear or uncomfortable?
 * Is Tab-then-Space comfortable, or would you prefer something else?
 * Did text ever get inserted wrongly, or in the wrong colour/font? If so, which app?
 * Does the animation feel right — too fast, too slow, or fine?

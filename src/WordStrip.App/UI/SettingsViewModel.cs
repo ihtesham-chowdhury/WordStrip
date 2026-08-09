@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using WordStrip.App.UI.Theming;
+using WordStrip.Core.Personal;
 using WordStrip.Core.Platform;
 using WordStrip.Core.Settings;
 
@@ -21,13 +22,142 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly string _executablePath;
     private readonly Action _onAppearanceChanged;
 
-    public SettingsViewModel(AppSettings settings, AppSettingsStore store, string executablePath, Action onAppearanceChanged)
+    private readonly PersonalVocabularyStore? _personalVocabulary;
+    private readonly PersonalLanguageModel? _personalLearning;
+
+    public SettingsViewModel(
+        AppSettings settings,
+        AppSettingsStore store,
+        string executablePath,
+        Action onAppearanceChanged,
+        PersonalVocabularyStore? personalVocabulary = null,
+        PersonalLanguageModel? personalLearning = null)
     {
         _settings = settings;
         _store = store;
         _executablePath = executablePath;
         _onAppearanceChanged = onAppearanceChanged;
+        _personalVocabulary = personalVocabulary;
+        _personalLearning = personalLearning;
+
+        if (_personalVocabulary is not null)
+            _personalVocabulary.Changed += (_, _) => RefreshPersonalWords();
+
+        RefreshPersonalWords();
     }
+
+    // --- Personal vocabulary ------------------------------------------------------------------------
+
+    /// <summary>The user's own words, newest changes reflected immediately. Bound to the list in the settings window.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<string> PersonalWords { get; } = new();
+
+    public bool HasPersonalVocabulary => _personalVocabulary is not null;
+
+    public string PersonalWordCountLabel => _personalVocabulary is null
+        ? string.Empty
+        : _personalVocabulary.Count switch
+        {
+            0 => "No words added yet",
+            1 => "1 word",
+            var n => $"{n} words",
+        };
+
+    private string _newPersonalWord = string.Empty;
+
+    /// <summary>Text in the "add a word" box.</summary>
+    public string NewPersonalWord
+    {
+        get => _newPersonalWord;
+        set
+        {
+            if (_newPersonalWord == value) return;
+            _newPersonalWord = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanAddPersonalWord));
+        }
+    }
+
+    public bool CanAddPersonalWord =>
+        _personalVocabulary is not null && PersonalVocabularyStore.Normalize(_newPersonalWord).Length > 0;
+
+    public bool AddPersonalWord()
+    {
+        if (_personalVocabulary is null) return false;
+
+        // The typed form is stored as-is so casing survives: someone adding "QNAP" means QNAP, not "qnap".
+        if (!_personalVocabulary.Add(_newPersonalWord)) return false;
+
+        _personalVocabulary.Save();
+        NewPersonalWord = string.Empty;
+        return true;
+    }
+
+    public void RemovePersonalWord(string? display)
+    {
+        if (_personalVocabulary is null || string.IsNullOrWhiteSpace(display)) return;
+        if (!_personalVocabulary.Remove(display)) return;
+
+        _personalVocabulary.Save();
+    }
+
+    public int ImportPersonalWords(string path) => _personalVocabulary?.ImportFrom(path) ?? 0;
+
+    public void ExportPersonalWords(string path) => _personalVocabulary?.ExportTo(path);
+
+    public string PersonalVocabularyPath => _personalVocabulary?.FilePath ?? string.Empty;
+
+    private void RefreshPersonalWords()
+    {
+        if (_personalVocabulary is null) return;
+
+        PersonalWords.Clear();
+        foreach (var word in _personalVocabulary.GetAll())
+            PersonalWords.Add(word.Display);
+
+        OnPropertyChanged(nameof(PersonalWordCountLabel));
+    }
+
+    // --- Personal learning --------------------------------------------------------------------------
+
+    public bool HasPersonalLearning => _personalLearning is not null;
+
+    public bool PersonalLearningEnabled
+    {
+        get => _settings.PersonalLearningEnabled;
+        set
+        {
+            if (_settings.PersonalLearningEnabled == value) return;
+            _settings.PersonalLearningEnabled = value;
+            Persist();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LearnedDataLabel));
+        }
+    }
+
+    /// <summary>
+    /// Plain-language account of what has been learned. Shown because a feature that quietly records how
+    /// someone types should be able to say exactly how much it has recorded.
+    /// </summary>
+    public string LearnedDataLabel
+    {
+        get
+        {
+            if (_personalLearning is null) return string.Empty;
+            if (_personalLearning.WordsLearned == 0) return "Nothing learned yet";
+
+            return $"{_personalLearning.WordsLearned:N0} words seen · " +
+                   $"{_personalLearning.UnigramCount:N0} words, {_personalLearning.BigramCount:N0} pairs, " +
+                   $"{_personalLearning.TrigramCount:N0} triples remembered";
+        }
+    }
+
+    public void ClearLearnedData()
+    {
+        _personalLearning?.Clear();
+        OnPropertyChanged(nameof(LearnedDataLabel));
+    }
+
+    public void RefreshLearnedDataLabel() => OnPropertyChanged(nameof(LearnedDataLabel));
 
     public IReadOnlyList<ThemeChoice> Themes { get; } =
         ThemeCatalog.All.Select(t => new ThemeChoice(t.Id, t.Name, t.Description)).ToList();

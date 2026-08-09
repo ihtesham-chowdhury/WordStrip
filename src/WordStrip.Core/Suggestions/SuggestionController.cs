@@ -1,5 +1,6 @@
 using WordStrip.Core.Automation;
 using WordStrip.Core.Input;
+using WordStrip.Core.Personal;
 using WordStrip.Core.Prediction;
 using WordStrip.Core.Settings;
 
@@ -27,6 +28,7 @@ public sealed class SuggestionController : IDisposable
     private readonly AppSettings _settings;
     private readonly Action<Action> _postToMessageLoop;
     private readonly IFocusedControlProvider _focusProvider;
+    private readonly PersonalLanguageModel? _personalLearning;
 
     /// <summary>
     /// Set when the user explicitly took the bar away (Esc, or a click outside it) and cleared as soon as
@@ -64,7 +66,8 @@ public sealed class SuggestionController : IDisposable
         ITextInjector textInjector,
         AppSettings settings,
         Action<Action>? postToMessageLoop = null,
-        IFocusedControlProvider? focusProvider = null)
+        IFocusedControlProvider? focusProvider = null,
+        PersonalLanguageModel? personalLearning = null)
     {
         _typingSession = typingSession;
         _predictionEngine = predictionEngine;
@@ -72,6 +75,7 @@ public sealed class SuggestionController : IDisposable
         _settings = settings;
         _postToMessageLoop = postToMessageLoop ?? (action => action());
         _focusProvider = focusProvider ?? Win32FocusedControlProvider.Instance;
+        _personalLearning = personalLearning;
 
         _typingSession.CurrentWordChanged += OnCurrentWordChanged;
         _typingSession.WordCommitted += OnWordCommitted;
@@ -176,23 +180,49 @@ public sealed class SuggestionController : IDisposable
     {
         // The CurrentWordChanged("") that TypingSession raises straight after this is what repopulates the
         // bar, so there is nothing to publish here.
-        if (IsPaused || !_settings.AutocorrectEnabled) return;
-        if (!IsSuggestible(_focusProvider.GetFocusedControlInfo())) return;
+        if (IsPaused) return;
 
-        var correction = _predictionEngine.GetAutocorrection(e.Word);
-        if (correction is { } s)
+        // One focus check for both jobs below. It is also the privacy gate for learning: a control we would
+        // not offer suggestions in — a password box, or anything we cannot identify — is one we must not
+        // learn from either.
+        var focus = _focusProvider.GetFocusedControlInfo();
+        if (!IsSuggestible(focus)) return;
+
+        var wordOnScreen = e.Word;
+
+        if (_settings.AutocorrectEnabled && _predictionEngine.GetAutocorrection(e.Word) is { } correction)
         {
             // The context has to follow the correction, not the typo. TypingSession recorded what was
             // actually typed; once autocorrect decides to rewrite it, the word on screen is the corrected
             // one and that is what the next prediction must be conditioned on.
-            _typingSession.ReplaceLastWord(s.Word);
+            _typingSession.ReplaceLastWord(correction.Word);
+            wordOnScreen = correction.Word;
 
             // Deferred so the boundary key the user just pressed lands in the target app first; correcting
             // from inside the hook callback races that keystroke and garbles the result.
-            var word = e.Word;
+            var typed = e.Word;
             var boundary = e.BoundaryChar;
-            _postToMessageLoop(() => _textInjector.ReplaceCommittedWord(word, boundary, s.Word));
+            _postToMessageLoop(() => _textInjector.ReplaceCommittedWord(typed, boundary, correction.Word));
         }
+
+        // Learn what ended up on screen, not what was typed — otherwise every typo the app just fixed would
+        // be taught back to it as vocabulary.
+        Learn(wordOnScreen, e.PrecedingWords);
+    }
+
+    /// <summary>
+    /// Feeds one finished word to the personal model, if the user has asked for that.
+    ///
+    /// <para>Deliberately the only place learning happens. Everything reaching here has been committed by a
+    /// real keystroke in a control the app already decided it could suggest in, which is the narrow
+    /// definition of "text the user entered" the phase brief asks for — no scraping, no guessing at what is
+    /// on screen, nothing learned from a field we could not identify.</para>
+    /// </summary>
+    private void Learn(string word, IReadOnlyList<string> precedingWords)
+    {
+        if (_personalLearning is null || !_settings.PersonalLearningEnabled) return;
+
+        _personalLearning.Learn(word, precedingWords);
     }
 
     private void OnBufferReset(object? sender, EventArgs e) => PublishIdle();

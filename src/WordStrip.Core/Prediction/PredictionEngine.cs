@@ -28,11 +28,15 @@ public sealed class PredictionEngine
     /// </summary>
     private const int CandidatePoolSize = 64;
 
+    /// <summary>How many personal matches to fold in per prefix. Well above the display cap; a personal vocabulary rarely has a dozen words sharing three letters.</summary>
+    private const int PersonalCandidateLimit = 16;
+
     private readonly FrequencyDictionary _dictionary;
     private readonly SymSpellIndex _fuzzyIndex;
     private readonly PrefixIndex _prefixIndex;
     private readonly ICandidateRanker _ranker;
     private readonly NGramLanguageModel _languageModel;
+    private readonly Personal.PersonalVocabularyStore? _personalVocabulary;
 
     /// <param name="languageModel">
     /// Contextual model. Defaults to an empty one, which backs off to plain word frequency for everything —
@@ -43,18 +47,25 @@ public sealed class PredictionEngine
     /// scores identically to <see cref="FrequencyRanker"/>, since the context bonus is zero when the model
     /// knows nothing.
     /// </param>
+    /// <param name="personalVocabulary">
+    /// The user's own words. Optional: with none supplied the engine behaves exactly as it did before
+    /// Phase 3, which is also what keeps every pre-existing test meaningful.
+    /// </param>
     public PredictionEngine(
         FrequencyDictionary dictionary,
         SymSpellIndex fuzzyIndex,
         PrefixIndex? prefixIndex = null,
         ICandidateRanker? ranker = null,
-        NGramLanguageModel? languageModel = null)
+        NGramLanguageModel? languageModel = null,
+        Personal.PersonalVocabularyStore? personalVocabulary = null,
+        Personal.PersonalLanguageModel? personalLearning = null)
     {
         _dictionary = dictionary;
         _fuzzyIndex = fuzzyIndex;
         _prefixIndex = prefixIndex ?? PrefixIndex.Build(dictionary);
         _languageModel = languageModel ?? NGramLanguageModel.Empty(dictionary);
-        _ranker = ranker ?? new ContextualRanker(_languageModel);
+        _personalVocabulary = personalVocabulary;
+        _ranker = ranker ?? new ContextualRanker(_languageModel, personalVocabulary, personalLearning);
     }
 
     /// <summary>Resource name of the dictionary compiled into the app assembly.</summary>
@@ -76,7 +87,9 @@ public sealed class PredictionEngine
         System.Reflection.Assembly embeddedResourceAssembly,
         int maxVocabularySize = 60_000,
         int maxEditDistance = 2,
-        string? nGramDirectory = null)
+        string? nGramDirectory = null,
+        Personal.PersonalVocabularyStore? personalVocabulary = null,
+        Personal.PersonalLanguageModel? personalLearning = null)
     {
         var dictionary = File.Exists(dictionaryFilePath)
             ? FrequencyDictionary.LoadFromFile(dictionaryFilePath, maxVocabularySize)
@@ -88,7 +101,9 @@ public sealed class PredictionEngine
         return new PredictionEngine(
             dictionary,
             SymSpellIndex.Build(dictionary, maxEditDistance),
-            languageModel: languageModel);
+            languageModel: languageModel,
+            personalVocabulary: personalVocabulary,
+            personalLearning: personalLearning);
     }
 
     private static FrequencyDictionary LoadEmbedded(System.Reflection.Assembly assembly, int maxVocabularySize)
@@ -101,8 +116,18 @@ public sealed class PredictionEngine
         return FrequencyDictionary.LoadFromStream(stream, maxVocabularySize);
     }
 
-    public bool IsCorrectlySpelled(string word) =>
-        !string.IsNullOrEmpty(word) && _dictionary.Contains(word.ToLowerInvariant());
+    /// <summary>
+    /// Whether a word should be left alone. True for the general dictionary and for anything in the personal
+    /// vocabulary — which is what stops "QNAP" being helpfully rewritten into "snap" simply because no
+    /// general dictionary has heard of it. Adding a word is the user saying it is spelled correctly.
+    /// </summary>
+    public bool IsCorrectlySpelled(string word)
+    {
+        if (string.IsNullOrEmpty(word)) return false;
+
+        return _dictionary.Contains(word.ToLowerInvariant())
+            || (_personalVocabulary?.Contains(word) ?? false);
+    }
 
     /// <summary>
     /// Suggestions for the strip while a word is still being typed. Prefix completions come first; if there
@@ -126,6 +151,8 @@ public sealed class PredictionEngine
         var prefix = partialWord.ToLowerInvariant();
         var candidates = _prefixIndex.FindByPrefix(prefix, CandidatePoolSize);
 
+        MergePersonalCompletions(prefix, candidates);
+
         // Only reach for fuzzy candidates when prefix matching came up short. Short prefixes are excluded
         // because at one or two letters almost any word is within edit distance 2, which produces noise
         // rather than help.
@@ -140,6 +167,43 @@ public sealed class PredictionEngine
         }
 
         return _ranker.Rank(new RankingContext(prefix, context), candidates, maxResults);
+    }
+
+    /// <summary>
+    /// Folds personal words into the candidate list for a prefix.
+    ///
+    /// <para>Two jobs. Words the general dictionary has never heard of — "QNAP", a project codename — become
+    /// eligible at all. And words it <em>does</em> know get their preferred casing back: "github" is in the
+    /// dictionary, but a user who added "GitHub" wants to see and insert that, so the existing candidate is
+    /// rewritten rather than a near-duplicate appended. Matching on the normalized key throughout is what
+    /// keeps the two from appearing side by side.</para>
+    /// </summary>
+    private void MergePersonalCompletions(string prefix, List<Suggestion> candidates)
+    {
+        if (_personalVocabulary is null || _personalVocabulary.Count == 0) return;
+
+        var personalMatches = _personalVocabulary.FindByPrefix(prefix, PersonalCandidateLimit);
+        if (personalMatches.Count == 0) return;
+
+        foreach (var personal in personalMatches)
+        {
+            var existing = candidates.FindIndex(c =>
+                string.Equals(Personal.PersonalVocabularyStore.Normalize(c.Word), personal.Key, StringComparison.Ordinal));
+
+            if (existing >= 0)
+            {
+                candidates[existing] = candidates[existing] with { Word = personal.Display };
+                continue;
+            }
+
+            // Not in the general dictionary, so it has no corpus frequency. It is scored on the personal
+            // signal the ranker adds instead — see ContextualRanker.PersonalBonus.
+            candidates.Add(new Suggestion(
+                personal.Display,
+                _dictionary.GetFrequency(personal.Key),
+                EditDistance: 0,
+                personal.Key.Length == prefix.Length ? SuggestionSource.ExactWord : SuggestionSource.PrefixCompletion));
+        }
     }
 
     /// <summary>
