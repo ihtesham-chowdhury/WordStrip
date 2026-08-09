@@ -44,20 +44,35 @@ HOW TO USE IT
 
      Tab            highlight the next word (hold it to scrub through them quickly)
      Space          insert the highlighted word      <-- the main one
-     Esc            dismiss the bar
+     Esc            put the bar away
      Click a word   inserts it straight away, no need to press Tab first
 
    Using the keyboard, you press Tab first and then Space. If nothing is highlighted,
    Space is just a normal space, so your ordinary typing is never affected.
 
-4. Autocorrect fixes obvious misspellings when you finish a word
+4. NEW IN 0.4: the bar now STAYS ON SCREEN between words instead of vanishing every
+   time you press space, the way a phone keyboard's suggestion row does. When you're
+   between words it shows common words, which you can click to insert.
+
+   While it's just sitting there between words it doesn't take over any keys — Tab
+   still indents and moves between fields, Esc still closes dialogs. It only takes
+   over Tab and Space once you're part-way through typing a word and it's offering
+   you completions.
+
+   It goes away when you click somewhere else, press Esc, or leave the text box.
+
+   If you preferred the old behaviour, there's a switch for it:
+   Settings -> Suggestions -> "Keep the bar on screen between words".
+
+5. Autocorrect fixes obvious misspellings when you finish a word
    ("recieve" becomes "receive").
 
-5. Right-click the tray icon -> Settings. There's a live preview, and you can change:
+6. Right-click the tray icon -> Settings. There's a live preview, and you can change:
 
+     - whether the bar stays on screen between words
      - how many words are shown (3 to 7)
      - how thick the bar is
-     - how thick/transparent the glass looks, and how much it blurs the background
+     - how thick/transparent the glass looks
      - how fast the animation is
      - where the bar sits: bottom of the screen, top, or following your text cursor
 
@@ -87,6 +102,8 @@ WHAT FEEDBACK IS USEFUL
 -----------------------
 
 * Did the suggestions actually help, or get in the way?
+* Does the bar staying on screen between words feel calmer than it flickering away
+  after every word, or is it just clutter? Did you end up turning it off?
 * Is Tab-then-Space comfortable, or would you prefer something else?
 * Did text ever get inserted wrongly, or in the wrong colour/font? If so, which app?
 * Does the animation feel right — too fast, too slow, or fine?

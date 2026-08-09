@@ -10,9 +10,9 @@
 - **Project type:** Windows desktop utility — a background tray application with a floating overlay window **[fact]**
 - **One-sentence purpose:** Adds phone-keyboard-style word suggestions and offline autocorrect to the physical Windows keyboard, shown in a small floating strip near where you type.
 - **Current absolute project path:** `D:\Claude Code\WordStrip` **[fact]**
-- **Repository:** None. `git rev-parse` returns *"fatal: not a git repository"* — the project is **not under version control** **[fact]**
-- **Main branch:** N/A (no repository)
-- **Current branch:** N/A (no repository)
+- **Repository:** Local git repository, created 2026-08-09. No remote. **[fact]**
+- **Main branch:** `master` (only branch)
+- **Current branch:** `master`
 - **Last inspected date:** 2026-08-09
 
 ### How the project root was identified
@@ -21,8 +21,8 @@ The session's working directory is `D:\Claude Code`, which is the *parent*. The 
 `D:\Claude Code\WordStrip`, identified by the presence of `WordStrip.sln` and confirmed by
 `dotnet sln list` resolving all three projects relative to it. **[fact]**
 
-A `.gitignore` exists (`bin/`, `obj/`, `publish/`, …) but no `.git` directory, so the ignore file is
-currently inert. **[fact]**
+The `.gitignore` (`bin/`, `obj/`, `publish/`, …) is now live: the initial commit captured 73 files and no
+build output. **[fact]**
 
 ## 2. Product or Software Description
 
@@ -34,10 +34,12 @@ while a word is in progress, a small glass strip appears showing ranked candidat
 1. User types in a supported text field.
 2. The strip appears with 3–7 candidates.
 3. `Tab` highlights the next candidate (hold to scrub quickly); `Space` inserts the highlighted one;
-   `Esc` dismisses; clicking a word inserts it directly with no need to press Tab first.
+   `Esc` puts the bar away; clicking a word inserts it directly with no need to press Tab first.
 4. On finishing a word (space/punctuation), conservative autocorrect may replace an obvious misspelling.
-5. Right-click the tray icon → Settings for theme, word count, bar thickness, glass tint, animation speed
-   and bar position, all applying live with a preview.
+5. The strip **stays on screen between words** showing common words (default; switchable). While idle it
+   claims no keys — see §12 item 12 and §13, this distinction is load-bearing.
+6. Right-click the tray icon → Settings for theme, word count, persistent bar, bar thickness, glass tint,
+   animation speed and bar position, all applying live with a preview.
 
 **Who uses it:** currently the project owner and a small circle of friends/family testing preview builds.
 The owner's motivation is that they mistype often and Windows has no equivalent of the Android/iOS
@@ -48,8 +50,8 @@ inside password fields (`ES_PASSWORD`). The typing buffer holds only the in-prog
 
 ## 3. Current Status
 
-- **Overall status:** Working preview, version 0.3.0 shipped as an installer. **Phase 1 of a 7-phase
-  intelligence roadmap is partially complete and uncommitted to an installer.** **[fact]**
+- **Overall status:** **Phase 1 is complete and shipped as 0.4.0.** The installer is built, and 0.4.0 is
+  installed and running on the dev machine (upgraded in place over 0.3.0; user settings preserved). **[fact]**
 - **Completed:**
   - Keyboard hook, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -57,12 +59,15 @@ inside password fields (`ES_PASSWORD`). The typing buffer holds only the in-prog
   - Spring-based motion system with accessibility fallbacks
   - Settings window with live light/dark preview
   - Single-instance handling, tray icon, autostart, installer + portable exe
-  - **Phase 1 engine hardening: `PrefixIndex`, `ICandidateRanker`/`FrequencyRanker`, additive
-    `Suggestion` metadata, 61 unit tests, performance harness** **[fact]**
-- **In progress:** Phase 1 finishing touches (see §14).
+  - Phase 1 engine hardening: `PrefixIndex`, `ICandidateRanker`/`FrequencyRanker`, additive
+    `Suggestion` metadata, performance harness **[fact]**
+  - **Persistent bar + settings toggle, `IFocusedControlProvider` seam, 79 unit tests, an end-to-end
+    regression script, and the 0.4.0 installer** **[fact]**
+- **In progress:** Nothing. Phase 1 is closed out.
 - **Blocked:** Nothing is blocked. The largest *limitation* (browser/Electron support) is a known
-  architectural gap, not a blocker for Phase 1.
-- **Next priority:** Persistent-bar behaviour + setting, then build and ship the Phase 1 installer (§15).
+  architectural gap, addressed by Phase 7 (TSF), not a blocker.
+- **Next priority:** The owner is using 0.4.0 for a few days. Wait for that feedback before starting
+  Phase 2 — the Phase 1 document says explicitly not to begin Phase 2 unasked (§15).
 
 ## 4. Directory Structure
 
@@ -105,8 +110,12 @@ D:\Claude Code\WordStrip\
 │   │   ├── FrequencyRanker.cs        NEW: deterministic banded scoring
 │   │   ├── PredictionEngine.cs       Candidate orchestration only
 │   │   └── Suggestion.cs             Candidate contract (+ Source, Score)
-│   ├── Suggestions/SuggestionController.cs   The only class the UI talks to
+│   ├── Suggestions/
+│   │   ├── SuggestionController.cs   The only class the UI talks to; owns the persistent-bar state machine
+│   │   └── SuggestionUpdate.cs       Render contract (+ IsIdle — decides whether the bar may claim keys)
 │   ├── Automation/                   Focused-control + caret detection
+│   │   ├── FocusedControlInspector.cs    Static live Win32 inspection
+│   │   └── IFocusedControlProvider.cs    NEW: seam over the above, so focus can be faked in tests
 │   ├── Settings/                     AppSettings, store, enums (BarTheme, BarPosition, BackdropBlur)
 │   └── Platform/AutostartManager.cs  HKCU Run key
 │
@@ -129,14 +138,19 @@ D:\Claude Code\WordStrip\
 │   ├── Interop/GlassWindowBehavior.cs      No-activate, no-taskbar window
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-└── tests/WordStrip.Core.Tests/       xUnit, 61 tests
-    ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
-    ├── PrefixCompletionTests.cs
-    ├── FuzzyMatchingTests.cs
-    ├── AutocorrectionTests.cs
-    ├── RankingTests.cs
-    ├── PrefixIndexTests.cs
-    └── PerformanceTests.cs           Timings against the real 60k vocabulary
+├── tests/WordStrip.Core.Tests/       xUnit, 79 tests
+│   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
+│   ├── PrefixCompletionTests.cs
+│   ├── FuzzyMatchingTests.cs
+│   ├── AutocorrectionTests.cs
+│   ├── RankingTests.cs
+│   ├── PrefixIndexTests.cs
+│   ├── SuggestionControllerTests.cs  NEW: persistent-bar state machine (18 tests)
+│   └── PerformanceTests.cs           Timings against the real 60k vocabulary
+│
+└── tests/regression/                 NEW: end-to-end, drives a real Win32 edit control
+    ├── Verify-PersistentBar.ps1      6 checks; see §12 for the traps it took to get right
+    └── TestTarget.ps1                Throwaway window with a real "Edit" control
 ```
 
 ## 5. Technology Stack
@@ -221,8 +235,14 @@ dotnet build "D:\Claude Code\WordStrip\WordStrip.sln" -c Release
 ```
 
 ```powershell
-# Run all unit tests
+# Run all unit tests (79)
 dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj"
+```
+
+```powershell
+# End-to-end regression: 6 checks against a real Win32 edit control. Takes over the keyboard and the
+# foreground for about a minute. Pass -ExePath to test the portable or installed build instead.
+powershell -File "D:\Claude Code\WordStrip\tests\regression\Verify-PersistentBar.ps1"
 ```
 
 ```powershell
@@ -237,7 +257,10 @@ powershell -File "D:\Claude Code\WordStrip\build-release.ps1"
 
 ```powershell
 # Silent install / uninstall of a built installer (useful for verification)
-Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.3.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=" -Wait
+# In-place upgrade. Same AppId, so it replaces the existing install and PRESERVES settings.
+# /TASKS=startupicon keeps the autostart entry; /TASKS= (empty) would leave an existing one untouched.
+# Do NOT verify by uninstalling and reinstalling — uninstall deletes %LOCALAPPDATA%\WordStrip (§9).
+Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.4.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=startupicon" -Wait
 ```
 
 **Debugging aids (opt-in via environment variable, off by default):**
@@ -275,9 +298,17 @@ Stop-Process -Name "WordStrip*" -Force -ErrorAction SilentlyContinue
   "BackdropBlur": 3,        // Auto=3 (see §12 — this setting is currently inert)
   "BarPosition": 0,         // 0 bottom, 1 follow caret, 2 top
   "AutocorrectEnabled": true,
+  "PersistentBar": true,    // strip stays on screen between words
   "StartWithWindows": false
 }
 ```
+
+An older `settings.json` with no `PersistentBar` key simply gets the default (`true`) — the upgrade needs
+no migration. **[fact — verified on the 0.3.0 → 0.4.0 in-place upgrade]**
+
+⚠️ The installer's `[UninstallDelete]` removes `%LOCALAPPDATA%\WordStrip` entirely, so an
+**uninstall/reinstall cycle destroys the user's settings** while an in-place upgrade preserves them. Back
+that file up before any install testing. **[fact]**
 
 ## 10. Important Files
 
@@ -287,7 +318,9 @@ Inspect these first, roughly in this order:
 |---|---|
 | `README.md` | Engineering rationale: why decisions were made, including several hard-won bug post-mortems |
 | `src/WordStrip.App/App.xaml.cs` | Composition root. Hook subscription order here is load-bearing |
-| `src/WordStrip.Core/Suggestions/SuggestionController.cs` | The seam between input, prediction and UI |
+| `src/WordStrip.Core/Suggestions/SuggestionController.cs` | The seam between input, prediction and UI; owns the persistent-bar state machine |
+| `src/WordStrip.App/Coordination/BarInputRouter.cs` | Decides when the bar may claim keys — read alongside `SuggestionUpdate.IsIdle` |
+| `tests/regression/Verify-PersistentBar.ps1` | How input behaviour is actually verified; its comments record several dead ends |
 | `src/WordStrip.Core/Prediction/PredictionEngine.cs` | Where Phase 2 plugs in (`GetFrequentWords` is the context seam) |
 | `src/WordStrip.Core/Prediction/FrequencyRanker.cs` | Ranking rules; Phase 2 adds a ranker rather than editing this |
 | `src/WordStrip.App/UI/Theming/ThemeCatalog.cs` | All seven themes; the only place visual differences live |
@@ -297,7 +330,22 @@ Inspect these first, roughly in this order:
 
 ## 11. Recent Work
 
-**Most recent session (Phase 1 — prediction hardening):**
+**Most recent session (persistent bar, 0.4.0):**
+
+| File | Change | Reason |
+|---|---|---|
+| `Suggestions/SuggestionController.cs` | `PublishIdle`, sticky `Dismiss`, `PollFocus`; `AcceptSuggestion` no longer bails on an empty buffer | The strip vanishing on every committed word read as flicker |
+| `Suggestions/SuggestionUpdate.cs` | Added `IsIdle` **with a default** | Separates "the bar is visible" from "the bar owns the keyboard" — see §12 item 12 |
+| `Automation/IFocusedControlProvider.cs` | **New.** Seam + `Win32FocusedControlProvider` | The focus check was a static reading live Win32 state, so nothing depending on it was testable |
+| `Settings/AppSettings.cs` | `PersistentBar` (default `true`) | Owner asked for a switch back to per-word behaviour |
+| `Coordination/BarInputRouter.cs` | Split `_isBarActive` into `_isCompleting` / `_isIdleVisible` | A persistent bar keyed on visibility swallowed Tab and Esc system-wide |
+| `App.xaml.cs` | Mouse dismissal wired **before** `Attach()`; 1 s `DispatcherTimer` → `PollFocus` | Ordering stops a one-frame flash; nothing reports Alt+Tab |
+| `UI/SettingsViewModel.cs`, `SettingsWindow.xaml` | Persistent-bar checkbox + hint | — |
+| `tests/.../SuggestionControllerTests.cs` | **New**, 18 tests | Covers the idle content, dismissal rules and empty-buffer insert |
+| `tests/regression/*` | **New** | The unit tests cannot reach hook-driven behaviour; this is how the Tab regression was caught |
+| `installer/READ-ME-FIRST.txt`, `README.md` | Rewritten for 0.4.0 | Also dropped a stale blur setting mention and a wrong `BitmapCache` claim |
+
+**Immediately prior session (Phase 1 — prediction hardening):**
 
 | File | Change | Reason |
 |---|---|---|
@@ -308,7 +356,7 @@ Inspect these first, roughly in this order:
 | `Prediction/PredictionEngine.cs` | Delegates ordering to the ranker; added `GetFrequentWords` | Separates candidate *generation* from *ordering* |
 | `tests/WordStrip.Core.Tests/*` | **New project**, 61 tests | Phase 1 requires test coverage of the prediction primitives |
 
-**Immediately prior session (theme system):** replaced the single hard-coded palette with a 7-theme token
+**Session before that (theme system):** replaced the single hard-coded palette with a 7-theme token
 system, added the position indicator, and switched the bar to `AllowsTransparency="True"`.
 
 ## 12. Known Problems
@@ -321,32 +369,58 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
    text service. `ITextInjector` exists as the seam for that. **[fact]**
 2. **English only** — one bundled dictionary.
 3. **No context awareness.** Suggestions are prefix + edit distance + corpus frequency. Phase 2 addresses this.
+   Between words the strip shows *the commonest words in English*, which is honestly not very useful yet —
+   `PredictionEngine.GetFrequentWords` is the seam where bigram-conditioned predictions replace it and make
+   the persistent bar genuinely worth its screen space.
+4. **The idle bar is mouse-only.** Between words you click a word; you cannot Tab to it. Deliberate — see
+   item 12 below. Keyboard cycling returns the moment a word is in progress.
 
 ### Technical debt / known issues
 
-4. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
+5. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
    DWM Mica/Acrylic impossible, because they cannot apply to a layered window. The UI control was removed
    but the enum and the `AppSettings.BackdropBlur` property remain and are read nowhere meaningful.
    **[fact]** *[recommendation: delete the property and enum, or reintroduce blur via
    `SetWindowCompositionAttribute`, which does work on layered windows but paints a square-cornered
    region.]*
-5. **SymSpell index build takes ~6.2 s at startup** (measured). It runs on a background thread so the tray
+6. **SymSpell index build takes ~6.2 s at startup** (measured). It runs on a background thread so the tray
    icon appears immediately, but first-run feels slow. **[fact]**
-6. **No git repository.** There is no version history and no way to diff or revert. **[fact]**
-   *[recommendation: `git init` early in the next session.]*
 7. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
    pixels just outside the bar, which is a heuristic and can mis-read over unusual backgrounds.
 8. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
+9. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
+   `HKCU\...\Run` value directly, while the settings window writes both the registry and
+   `AppSettings.StartWithWindows`. On the dev machine the Run key is set while `StartWithWindows` is
+   `false`, so the settings checkbox shows the wrong state. **[fact — observed 2026-08-09]**
+   *[recommendation: have `AppSettings` read the registry as the source of truth rather than caching it.]*
 
 ### Testing gotchas discovered the hard way — read before writing UI tests
 
-9. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
-   translucency from a `PrintWindow` grab is meaningless. **[fact]**
-10. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
+10. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
+    translucency from a `PrintWindow` grab is meaningless. **[fact]**
+11. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
     into undersized bitmaps and silently cropped. The dev display is at 150%. **[fact]**
-11. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
+12. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
     technique, and always verify the foreground window class before sending keystrokes — otherwise test
     input lands in whatever the user is actually using. **[fact]**
+13. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
+    packaged single-instance app: `notepad.exe` exits immediately and `MainWindowHandle` is empty. A
+    WinForms `TextBox` reports class `WindowsForms10.EDIT.app.0.<hash>`, which does **not** start with
+    `Edit`, so `FocusedControlInspector` ignores it and no bar ever appears. `TestTarget.ps1` creates a
+    real `EDIT` control with `CreateWindowEx` instead. **[fact — both tried and discarded]**
+14. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
+    microseconds; replacements are deferred onto the message loop, so the burst is still draining into the
+    target when the replacement fires and the two interleave — `helo ` came out as `healo`. Send one key at
+    a time. This is the harness outrunning hardware, **not** a product defect. **[fact]**
+15. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
+    path and can land after the check that reads the text back, which looks like a half-applied correction.
+    The self-contained single-file build is worse, since it also self-extracts. **[fact]**
+16. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
+    *and* from `hello`, so the tie falls to frequency and `help` wins — correct behaviour, useless
+    assertion. `teh` → `the` is unambiguous. **[fact]**
+17. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
+    deliberately doesn't run (its pump omits `IsDialogMessage` so Tab reaches the control as a character).
+    Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
 
 ## 13. Development Instructions
 
@@ -359,9 +433,19 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 
 ### Load-bearing details that look innocuous
 
-- **Hook subscription order.** `BarInputRouter` must subscribe to the keyboard hook *before*
-  `TypingSession.Attach()` is called. Handlers run in subscription order and the contract is: whatever the
-  router suppresses, `TypingSession` skips. Reverse it and Tab resets the word buffer mid-cycle.
+- **Hook subscription order — on both hooks.** `BarInputRouter` must subscribe to the keyboard hook
+  *before* `TypingSession.Attach()` is called. Handlers run in subscription order and the contract is:
+  whatever the router suppresses, `TypingSession` skips. Reverse it and Tab resets the word buffer mid-cycle.
+  The mouse hook is the same: the controller's `Dismiss()` must subscribe before `Attach()`, or
+  `TypingSession`'s buffer reset republishes the idle list and the bar flashes back on for one frame on
+  every outside click.
+- **"Visible" and "owns the keyboard" are different conditions.** They were identical until the bar started
+  persisting. `SuggestionUpdate.IsIdle` keeps them apart, and `BarInputRouter` routes on
+  `_isCompleting`, never on visibility. Collapse them again and a bar that is now up almost continuously
+  will swallow Tab and Esc in every text field on the system.
+- **`Dismiss()` is sticky on purpose.** It sets a flag that survives until the user types again. Once the
+  bar repopulates itself between words, merely hiding the window doesn't stick — the next buffer reset puts
+  it straight back. This is why Esc goes through the controller and not `SuggestionBarWindow.HideBar()`.
 - **Never call `SendInput` from inside the hook callback.** Always via `postToMessageLoop`.
 - **`INPUT` struct must include the `MOUSEINPUT` union member** even though it is unused — it sets
   `sizeof(INPUT)` to the 40 bytes x64 requires. Without it, `SendInput` silently rejects everything.
@@ -384,23 +468,38 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 ### Testing expectations
 
 - Prediction primitives are unit-tested; keep them that way.
-- UI behaviour is verified end-to-end by driving Notepad and reading text back with `WM_GETTEXT`
-  (**not** screenshots — see §12).
+- UI and input behaviour is verified end-to-end with `tests\regression\Verify-PersistentBar.ps1`, which
+  drives a real Win32 `Edit` control and reads text back with `WM_GETTEXT` (**not** screenshots — §12).
+  Add a check there for anything a unit test cannot reach; §12 items 13–17 are the traps that cost the most
+  time, so read them before extending it.
+- When behaviour in `Core` can't be tested because it reads live Win32 state through a static, add a seam
+  for it — `ITextInjector` and `IFocusedControlProvider` are both precedents.
 - Performance is measured, not assumed.
 
 ## 14. Current Task
 
-**Phase 1 of a 7-phase plan to harden and then extend the prediction engine.** The owner supplied
-`PHASE_1_SymSpell_Frequency_Hardening.md` (in `C:\Users\wordstrip-dev\Downloads\Worstripe\`, outside
-the project). Phase 1 explicitly **excludes** n-grams, personal learning, phrase prediction, neural models
-and TSF.
+**None — Phase 1 is closed out and shipped as 0.4.0.** The next move belongs to the owner, who is using
+0.4.0 for a few days. Do **not** start Phase 2 without being asked; the Phase 1 document says so
+explicitly.
 
-**Done in this session [fact]:**
+The 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` (outside the project) as
+`PHASE_1..7_*.md`. Phase 1 explicitly **excluded** n-grams, personal learning, phrase prediction, neural
+models and TSF.
+
+**Delivered in the most recent session [fact]:**
+
+- Persistent bar showing common words between words, default on, with a settings toggle
+- `SuggestionUpdate.IsIdle` so a visible bar doesn't claim Tab/Space/Enter/Esc
+- `IFocusedControlProvider` seam
+- 18 new unit tests (79 total, all passing)
+- `tests\regression\` end-to-end harness, 6 checks, verified deterministic over 3 consecutive cold runs
+- 0.4.0 built, installed in place over 0.3.0 (settings preserved), and verified running
+
+**Delivered in the session before that (Phase 1 engine hardening) [fact]:**
 
 - `PrefixIndex` replacing the full-vocabulary scan
 - `ICandidateRanker` + `FrequencyRanker` with deterministic banded scoring
 - `Suggestion` extended additively with `Source` and `Score`
-- 61 unit tests, all passing
 - Performance harness with before/after numbers
 
 **Measured results [fact]:**
@@ -416,33 +515,41 @@ and TSF.
 | Dictionary load | — | 185 ms |
 | SymSpell index build | — | 6187 ms (background, startup only) |
 
-**Not yet done — this is where to resume:**
+**Two design decisions taken during implementation, worth knowing about:**
 
-1. **Persistent bar** (owner's explicit request, not from the Phase 1 doc). Today the strip disappears
-   after every inserted word, which the owner finds visually distracting when typing fast. Desired
-   behaviour, modelled on Android Gboard: the strip **stays visible** while typing and only disappears when
-   the user clicks elsewhere or leaves a text field. Plus **a setting to switch back** to the current
-   per-word behaviour.
-   - `PredictionEngine.GetFrequentWords(int)` was added specifically to populate the bar between words and
-     is already implemented and tested.
-   - **[assumption]** The intended dismissal signal is a mouse click outside the bar; `LowLevelMouseHook`
-     already ignores clicks on our own windows, so the controller can treat an outside click as "dismiss".
-2. **Ship the Phase 1 installer.** The owner asked for a build to install and use for a few days.
-3. Update `README.md` and `installer/READ-ME-FIRST.txt` for the new behaviour.
+1. **The idle bar claims no keys.** The obvious implementation — keep showing the bar, let the router carry
+   on as before — makes Tab and Esc unusable across the whole system, because the router's "is the bar
+   visible" condition is true almost continuously once the bar persists. Keyboard cycling is therefore
+   scoped to completions, and the idle bar is click-only. See §12 item 4 and §13.
+2. **Accepting with an empty buffer inserts rather than replaces.** Between words there is nothing to
+   replace, so the chosen word is simply typed with a trailing space. The old guard on buffer length moved
+   to a guard on focus, so an accept can never inject into a surface we would not have suggested for.
 
 ## 15. Recommended Next Steps
 
-1. **`git init` and make an initial commit.** There is no version history at all; this is the single
-   highest-value low-cost action. **[recommendation]**
-2. **Implement the persistent bar** + `AppSettings` toggle (default: persistent). Hide on outside click
-   and when focus leaves a suggestible control. *[recommendation: a ~1 s timer checking
-   `FocusedControlInspector` while visible, so the bar cannot linger after Alt+Tab.]*
-3. **Run the regression scripts** and rebuild the installer (`build-release.ps1`), bumping the version in
-   **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
+**Wait for the owner's feedback on 0.4.0 before doing any of this.** They are using it for a few days, and
+the persistent bar is the thing under evaluation.
+
+1. **Make the between-words list actually useful.** It currently shows the commonest words in English,
+   which is a placeholder. This is Phase 2's job and the single biggest improvement available to the
+   feature just shipped. **[recommendation]**
+2. **Reconsider whether the idle bar should be keyboard-reachable.** Click-only is the safe default, but if
+   the owner reaches for the keyboard and finds nothing there, a dedicated chord that doesn't collide with
+   Tab would be the fix. Wait for feedback rather than guessing. **[recommendation]**
+3. **Fix the autostart split-brain** (§12 item 9) — the settings checkbox can disagree with the registry.
 4. **Resolve the inert `BackdropBlur` setting** — remove it or reimplement blur.
-5. **Only then** consider Phase 2. Do **not** start Phase 2 without being asked; the Phase 1 document says
-   so explicitly. The natural entry point is a new `ICandidateRanker` that consumes preceding-word context,
-   plus replacing `GetFrequentWords` with bigram-conditioned predictions.
+5. **Only then** consider Phase 2 proper. Do **not** start it without being asked; the Phase 1 document
+   says so explicitly. The natural entry point is a new `ICandidateRanker` consuming preceding-word
+   context, plus replacing `GetFrequentWords` with bigram-conditioned predictions.
+
+**Release checklist, for whenever the next build ships:**
+
+- Stop the running app first (it locks its own exe).
+- Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
+- `dotnet test` (79), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
+  single-file build is a different code path (embedded dictionary) and starts more slowly.
+- Back up `%LOCALAPPDATA%\WordStrip\settings.json` before touching the installer (§9).
 
 ## 16. Fresh-Chat Startup Prompt
 
@@ -458,13 +565,15 @@ Then:
    (Recommended Next Steps).
 5. Ask questions only if something is genuinely ambiguous or unsafe. Do not ask about
    anything already answered in the context file.
-6. Continue from the documented current task: implementing the persistent suggestion bar
-   with a settings toggle, then shipping a Phase 1 installer.
+6. Note that section 14 currently says there is no active task: Phase 1 shipped as 0.4.0
+   and the owner is trialling it. Ask what they want next rather than assuming, and do
+   NOT start Phase 2 unprompted.
 7. Respect the "load-bearing details" in section 13 — several of them look like harmless
-   code but will silently break text insertion or the layout if changed.
+   code but will silently break text insertion, the layout, or Tab and Esc system-wide
+   if changed.
 8. Whenever a major decision, feature or task status changes, update
    CLAUDE_PROJECT_CONTEXT.md so it stays accurate.
 
-Important: this project has no git repository yet, so there is no undo. Consider running
-git init before making substantial changes.
+The project is now under git (local only, branch `master`), so there is an undo. Commit
+before substantial changes.
 ```

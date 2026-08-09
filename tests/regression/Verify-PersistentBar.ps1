@@ -104,6 +104,14 @@ public static class W {
 
     /// <summary>WM_GETTEXT rather than any managed accessor: the control lives in another process, and this
     /// is one of the few messages USER32 marshals across that boundary for standard controls.</summary>
+    /// <summary>Empties the control by message rather than by keystroke. Ctrl+A is not a thing a bare EDIT
+    /// control implements — select-all comes from the dialog manager, which this target deliberately does
+    /// not run (see TestTarget.ps1, where the pump omits IsDialogMessage so Tab reaches the control).</summary>
+    public static void ClearText(IntPtr h) {
+        SendMessage(h, 0x00B1 /* EM_SETSEL */, 0, -1);
+        SendMessage(h, 0x0303 /* WM_CLEAR  */, 0, 0);
+    }
+
     public static string TextOf(IntPtr h) {
         int len = SendMessage(h, 0x000E /* WM_GETTEXTLENGTH */, 0, 0);
         var sb = new StringBuilder(len + 2);
@@ -177,8 +185,9 @@ function Assert-StillFocused([IntPtr] $editHwnd) {
 function Send([IntPtr] $editHwnd, [string] $keys, [int] $settleMs = 700, [int] $perKeyMs = 90) {
     Assert-StillFocused $editHwnd
 
-    # Brace-delimited tokens like {TAB} are single keys and must not be split apart.
-    $tokens = [regex]::Matches($keys, '\{[^}]+\}|.') | ForEach-Object { $_.Value }
+    # One token = one keystroke. Brace groups like {TAB} must stay whole, and the modifier prefixes ^ % +
+    # must stay attached to the key they modify — split "^a" and SendKeys types a literal "a".
+    $tokens = [regex]::Matches($keys, '[\^%+]*(?:\{[^}]+\}|.)') | ForEach-Object { $_.Value }
     foreach ($token in $tokens) {
         Assert-StillFocused $editHwnd
         [System.Windows.Forms.SendKeys]::SendWait($token)
@@ -200,9 +209,11 @@ $app = $null
 $target = $null
 
 try {
-    Write-Host "`nStarting WordStrip and waiting for the SymSpell index (~6 s)..."
+    # 18 s rather than the ~6 s the index itself takes: the self-contained single-file build extracts itself
+    # on first run, so a cold start is appreciably slower than the dev build this was first timed against.
+    Write-Host "`nStarting WordStrip and waiting for the SymSpell index..."
     $app = Start-Process -FilePath $ExePath -PassThru
-    Start-Sleep -Seconds 14
+    Start-Sleep -Seconds 18
     if ($app.HasExited) { throw "WordStrip exited immediately (code $($app.ExitCode))." }
 
     Write-Host "Opening the test window..."
@@ -232,6 +243,20 @@ try {
     if (-not ($editClass -match '^(Edit|RichEdit)')) {
         throw "Focused control is '$editClass', not a Win32 edit control. Aborting rather than typing blind."
     }
+
+    # --- Warm-up ---------------------------------------------------------------------------------------
+    # The very first text replacement after a cold start pays JIT on the whole injection path, and on the
+    # self-contained single-file build it can land after the check that reads the text back — which shows up
+    # as a half-applied correction ("teh " becoming "tehe " rather than "the "). One throwaway word first
+    # makes the run deterministic. The word ends in a space, so WordStrip's own typing buffer is already
+    # empty by the time the field is cleared out from under it.
+    Write-Host "`nWarming up the injection path..."
+    Send $edit 'warm ' 1200
+    [W]::ClearText($edit)
+    Start-Sleep -Milliseconds 300
+
+    $residue = [W]::TextOf($edit)
+    if ($residue -ne '') { throw "Could not clear the test field before starting (contains '$residue')." }
 
     # --- 1. Typing and autocorrect --------------------------------------------------------------------
     # "teh" and not something like "helo": a correction is only predictable when one candidate wins on both

@@ -9,9 +9,22 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview. Verified end to end in Notepad by reading the edit control's text back with `WM_GETTEXT`
-(not screenshots): live suggestions, Tab to highlight, Space to insert, Esc to dismiss, normal typing
-unaffected when nothing is highlighted, and autocorrect on word commit.
+Working preview, 0.4.0. Verified two ways:
+
+- **79 unit tests** over the prediction primitives and the suggestion controller.
+- **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
+  `Edit` control and reads the text back with `WM_GETTEXT` — not screenshots, which are meaningless here
+  (see [Why screenshots can't verify this](#why-screenshots-cant-verify-this)). It covers live suggestions,
+  Tab to highlight, Space to insert, Esc to dismiss, autocorrect on word commit, the bar persisting between
+  words, and Tab still reaching the app while the bar is idle.
+
+```bash
+powershell -File "D:\Claude Code\WordStrip\tests\regression\Verify-PersistentBar.ps1"
+```
+
+It takes over the keyboard and foreground for about a minute. It types only into a throwaway window it
+creates itself, and it re-checks that that window still has focus before every keystroke — otherwise a
+stray focus change sends the test's typing into whatever you're actually doing.
 
 ## Requirements
 
@@ -61,14 +74,31 @@ Start typing in a supported text field. The bar appears above the taskbar with c
 | `Tab` | Highlight the next candidate (`Shift+Tab` for previous). Hold to scrub through them. |
 | `Space` | Insert the highlighted candidate |
 | `Enter` | Also inserts the highlighted candidate |
-| `Esc` | Dismiss the bar |
+| `Esc` | Put the bar away |
 | Click | Insert a candidate directly — no need to Tab first |
 
 **Tab first, then Space.** Space only inserts when a candidate is actually highlighted — otherwise every
 space you typed would rewrite the word you just finished. With nothing highlighted, Space is just a space.
 
-Keys are only intercepted while a candidate is highlighted. Dismiss the bar or move focus and `Tab`,
-`Space` and `Enter` all behave normally again — so Tab still moves between form fields.
+### The bar stays put between words
+
+By default the strip behaves like a phone keyboard's suggestion row: it stays on screen and shows common
+words when you're between words, rather than vanishing after every space. The strip appearing and
+disappearing on every word is the thing that reads as flicker when typing at speed.
+
+It goes away when you click elsewhere, press `Esc`, or focus leaves a text field. Typing brings it back.
+Turn it off with **Settings → Suggestions → Keep the bar on screen between words** to get the original
+per-word behaviour.
+
+**A visible bar is not an input mode.** The bar only intercepts `Tab`, `Space`, `Enter` and `Esc` while it
+is offering completions for a word you are part-way through typing. Sitting there between words it claims
+nothing: `Tab` still indents and moves between form fields, `Esc` still closes dialogs, `Space` is a space.
+Between words, clicking is how you take a word.
+
+That distinction only became load-bearing when the bar started persisting. Previously "the bar is visible"
+and "a word is in progress" were the same condition, so routing on visibility was harmless. A persistent
+bar is up almost continuously, and a router keyed on visibility would hold `Tab` and `Esc` hostage the
+entire time you were in a text field. `SuggestionUpdate.IsIdle` is what keeps the two apart.
 
 Autocorrect fires when you finish a word with space, Enter, or punctuation, and only when the typed word
 isn't in the dictionary *and* a confident correction exists. It won't silently rewrite a low-confidence guess.
@@ -82,6 +112,8 @@ and a theme that only works over one of them isn't finished.
 
 - **Theme** — seven visual personalities (see below)
 - **Words shown** — 3 to 7, default 4
+- **Keep the bar on screen between words** — on by default. Off restores the original behaviour, where the
+  strip appears for the duration of each word and disappears the moment it's committed.
 - **Autocorrect** — on/off
 - **Material thickness** — 15% to 95%, default 62%. Thicker is more opaque and easier to read; thinner
   shows more of what's behind. This is the tradeoff Apple's material guidance describes, exposed directly.
@@ -178,8 +210,10 @@ and `FrameProbe` writes per-frame intervals to `%TEMP%\wordstrip_frames.log`. Th
 
 - **The drop shadow sat on the same element as the moving lens.** A `DropShadowEffect` pushes its whole
   subtree through an offscreen pass whenever anything inside changes, so the blur re-ran every frame. The
-  plate is now a separate static sibling, and it is `BitmapCache`d (at monitor DPI, or the glass edges go
-  soft) so the shadow rasterises once.
+  plate is now a separate static sibling, which is enough on its own: nothing inside it animates, so the
+  blur no longer re-runs. It is deliberately **not** `BitmapCache`d — `GlassPlate` reports zero desired
+  size (see [the layout trap below](#a-layout-trap-worth-knowing-about)), and a cache sized from a
+  zero-size element caches nothing, so the plate simply stops being drawn.
 - **The lens animated `Width` and `Canvas.Left`,** both of which invalidate layout, so WPF ran measure and
   arrange on every frame. `SelectionLens` is a custom element whose position and size are `AffectsRender`
   dependency properties, so animating them re-runs `OnRender` and nothing else.
@@ -215,6 +249,47 @@ equivalents of those settings (`SystemAppearance`) and degrades honestly rather 
   lens — white-on-white at the moment of selection would otherwise be the one unreadable state.
 - Chips are 30px tall with 12px between them, above the 28px minimum control size.
 
+## Testing
+
+Prediction primitives and the suggestion controller are unit-tested (`tests\WordStrip.Core.Tests`, 79
+tests). Everything that depends on a system-wide hook, live focus inspection or `SendInput` reaching
+another process is covered by the end-to-end regression instead.
+
+```bash
+dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj"
+```
+
+`IFocusedControlProvider` exists for the same reason `ITextInjector` does. The focus check read live Win32
+state through a static call, so under a test runner it always reported "not a text field" and nothing that
+depended on it could be tested at all.
+
+### Why screenshots can't verify this
+
+`PrintWindow` captures only what an app draws itself, never the DWM backdrop behind it, so judging the
+glass from a `PrintWindow` grab is meaningless. PowerShell is also DPI-unaware by default — call
+`SetProcessDPIAware()` first or captures land in undersized bitmaps and are silently cropped (this display
+runs at 150%). Read text back with `WM_GETTEXT` instead.
+
+### Three things that make the regression harness lie
+
+Each of these produced a convincing false failure before being fixed:
+
+- **A WinForms `TextBox` is not a supported target.** Its class is `WindowsForms10.EDIT.app.0.<hash>`,
+  which does not start with `Edit`, so `FocusedControlInspector` correctly ignores it and no bar ever
+  appears. The harness creates a real `EDIT` control with `CreateWindowEx` instead. Notepad is no good
+  either: Windows 11 ships it as a packaged single-instance app, so `notepad.exe` exits immediately and
+  returns no window handle.
+- **`SendKeys` types faster than any keyboard.** It delivers a whole string in microseconds, and text
+  replacements are deliberately deferred onto the message loop, so the burst is still draining into the
+  target when the replacement fires and the two interleave — turning `helo ` into `healo`. That is the
+  harness outrunning a real keyboard, not a defect. It now sends one key at a time.
+- **Pick a misspelling with only one plausible correction.** `helo` is one edit from `help` *and* from
+  `hello`, so the tie falls to frequency and `help` wins — correct behaviour, terrible assertion. `teh`
+  is one transposition from `the`, which then outweighs every neighbour by orders of magnitude.
+
+`SetForegroundWindow` is also silently refused from a background process; the harness uses the
+`AttachThreadInput` technique, and verifies the focused window before every keystroke.
+
 ## Current limitations
 
 **App coverage is the main one.** v1 detects standard Win32 text controls (`Edit`, `RichEdit`), which
@@ -237,8 +312,8 @@ Other known gaps:
 ```
 WordStrip.Core/          no UI dependencies
   Input/                 WH_KEYBOARD_LL hook, SendInput injection, key→char translation, word buffer
-  Prediction/            SymSpell-style delete index + Damerau-Levenshtein, frequency ranking
-  Automation/            focused-control + password-field detection
+  Prediction/            prefix index, SymSpell-style delete index + Damerau-Levenshtein, ranking
+  Automation/            focused-control + password-field detection, behind IFocusedControlProvider
   Suggestions/           SuggestionController — the only class the UI talks to
   Settings/, Platform/   JSON settings store, autostart registration
 
@@ -247,6 +322,10 @@ WordStrip.App/           WPF, net8.0-windows
   Interop/               DWM backdrop, no-activate window styles
   Coordination/          BarInputRouter — Tab/Enter/Esc handling
   Tray/                  NotifyIcon and context menu
+
+tests/
+  WordStrip.Core.Tests/  xUnit, 79 tests
+  regression/            end-to-end scripts driving a real Win32 edit control
 ```
 
 Two design decisions worth knowing before changing anything:
@@ -256,10 +335,20 @@ Two design decisions worth knowing before changing anything:
 Framework text service — the same machinery IMEs use for candidate bars — which would fix the
 Chromium gap properly. Swapping it shouldn't require touching the UI or prediction code.
 
-**Hook subscription order is load-bearing.** `BarInputRouter` must subscribe to the keyboard hook
-*before* `TypingSession.Attach()` is called. Handlers run in subscription order, and the contract is
-that anything the router suppresses, `TypingSession` skips. Reverse it and Tab resets the word buffer
-and tears the bar down mid-cycle. This is why `TypingSession` separates construction from `Attach()`.
+**Hook subscription order is load-bearing — on both hooks.** `BarInputRouter` must subscribe to the
+keyboard hook *before* `TypingSession.Attach()` is called. Handlers run in subscription order, and the
+contract is that anything the router suppresses, `TypingSession` skips. Reverse it and Tab resets the word
+buffer and tears the bar down mid-cycle. This is why `TypingSession` separates construction from `Attach()`.
+
+The same applies to the mouse hook. A click outside the bar dismisses it, and `TypingSession` reacts to
+that same click by resetting its buffer — which, with a persistent bar, republishes the between-words list.
+Dismissing first means that republish is suppressed. Dismissing second makes the bar flash back on for a
+frame on every outside click.
+
+**Dismissal is sticky, and that is the point.** `SuggestionController.Dismiss()` sets a flag that survives
+until the user types again, rather than just publishing an empty list. Once the bar repopulates itself
+between words, an ordinary hide no longer sticks — the next buffer reset would put it straight back. This
+is also why `Esc` routes through the controller instead of calling `HideBar()` on the window.
 
 **Injected-key detection uses a private marker, not `LLKHF_INJECTED`.** That flag is set for SendInput
 from *any* process, so relying on it would make the app ignore dictation software, automation tools, and
