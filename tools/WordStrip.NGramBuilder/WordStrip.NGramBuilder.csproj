@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Build-time only. Nothing references this and build-release.ps1 publishes only WordStrip.App, so it never
+    reaches a shipped build. It exists in the solution so the model stays reproducible: the committed files
+    under assets\ngram\ are outputs, and this is the thing that produces them.
+
+    References Core to reuse FrequencyDictionary (vocabulary filtering) and the tokenizer and format that
+    the running app uses, so the model can never be built to a shape the app cannot read.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>WordStrip.NGramBuilder</AssemblyName>
+    <!-- Several million distinct trigrams live in memory at once; the server collector handles that far
+         better than the workstation one. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WordStrip.Core\WordStrip.Core.csproj" />
+  </ItemGroup>
+
+</Project>

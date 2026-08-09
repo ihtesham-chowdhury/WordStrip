@@ -97,11 +97,15 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        // ResetBuffer raises BufferReset, which publishes the idle list by itself — but only when the buffer
-        // was non-empty, which it isn't on the between-words accept path. Silence it and publish once here,
-        // so both paths behave the same and the bar is never updated twice for one accepted word.
+        // NoteWordInserted rather than ResetBuffer: the word is about to be typed into the field, so it
+        // becomes part of the context the next prediction works from. ResetBuffer would throw that away and
+        // the model would go blind for a word every time the user accepted a suggestion.
+        //
+        // It raises BufferReset, which publishes the idle list by itself — but only when the buffer was
+        // non-empty, which it isn't on the between-words accept path. Silence it and publish once here, so
+        // both paths behave the same and the bar is never updated twice for one accepted word.
         _suppressIdlePublish = true;
-        try { _typingSession.ResetBuffer(); }
+        try { _typingSession.NoteWordInserted(suggestion.Word); }
         finally { _suppressIdlePublish = false; }
 
         // Straight back to the idle list rather than blanking the bar, so accepting a word doesn't produce
@@ -164,7 +168,7 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        var suggestions = _predictionEngine.GetLiveSuggestions(word, _settings.SuggestionCount);
+        var suggestions = _predictionEngine.GetLiveSuggestions(word, _settings.SuggestionCount, BuildContext(word));
         Publish(new SuggestionUpdate(suggestions, focus.Caret));
     }
 
@@ -178,6 +182,11 @@ public sealed class SuggestionController : IDisposable
         var correction = _predictionEngine.GetAutocorrection(e.Word);
         if (correction is { } s)
         {
+            // The context has to follow the correction, not the typo. TypingSession recorded what was
+            // actually typed; once autocorrect decides to rewrite it, the word on screen is the corrected
+            // one and that is what the next prediction must be conditioned on.
+            _typingSession.ReplaceLastWord(s.Word);
+
             // Deferred so the boundary key the user just pressed lands in the target app first; correcting
             // from inside the hook callback races that keystroke and garbles the result.
             var word = e.Word;
@@ -211,8 +220,22 @@ public sealed class SuggestionController : IDisposable
         }
 
         Publish(new SuggestionUpdate(
-            _predictionEngine.GetFrequentWords(_settings.SuggestionCount), focus.Caret, IsIdle: true));
+            _predictionEngine.GetNextWords(BuildContext(string.Empty), _settings.SuggestionCount),
+            focus.Caret,
+            IsIdle: true));
     }
+
+    /// <summary>
+    /// Packages what the typing layer knows into the value the prediction layer consumes. Everything here
+    /// comes from <see cref="TypingSession"/> rather than from reading the focused application, so the
+    /// context is exactly as trustworthy as the word buffer is — and goes away at the same moment.
+    /// </summary>
+    private PredictionContext BuildContext(string partialWord) => new(
+        partialWord,
+        _typingSession.RecentWords,
+        _typingSession.IsAtSentenceStart,
+        PrecedingPunctuation: null,
+        ShouldCapitalize: _typingSession.IsAtSentenceStart);
 
     private static bool IsSuggestible(FocusedControlInfo focus) =>
         focus.IsStandardEditControl && !focus.IsPasswordField;

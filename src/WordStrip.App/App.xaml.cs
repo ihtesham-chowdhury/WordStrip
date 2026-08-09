@@ -58,11 +58,13 @@ public partial class App : System.Windows.Application
                 _suggestionController.IsPaused = _trayIcon.IsPaused;
         };
 
-        // An optional dict\ file beside the exe overrides the dictionary compiled into the assembly.
+        // Optional loose files beside the exe override the copies compiled into the assembly, for both the
+        // dictionary and the n-gram model — so either can be swapped and tried without a rebuild.
         var dictionaryPath = Path.Combine(AppContext.BaseDirectory, "dict", "frequency_dictionary_en_82_765.txt");
+        var nGramDirectory = Path.Combine(AppContext.BaseDirectory, "ngram");
         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
         var predictionEngine = await System.Threading.Tasks.Task.Run(
-            () => PredictionEngine.LoadDefault(dictionaryPath, assembly));
+            () => PredictionEngine.LoadDefault(dictionaryPath, assembly, nGramDirectory: nGramDirectory));
 
         StartSuggestionEngine(predictionEngine);
 

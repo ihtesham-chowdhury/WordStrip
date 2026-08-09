@@ -4,3 +4,8 @@ obj/
 *.suo
 .vs/
 publish/
+
+# Downloaded corpus text used to regenerate the n-gram model. Tens of MB, reproducible from
+# tools/ngram/Fetch-Corpus.ps1, and not something to carry in the repo — only the generated
+# model under assets/ngram/ is committed.
+.corpus/

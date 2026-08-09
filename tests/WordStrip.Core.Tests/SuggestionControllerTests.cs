@@ -94,8 +94,12 @@ public class SuggestionControllerTests
 
         h.Controller.AcceptSuggestion(new Suggestion("world", 1, 0));
 
-        // Descending frequency, ties broken ordinally — see TestVocabulary.
-        Assert.Equal(new[] { "the", "and", "to", "a" }, h.LastWords);
+        // Descending frequency. "to" and "and" are exactly equally frequent in TestVocabulary, and the tie
+        // breaks on the shorter word — the ranker's rule, which since Phase 2 orders the between-words list
+        // too. It used to break ordinally here, because the list came straight from PrefixIndex without
+        // passing through a ranker at all. Either is deterministic; this one is now consistent with how
+        // every other list in the app is ordered.
+        Assert.Equal(new[] { "the", "to", "and", "a" }, h.LastWords);
     }
 
     [Fact]

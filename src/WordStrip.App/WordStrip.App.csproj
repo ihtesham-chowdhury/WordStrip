@@ -11,6 +11,17 @@
     <EmbeddedResource Include="..\..\assets\dict\frequency_dictionary_en_82_765.txt">
       <LogicalName>WordStrip.dictionary.en.txt</LogicalName>
     </EmbeddedResource>
+
+    <!-- The n-gram model, on the same terms as the dictionary. Text rather than a binary blob so it stays
+         diffable and hand-editable; the single-file build compresses it on the way into the exe, so the
+         installer pays roughly a third of the on-disk size. Regenerate with tools\ngram\Fetch-Corpus.ps1
+         followed by tools\WordStrip.NGramBuilder. -->
+    <EmbeddedResource Include="..\..\assets\ngram\ngram-2.txt">
+      <LogicalName>WordStrip.ngram.2.txt</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\assets\ngram\ngram-3.txt">
+      <LogicalName>WordStrip.ngram.3.txt</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>
@@ -30,9 +41,9 @@
     <AssemblyTitle>WordStrip</AssemblyTitle>
     <Description>Word suggestions and autocorrect for the Windows physical keyboard.</Description>
     <Company>WordStrip</Company>
-    <Version>0.4.0</Version>
-    <FileVersion>0.4.0.0</FileVersion>
-    <AssemblyVersion>0.4.0.0</AssemblyVersion>
+    <Version>0.5.0</Version>
+    <FileVersion>0.5.0.0</FileVersion>
+    <AssemblyVersion>0.5.0.0</AssemblyVersion>
 
     <!-- Per-monitor DPI awareness: without it Windows bitmap-stretches the bar on scaled displays and the
          glass edges and text go soft. -->
@@ -45,5 +56,6 @@
   </PropertyGroup>
 
 </Project>
+
 
 
