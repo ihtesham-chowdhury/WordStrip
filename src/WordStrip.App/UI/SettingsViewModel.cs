@@ -323,6 +323,30 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool PhraseSuggestionsEnabled
+    {
+        get => _settings.PhraseSuggestionsEnabled;
+        set
+        {
+            if (_settings.PhraseSuggestionsEnabled == value) return;
+            _settings.PhraseSuggestionsEnabled = value;
+            Persist();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool EmojiSuggestionsEnabled
+    {
+        get => _settings.EmojiSuggestionsEnabled;
+        set
+        {
+            if (_settings.EmojiSuggestionsEnabled == value) return;
+            _settings.EmojiSuggestionsEnabled = value;
+            Persist();
+            OnPropertyChanged();
+        }
+    }
+
     public bool AutocorrectEnabled
     {
         get => _settings.AutocorrectEnabled;

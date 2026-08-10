@@ -42,11 +42,17 @@ public sealed class FrequencyRanker : ICandidateRanker
     /// <summary>Exposed so tests can assert the scoring rules directly rather than inferring them from ordering.</summary>
     public static double Score(Suggestion candidate, int prefixLength)
     {
+        // Phrases and emoji share the between-words band: they are offered where there is no prefix to
+        // match against, exactly like a frequent word. Listing them explicitly rather than letting them fall
+        // through to the default matters — the default is the fuzzy band at zero, which would silently bury
+        // every phrase beneath every other candidate and look like the feature simply not working.
         var band = candidate.Source switch
         {
             SuggestionSource.ExactWord => ExactWordBand,
             SuggestionSource.PrefixCompletion => PrefixBand,
             SuggestionSource.FrequentWord => FrequentWordBand,
+            SuggestionSource.Phrase => FrequentWordBand,
+            SuggestionSource.Emoji => FrequentWordBand,
             _ => FuzzyBand,
         };
 

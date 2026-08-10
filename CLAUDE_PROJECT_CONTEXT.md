@@ -53,9 +53,10 @@ delete. **[fact]**
 
 ## 3. Current Status
 
-- **Overall status:** **Phases 3 and 4 are complete and built as 0.6.0.** The installer exists at
-  `publish\WordStrip-Setup-0.6.0.exe` but has **not** been installed — 0.4.0 is still what is installed on
-  the dev machine, so 0.5.0 and 0.6.0 have both been built and neither has been trialled. **[fact]**
+- **Overall status:** **Phase 5 is complete and built as 0.7.0**, along with emoji suggestions, an
+  animation-off option, and a fix to text injection. The installer exists at
+  `publish\WordStrip-Setup-0.7.0.exe`. The owner has been running a 0.6.0-era build (their personal
+  vocabulary file is populated) and asked for everything to be shipped in one go for retesting. **[fact]**
 - **Completed:**
   - Keyboard hook, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -72,13 +73,16 @@ delete. **[fact]**
   - **Tab fix: the bar claims Tab whenever it is visible** (reported from real use — see §14) **[fact]**
   - **Phase 3: personal vocabulary with casing preservation, autocorrect protection and a settings UI** **[fact]**
   - **Phase 4: personal learning with bounding, decay, cold-start ramp and privacy controls** **[fact]**
-  - **191 unit tests and the 0.6.0 build** **[fact]**
-- **In progress:** Nothing. Phases 3 and 4 are closed out.
+  - Phase 3 + Phase 4 + the 0.6.0 build **[fact]**
+  - **Phase 5: multi-word phrase suggestions via bounded beam search** **[fact]**
+  - **Emoji suggestions, animation-off at the far end of the speed slider, and a single-batch
+    `SendInput` fix for partially-inserted replacements** **[fact]**
+  - **248 unit tests and the 0.7.0 build** **[fact]**
+- **In progress:** Nothing. Phase 5 is closed out.
 - **Blocked:** Nothing is blocked. The largest *limitation* (browser/Electron support) is a known
   architectural gap, addressed by Phase 7 (TSF), not a blocker.
-- **Next priority:** Owner decision. Install 0.6.0 and trial it — three versions of unvalidated work have
-  now stacked up, and personal learning in particular can only be judged by living with it. Do **not**
-  start Phase 5 unasked.
+- **Next priority:** The owner is retesting 0.7.0, specifically whether multi-word personal entries now
+  insert whole (§12 item 7 — the fix is unconfirmed). Do **not** start Phase 6 unasked.
 
 ## 4. Directory Structure
 
@@ -133,7 +137,10 @@ D:\Claude Code\WordStrip\
 │   │   ├── ContextualRanker.cs       NEW: wraps the above and adds the n-gram signal
 │   │   ├── PredictionContext.cs      NEW: partial word, preceding words, sentence-start
 │   │   ├── PredictionEngine.cs       Candidate orchestration; GetLiveSuggestions + GetNextWords
-│   │   ├── Suggestion.cs             Candidate contract (+ Source, Score)
+│   │   ├── PhraseGenerator.cs        NEW: bounded beam search for multi-word candidates
+│   │   ├── EmojiSuggester.cs         NEW: keyword matching, ambiguity refusal
+│   │   ├── EmojiTable.cs             NEW: ~300 curated keyword→emoji entries
+│   │   ├── Suggestion.cs             Candidate contract (+ Source, Score, Confidence, WordCount)
 │   │   └── NGram/
 │   │       ├── NGramFormat.cs        NEW: on-disk contract, shared with the builder
 │   │       ├── NGramTokenizer.cs     NEW: shared tokenizer — drift here silently kills every lookup
@@ -145,6 +152,7 @@ D:\Claude Code\WordStrip\
 │   │   ├── FocusedControlInspector.cs    Static live Win32 inspection
 │   │   └── IFocusedControlProvider.cs    NEW: seam over the above, so focus can be faked in tests
 │   ├── Settings/                     AppSettings, store, enums (BarTheme, BarPosition, BackdropBlur)
+│   │   └── UserDataLocation.cs       NEW: one place decides where user data lives; WORDSTRIP_DATA_DIR
 │   └── Platform/AutostartManager.cs  HKCU Run key
 │
 ├── src/WordStrip.App/                WPF, net8.0-windows
@@ -166,7 +174,7 @@ D:\Claude Code\WordStrip\
 │   ├── Interop/GlassWindowBehavior.cs      No-activate, no-taskbar window
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-├── tests/WordStrip.Core.Tests/       xUnit, 191 tests
+├── tests/WordStrip.Core.Tests/       xUnit, 248 tests
 │   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
 │   ├── PrefixCompletionTests.cs
 │   ├── FuzzyMatchingTests.cs
@@ -274,7 +282,7 @@ dotnet build "D:\Claude Code\WordStrip\WordStrip.sln" -c Release
 ```
 
 ```powershell
-# Run all unit tests (126)
+# Run all unit tests (248)
 dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj"
 ```
 
@@ -310,7 +318,7 @@ powershell -File "D:\Claude Code\WordStrip\build-release.ps1"
 # In-place upgrade. Same AppId, so it replaces the existing install and PRESERVES settings.
 # /TASKS=startupicon keeps the autostart entry; /TASKS= (empty) would leave an existing one untouched.
 # Do NOT verify by uninstalling and reinstalling — uninstall deletes %LOCALAPPDATA%\WordStrip (§9).
-Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.6.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=startupicon" -Wait
+Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.7.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=startupicon" -Wait
 ```
 
 **Debugging aids (opt-in via environment variable, off by default):**
@@ -476,21 +484,33 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
    offered as completions, but `SymSpellIndex` is built from the general dictionary at startup and never
    rebuilt, so "githb" will not become "GitHub". **[fact]** *[recommendation: rebuild the fuzzy index when
    the personal vocabulary changes — deliberately out of scope for Phase 3.]*
+7. ⚠️ **Multi-word personal entries reportedly insert only partly — fix UNCONFIRMED.** The owner reported
+   entries like "Alexandra Fairbourne Reed" arriving truncated, with blank gaps. A real ordering hazard was
+   found and fixed (two `SendInput` calls; see §13), but **it did not reproduce in testing** — not against a
+   plain `EDIT`, and not against a `RICHEDIT50W` at 25 ms per keystroke. So the fix removes a genuine hazard
+   without being confirmed as the cause. **[fact]**
+   *[assumption: the likelier culprit is the pre-0.6.0 Tab behaviour. Tab on an idle bar fell through to the
+   document as a literal tab character AND hit `IsContextInvalidatingKey`, wiping the word buffer — which
+   matches both the truncation and the blank gaps in the report. That was fixed separately. If the owner
+   reports it again on 0.7.0, get the exact keystrokes; do not assume this is closed.]*
+8. **Phrases inherit the corpus's register.** Multi-word suggestions come from Victorian novels, so "thank
+   you" is as likely to suggest "sir said the" as anything from a modern email. Grammatical, just dated.
+   Personal learning is the practical mitigation. **[fact]**
 
 ### Technical debt / known issues
 
-7. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
+9. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
    DWM Mica/Acrylic impossible, because they cannot apply to a layered window. The UI control was removed
    but the enum and the `AppSettings.BackdropBlur` property remain and are read nowhere meaningful.
    **[fact]** *[recommendation: delete the property and enum, or reintroduce blur via
    `SetWindowCompositionAttribute`, which does work on layered windows but paints a square-cornered
    region.]*
-8. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
+10. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
    on a background thread so the tray icon appears immediately, but first-run feels slow. **[fact]**
-9. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
+11. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
    pixels just outside the bar, which is a heuristic and can mis-read over unusual backgrounds.
-10. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
-11. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
+12. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
+13. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
    `HKCU\...\Run` value directly, while the settings window writes both the registry and
    `AppSettings.StartWithWindows`. On the dev machine the Run key is set while `StartWithWindows` is
    `false`, so the settings checkbox shows the wrong state. **[fact — observed 2026-08-09]**
@@ -498,34 +518,34 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 
 ### Testing gotchas discovered the hard way — read before writing UI tests
 
-12. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
+14. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
     translucency from a `PrintWindow` grab is meaningless. **[fact]**
-13. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
+15. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
     into undersized bitmaps and silently cropped. The dev display is at 150%. **[fact]**
-14. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
+16. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
     technique, and always verify the foreground window class before sending keystrokes — otherwise test
     input lands in whatever the user is actually using. **[fact]**
-15. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
+17. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
     packaged single-instance app: `notepad.exe` exits immediately and `MainWindowHandle` is empty. A
     WinForms `TextBox` reports class `WindowsForms10.EDIT.app.0.<hash>`, which does **not** start with
     `Edit`, so `FocusedControlInspector` ignores it and no bar ever appears. `TestTarget.ps1` creates a
     real `EDIT` control with `CreateWindowEx` instead. **[fact — both tried and discarded]**
-16. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
+18. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
     microseconds; replacements are deferred onto the message loop, so the burst is still draining into the
     target when the replacement fires and the two interleave — `helo ` came out as `healo`. Send one key at
     a time. This is the harness outrunning hardware, **not** a product defect. **[fact]**
-17. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
+19. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
     path and can land after the check that reads the text back, which looks like a half-applied correction.
     The self-contained single-file build is worse, since it also self-extracts. **[fact]**
-18. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
+20. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
     *and* from `hello`, so the tie falls to frequency and `help` wins — correct behaviour, useless
     assertion. `teh` → `the` is unambiguous. **[fact]**
-19. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no
+21. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no
     byte-order mark, and Windows PowerShell decodes such a file as Windows-1252 — where an em dash's third
     byte becomes a smart closing quote that the parser honours as a string delimiter. It reports as
     "missing terminator" at the *bottom* of the file, hundreds of lines from the dash. Harmless in comments,
     fatal inside a string. **[fact — cost a debugging cycle]**
-20. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
+22. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
     deliberately doesn't run (its pump omits `IsDialogMessage` so Tab reaches the control as a character).
     Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
 
@@ -557,6 +577,13 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
   bar repopulates itself between words, merely hiding the window doesn't stick — the next buffer reset puts
   it straight back. This is why Esc goes through the controller and not `SuggestionBarWindow.HideBar()`.
 - **Never call `SendInput` from inside the hook callback.** Always via `postToMessageLoop`.
+- **One `SendInput` call per replacement — deletions and text together.** Windows guarantees events inside
+  a single call are not interleaved with other input, and guarantees nothing between two calls. Splitting
+  them lets the target start on the backspaces while the text is arriving, and they eat its front. This
+  shipped once; see §12 item 7.
+- **Every ranking bonus stays under the 100-point band gap, and they accumulate.** Context ≤40, personal
+  word ≤30, learned usage ≤15. Phrases and emoji sit in the between-words band and are listed explicitly in
+  `FrequencyRanker`'s switch — the default is the fuzzy band at zero, which would silently bury them.
 - **`INPUT` struct must include the `MOUSEINPUT` union member** even though it is unused — it sets
   `sizeof(INPUT)` to the 40 bytes x64 requires. Without it, `SendInput` silently rejects everything.
 - **Injected-key detection uses a private `dwExtraInfo` marker**, not `LLKHF_INJECTED` (which is set for
@@ -605,22 +632,53 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 - Prediction primitives are unit-tested; keep them that way.
 - UI and input behaviour is verified end-to-end with `tests\regression\Verify-PersistentBar.ps1`, which
   drives a real Win32 `Edit` control and reads text back with `WM_GETTEXT` (**not** screenshots — §12).
-  Add a check there for anything a unit test cannot reach; §12 items 15–19 are the traps that cost the most
-  time, so read them before extending it.
+  Add a check there for anything a unit test cannot reach; §12 items 17–22 are the traps that cost the most
+  time, so read them before extending it. It can drive a plain `EDIT` or a `RICHEDIT50W`
+  (`-ControlClass RichEdit`) at any typing rate (`-PerKeyMs`) — a plain `EDIT` processes input too
+  synchronously to expose ordering races, which is worth knowing before concluding one is fixed.
 - When behaviour in `Core` can't be tested because it reads live Win32 state through a static, add a seam
   for it — `ITextInjector` and `IFocusedControlProvider` are both precedents.
 - Performance is measured, not assumed.
 
 ## 14. Current Task
 
-**None — Phases 3 and 4 are closed out and built as 0.6.0.** The next move belongs to the owner. Do **not**
-start Phase 5 without being asked; the phase documents say so explicitly.
+**None — Phase 5 is closed out and built as 0.7.0.** The next move belongs to the owner, who is retesting.
+Do **not** start Phase 6 without being asked; the phase documents say so explicitly.
 
 The 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` (outside the project) as
-`PHASE_1..7_*.md`. Phase 4 explicitly **excluded** neural models, cloud/federated learning, raw document
-storage, keystroke logging and TSF.
+`PHASE_1..7_*.md`. Phase 5 explicitly **excluded** neural models, LLMs, cloud APIs, TSF and free-form
+generative text.
 
-**Delivered in the most recent session (Tab fix + Phases 3 and 4) [fact]:**
+**Delivered in the most recent session (0.7.0) [fact]:**
+
+- **Text injection fix.** Deletions and replacement text now go in one `SendInput` call. Windows only
+  guarantees ordering *within* a call, so sending them separately let the still-draining backspaces eat the
+  front of the text. **Reported symptom not reproduced** — see §12 item 7 before assuming it is fixed.
+- **Phase 5.** `PhraseGenerator` — bounded beam search producing up to 3-word candidates, scored on mean
+  log probability per word so length never wins by itself; extensions require trigram evidence; unigram-tier
+  seeds are never extended; deduplication keeps one form per opening.
+- **Emoji.** `EmojiSuggester` + a curated table of ~300 keywords. At most one, always last, only on an
+  unambiguous match, placed by policy rather than scored against words.
+- **Animation off.** The far end of the speed slider now disables motion outright instead of setting 80 ms.
+- **Harness.** The regression can drive a `RICHEDIT50W` and type at any rate; `WORDSTRIP_DATA_DIR` relocates
+  all user data so a run can seed a known vocabulary without touching the real one.
+- 57 new unit tests (248 total); regression green on both target control types.
+
+**Measured results, Phase 5 [fact]:**
+
+| Metric | Value |
+|---|---|
+| Phrase generation | 349 µs/call against the shipped model |
+| Unseen context | 13 µs/call (no expansion attempted) |
+| Beam | width 6, branching 4, max 3 words |
+| Quality floor | mean log probability ≥ −1.4 per word |
+| Emoji table | ~300 keywords, at most one suggestion, min prefix 3 |
+
+**Example phrases from the shipped model [fact]:** `i am` → *not going to · very glad to · sure you will* ·
+`let me` → *have a good · see the · go to the* · `looking forward` → *to* (single word wins) ·
+`how are` → *you* (single word wins).
+
+**Delivered in the session before that (Tab fix + Phases 3 and 4) [fact]:**
 
 - **Tab fix.** Reported from use: after inserting a word the predictions appear immediately but Tab did
   nothing, because the router only claimed keys while a word was in progress. The bar now owns Tab whenever
@@ -712,29 +770,28 @@ scan), autocorrection 274.5 µs, dictionary load 185 ms, SymSpell index build 61
 
 ## 15. Recommended Next Steps
 
-1. **Install 0.6.0 and actually live with it.** Three versions of work are now built and untrialled, and
-   two of the newest features can only be judged by use: whether the bar owning Tab is comfortable, and
-   whether personal learning improves anything within a plausible amount of typing. Everything below is
-   less valuable than this. **[recommendation]**
-2. **Watch the Tab decision specifically.** It was reversed on the strength of one report; the cost —
-   Tab not indenting or moving between fields while the bar is up — lands on every text field, not just the
-   moments the predictions are wanted. If it grates, a modifier chord is the fallback, and
-   `BarInputRouter` is the only file that would change.
-3. **Fix the autostart split-brain** (§12 item 11) — the settings checkbox can disagree with the registry.
-4. **Resolve the inert `BackdropBlur` setting** — remove it or reimplement blur.
-5. **Consider letting autocorrect correct *into* personal words** (§12 item 6). Personal words are protected
-   and suggestible, but the fuzzy index is built from the dictionary at startup, so "githb" will not become
-   "GitHub". Rebuilding the index when the vocabulary changes is the obvious approach and was out of scope.
-6. **Only then** consider Phase 5 (phrase / multi-word suggestions). Do **not** start it without being
-   asked. The integration point is ready: `PersonalLanguageModel` already holds personal trigrams, which is
-   what Phase 5 needs to propose multi-word completions, and `ICandidateRanker` takes the whole
-   `PredictionContext` so another signal arrives as another ranker.
+1. **Confirm the insertion bug is actually gone** (§12 item 7). This is the only genuinely open question.
+   The fix was not reproducible in testing, so the owner retesting their real phrases is the evidence. If it
+   recurs, get the exact keystrokes and the exact output before changing anything else. **[recommendation]**
+2. **Watch the Tab decision.** Reversed on one report, before the new behaviour had been lived with; the
+   cost — Tab not indenting or moving between fields while the bar is up — lands on every text field.
+   `BarInputRouter` is the only file that would change if a modifier chord turns out to be better.
+3. **Judge the phrases and emoji by use.** Phrases inherit a Victorian register (§12 item 8) and emoji take
+   a slot from a word. Both are switchable, and whether the defaults are right is a question about taste
+   that no amount of testing here can answer.
+4. **Fix the autostart split-brain** (§12 item 13) — the settings checkbox can disagree with the registry.
+5. **Resolve the inert `BackdropBlur` setting** — remove it or reimplement blur.
+6. **Consider letting autocorrect correct *into* personal words** (§12 item 6). Rebuilding `SymSpellIndex`
+   when the vocabulary changes is the obvious approach and was out of scope.
+7. **Only then** consider Phase 6 (neural reranking). Do **not** start it without being asked. The
+   integration point is ready: `ICandidateRanker` takes the whole `PredictionContext`, and `Suggestion` now
+   carries `Confidence`, so a reranker slots in beside `ContextualRanker` rather than replacing anything.
 
 **Release checklist, for whenever the next build ships:**
 
 - Stop the running app first (it locks its own exe).
 - Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
-- `dotnet test` (191), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- `dotnet test` (248), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
 - Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
   single-file build is a different code path (embedded dictionary) and starts more slowly.
 - Back up **the whole of** `%LOCALAPPDATA%\WordStrip` before touching the installer (§9). It now holds the

@@ -37,6 +37,8 @@ public sealed class PredictionEngine
     private readonly ICandidateRanker _ranker;
     private readonly NGramLanguageModel _languageModel;
     private readonly Personal.PersonalVocabularyStore? _personalVocabulary;
+    private readonly PhraseGenerator? _phraseGenerator;
+    private readonly EmojiSuggester? _emoji;
 
     /// <param name="languageModel">
     /// Contextual model. Defaults to an empty one, which backs off to plain word frequency for everything —
@@ -58,13 +60,16 @@ public sealed class PredictionEngine
         ICandidateRanker? ranker = null,
         NGramLanguageModel? languageModel = null,
         Personal.PersonalVocabularyStore? personalVocabulary = null,
-        Personal.PersonalLanguageModel? personalLearning = null)
+        Personal.PersonalLanguageModel? personalLearning = null,
+        EmojiSuggester? emoji = null)
     {
         _dictionary = dictionary;
         _fuzzyIndex = fuzzyIndex;
         _prefixIndex = prefixIndex ?? PrefixIndex.Build(dictionary);
         _languageModel = languageModel ?? NGramLanguageModel.Empty(dictionary);
         _personalVocabulary = personalVocabulary;
+        _phraseGenerator = new PhraseGenerator(_languageModel, personalLearning);
+        _emoji = emoji;
         _ranker = ranker ?? new ContextualRanker(_languageModel, personalVocabulary, personalLearning);
     }
 
@@ -89,7 +94,8 @@ public sealed class PredictionEngine
         int maxEditDistance = 2,
         string? nGramDirectory = null,
         Personal.PersonalVocabularyStore? personalVocabulary = null,
-        Personal.PersonalLanguageModel? personalLearning = null)
+        Personal.PersonalLanguageModel? personalLearning = null,
+        EmojiSuggester? emoji = null)
     {
         var dictionary = File.Exists(dictionaryFilePath)
             ? FrequencyDictionary.LoadFromFile(dictionaryFilePath, maxVocabularySize)
@@ -103,7 +109,8 @@ public sealed class PredictionEngine
             SymSpellIndex.Build(dictionary, maxEditDistance),
             languageModel: languageModel,
             personalVocabulary: personalVocabulary,
-            personalLearning: personalLearning);
+            personalLearning: personalLearning,
+            emoji: emoji);
     }
 
     private static FrequencyDictionary LoadEmbedded(System.Reflection.Assembly assembly, int maxVocabularySize)
@@ -143,7 +150,15 @@ public sealed class PredictionEngine
     /// list is still everything that completes or plausibly repairs what has been typed — anything else
     /// would mean showing a word that does not match the letters on screen.</para>
     /// </summary>
-    public IReadOnlyList<Suggestion> GetLiveSuggestions(string partialWord, int maxResults, PredictionContext context)
+    public IReadOnlyList<Suggestion> GetLiveSuggestions(string partialWord, int maxResults, PredictionContext context) =>
+        GetLiveSuggestions(partialWord, maxResults, context, includeEmoji: true);
+
+    /// <param name="includeEmoji">
+    /// Whether an emoji may take the last slot when one clearly matches. Passed per call rather than fixed
+    /// at construction so the setting takes effect on the next keystroke, like everything else in the app.
+    /// </param>
+    public IReadOnlyList<Suggestion> GetLiveSuggestions(
+        string partialWord, int maxResults, PredictionContext context, bool includeEmoji)
     {
         if (string.IsNullOrWhiteSpace(partialWord) || maxResults <= 0)
             return Array.Empty<Suggestion>();
@@ -166,7 +181,10 @@ public sealed class PredictionEngine
             }
         }
 
-        return _ranker.Rank(new RankingContext(prefix, context), candidates, maxResults);
+        var ranked = _ranker.Rank(new RankingContext(prefix, context), candidates, maxResults);
+
+        // An emoji for the word being typed goes in last, after ranking has settled.
+        return includeEmoji ? WithEmoji(ranked, prefix, maxResults) : ranked;
     }
 
     /// <summary>
@@ -227,9 +245,41 @@ public sealed class PredictionEngine
     /// are — offered with no prefix to match against. <see cref="ContextualRanker"/> is what then separates
     /// a genuinely predicted word from mere filler, via the bonus it attaches to real n-gram evidence.</para>
     /// </summary>
-    public IReadOnlyList<Suggestion> GetNextWords(PredictionContext context, int maxResults)
+    public IReadOnlyList<Suggestion> GetNextWords(PredictionContext context, int maxResults) =>
+        GetNextWords(context, maxResults, includePhrases: false);
+
+    /// <param name="includePhrases">
+    /// When true, candidates may span several words ("forward to"). Phrases and single words are ranked
+    /// together rather than in separate passes, because a confident one-word prediction is often the better
+    /// answer and should be allowed to win.
+    /// </param>
+    public IReadOnlyList<Suggestion> GetNextWords(PredictionContext context, int maxResults, bool includePhrases)
     {
         if (maxResults <= 0) return Array.Empty<Suggestion>();
+
+        if (includePhrases && _phraseGenerator is not null)
+        {
+            var phrases = _phraseGenerator.Generate(context, maxResults);
+            if (phrases.Count > 0)
+            {
+                var phraseCandidates = new List<Suggestion>(phrases.Count);
+                foreach (var phrase in phrases)
+                {
+                    // The first word carries the dictionary frequency; a phrase has none of its own, and the
+                    // ranker's frequency term would otherwise read zero and bury every phrase.
+                    var firstWord = FirstWordOf(phrase.Text);
+
+                    phraseCandidates.Add(new Suggestion(
+                        phrase.Text,
+                        _dictionary.GetFrequency(firstWord),
+                        EditDistance: 0,
+                        phrase.WordCount > 1 ? SuggestionSource.Phrase : SuggestionSource.FrequentWord,
+                        Confidence: phrase.Confidence));
+                }
+
+                return _ranker.Rank(new RankingContext(string.Empty, context), phraseCandidates, maxResults);
+            }
+        }
 
         // Gather wider than the display cap so the ranker has genuine choice, matching how completion works.
         var predictions = _languageModel.GetNextWordCandidates(context, Math.Max(maxResults, CandidatePoolSize / 4));
@@ -246,6 +296,43 @@ public sealed class PredictionEngine
         }
 
         return _ranker.Rank(new RankingContext(string.Empty, context), candidates, maxResults);
+    }
+
+    private static string FirstWordOf(string phrase)
+    {
+        var space = phrase.IndexOf(' ');
+        return space < 0 ? phrase : phrase[..space];
+    }
+
+    /// <summary>
+    /// Gives an emoji the last slot when one clearly matches, without letting it displace more than one word.
+    ///
+    /// <para>Applied after ranking rather than by scoring an emoji against words, because the two are not
+    /// comparable: an emoji has no frequency and no context probability, so any score it were given would be
+    /// arbitrary. The honest rule is a policy one — at most one, always last, and only on an unambiguous
+    /// match — and that is far easier to reason about and to test than a number tuned until it looked right.</para>
+    /// </summary>
+    private IReadOnlyList<Suggestion> WithEmoji(IReadOnlyList<Suggestion> ranked, string word, int maxResults)
+    {
+        if (_emoji is null || maxResults <= 1) return ranked;
+
+        var match = _emoji.Match(word);
+        if (match is null) return ranked;
+
+        // Already offered — nothing to add.
+        foreach (var existing in ranked)
+        {
+            if (string.Equals(existing.Word, match, StringComparison.Ordinal)) return ranked;
+        }
+
+        var result = new List<Suggestion>(ranked);
+        var emoji = new Suggestion(match, Frequency: 0, EditDistance: 0, SuggestionSource.Emoji);
+
+        // Take the weakest slot rather than appending, so the bar keeps the width the user configured.
+        if (result.Count >= maxResults) result[^1] = emoji;
+        else result.Add(emoji);
+
+        return result;
     }
 
     /// <summary>

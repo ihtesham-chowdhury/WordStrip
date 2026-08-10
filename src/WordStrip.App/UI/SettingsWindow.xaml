@@ -127,6 +127,14 @@
                 <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
                            Text="Shows common words when you're between words, like a phone keyboard. Turn this off to have the bar appear only while you're part-way through a word. Either way, Esc or a click elsewhere puts it away." />
 
+                <CheckBox Content="Suggest whole phrases, not just single words" IsChecked="{Binding PhraseSuggestionsEnabled}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
+                           Text="Offers several words as one suggestion between words — &quot;forward to&quot; rather than just &quot;forward&quot;. Only when the phrasing is well evidenced; otherwise you get single words as before." />
+
+                <CheckBox Content="Suggest emoji" IsChecked="{Binding EmojiSuggestionsEnabled}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
+                           Text="Type &quot;pizza&quot; and 🍕 is offered at the end of the bar. At most one at a time, and only when the match is unambiguous." />
+
                 <CheckBox Content="Autocorrect misspelled words" IsChecked="{Binding AutocorrectEnabled}" />
             </StackPanel>
         </Border>

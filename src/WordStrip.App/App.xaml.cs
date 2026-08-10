@@ -84,7 +84,10 @@ public partial class App : System.Windows.Application
                 assembly,
                 nGramDirectory: nGramDirectory,
                 personalVocabulary: _personalVocabulary,
-                personalLearning: _personalLearning);
+                personalLearning: _personalLearning,
+                // Supplied unconditionally; the setting is checked per keystroke so toggling it applies
+                // immediately rather than at the next launch, like every other setting in the app.
+                emoji: EmojiSuggester.Default);
         });
 
         StartSuggestionEngine(predictionEngine);

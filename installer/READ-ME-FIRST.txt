@@ -105,20 +105,48 @@ HOW TO USE IT
    The Learning page shows exactly how much has been learned, and there's one button to
    delete all of it.
 
-7. Autocorrect fixes obvious misspellings when you finish a word
-   ("recieve" becomes "receive"). Words you've added to Your words are left alone.
+7. NEW IN 0.7: WHOLE PHRASES.  Between words the bar can now offer several words as
+   one suggestion - "forward to" rather than just "forward". Tab to it and Space inserts
+   the lot.
 
-8. The bar goes away when you click somewhere else, press Esc, or leave the text box.
+   It only does this when the phrasing is well evidenced, and a confident single word
+   always beats a padded phrase. Fair warning: the phrases come from public-domain
+   novels, so they sometimes read like 1890 - "thank you" may well suggest
+   "sir said the". Turning Learning on is what fixes that for your own writing.
 
-9. Right-click the tray icon -> Settings. There's a live preview, and you can change:
+   Switch off at: Settings -> Suggestions -> "Suggest whole phrases".
+
+8. NEW IN 0.7: EMOJI.  Type "pizza" and you get an option at the end of the bar.
+   Type "thanks", "done", "meeting", "coffee" - a few hundred common words are covered.
+
+   At most one at a time, always at the end, and only when there's no doubt what you
+   meant. Switch off at: Settings -> Suggestions -> "Suggest emoji".
+
+9. NEW IN 0.7: ANIMATION OFF.  Drag the animation speed slider all the way to the right
+   and it now reads "Off - no animation". The bar and the highlight appear instantly.
+   Previously the fastest setting was still 80 ms of movement.
+
+10. FIXED IN 0.7: multi-word entries from Your words could insert only partly. If you
+    still see a phrase arrive half-finished, please say exactly what you typed and what
+    appeared - the cause found and fixed could not be reproduced in testing, so there
+    may be a second one.
+
+11. Autocorrect fixes obvious misspellings when you finish a word
+    ("recieve" becomes "receive"). Words you've added to Your words are left alone.
+
+12. The bar goes away when you click somewhere else, press Esc, or leave the text box.
+
+13. Right-click the tray icon -> Settings. There's a live preview, and you can change:
 
      - whether the bar stays on screen between words
      - how many words are shown (3 to 7)
+     - whether whole phrases are suggested
+     - whether emoji are suggested
      - your own word list (add / remove / import / export)
      - whether WordStrip learns from your typing, and clearing what it has learned
      - how thick the bar is
      - how thick/transparent the glass looks
-     - how fast the animation is
+     - how fast the animation is, including switching it off entirely
      - where the bar sits: bottom of the screen, top, or following your text cursor
 
 
@@ -169,6 +197,9 @@ WHAT FEEDBACK IS USEFUL
   after every word, or is it just clutter? Did you end up turning it off?
 * Did you turn Learning on? Did suggestions noticeably improve, and how long did it
   take before you noticed?
+* Are the phrase suggestions worth having, or do they mostly read as old-fashioned
+  and get in the way? Did you turn them off?
+* Do the emoji land in useful places, or turn up when you didn't want them?
 * Is anything about what gets stored unclear or uncomfortable?
 * Is Tab-then-Space comfortable, or would you prefer something else?
 * Did text ever get inserted wrongly, or in the wrong colour/font? If so, which app?

@@ -143,12 +143,27 @@ public sealed class PerformanceTests
         _output.WriteLine($"  without context        : {MeasureMicroseconds(() => engine.GetLiveSuggestions("wor", 5)):F1} µs/call");
 
         _output.WriteLine("");
-        _output.WriteLine("sample predictions:");
-        foreach (var (first, second) in new[] { ("i", "am"), ("thank", "you"), ("how", "are"), ("let", "me"), ("it", "is") })
+        _output.WriteLine($"phrase generation      : {MeasureMicroseconds(() => engine.GetNextWords(trigramContext, 5, includePhrases: true)):F1} µs/call");
+        _output.WriteLine($"  unseen context       : {MeasureMicroseconds(() => engine.GetNextWords(unseenContext, 5, includePhrases: true)):F1} µs/call");
+
+        _output.WriteLine("");
+        _output.WriteLine("sample predictions (single word / with phrases):");
+        foreach (var (first, second) in new[] { ("i", "am"), ("thank", "you"), ("how", "are"), ("let", "me"), ("looking", "forward"), ("as", "soon") })
         {
-            var words = engine.GetNextWords(PredictionContext.After(first, second), 4).Select(s => s.Word);
-            _output.WriteLine($"  \"{first} {second}\" -> {string.Join(", ", words)}");
+            var context = PredictionContext.After(first, second);
+            var words = engine.GetNextWords(context, 4).Select(s => s.Word);
+            var phrases = engine.GetNextWords(context, 4, includePhrases: true).Select(s => s.Word);
+
+            _output.WriteLine($"  \"{first} {second}\"");
+            _output.WriteLine($"      words   : {string.Join(" | ", words)}");
+            _output.WriteLine($"      phrases : {string.Join(" | ", phrases)}");
         }
+
+        // Phrase generation runs several rounds of model lookups per keystroke, so it gets the same budget
+        // as everything else on the typing path rather than a relaxed one.
+        var phraseMicroseconds = MeasureMicroseconds(() => engine.GetNextWords(trigramContext, 5, includePhrases: true));
+        Assert.True(phraseMicroseconds < 2000,
+            $"Phrase generation took {phraseMicroseconds:F1} µs/call, which is too slow for per-keystroke use.");
 
         // Both prediction paths run on every keystroke, so both live inside the same budget the completion
         // path has always had.

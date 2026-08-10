@@ -100,5 +100,19 @@ public sealed class AppSettings
     /// </summary>
     public bool PersonalLearningEnabled { get; set; }
 
+    /// <summary>
+    /// Whether an emoji may take one of the bar's slots when it clearly matches the word being typed, the
+    /// way a phone keyboard offers one. On by default: at most one appears, only on an unambiguous match,
+    /// and it is easy to ignore — whereas someone who wants it and has to go and find a switch mostly never
+    /// discovers the feature exists.
+    /// </summary>
+    public bool EmojiSuggestionsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Whether the bar may offer several words as one suggestion ("forward to", "let me know"). On by
+    /// default; turning it off restores strictly one word per slot for anyone who finds phrases presumptuous.
+    /// </summary>
+    public bool PhraseSuggestionsEnabled { get; set; } = true;
+
     public bool StartWithWindows { get; set; }
 }

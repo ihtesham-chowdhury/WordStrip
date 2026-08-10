@@ -172,7 +172,9 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        var suggestions = _predictionEngine.GetLiveSuggestions(word, _settings.SuggestionCount, BuildContext(word));
+        var suggestions = _predictionEngine.GetLiveSuggestions(
+            word, _settings.SuggestionCount, BuildContext(word), _settings.EmojiSuggestionsEnabled);
+
         Publish(new SuggestionUpdate(suggestions, focus.Caret));
     }
 
@@ -250,7 +252,10 @@ public sealed class SuggestionController : IDisposable
         }
 
         Publish(new SuggestionUpdate(
-            _predictionEngine.GetNextWords(BuildContext(string.Empty), _settings.SuggestionCount),
+            _predictionEngine.GetNextWords(
+                BuildContext(string.Empty),
+                _settings.SuggestionCount,
+                includePhrases: _settings.PhraseSuggestionsEnabled),
             focus.Caret,
             IsIdle: true));
     }
