@@ -65,6 +65,13 @@ public partial class SuggestionBarWindow : Window
 
     public bool HasSelection => _selectedIndex >= 0;
 
+    /// <summary>
+    /// Whether to animate at all. Two independent ways to say no: Windows' own "animation effects" switch,
+    /// which the app must respect as an accessibility preference, and the user dragging the speed slider to
+    /// its far end, which now means off rather than merely fast.
+    /// </summary>
+    private bool UseMotion => SystemAppearance.UseMotion && !_motion.IsInstant;
+
     public void ShowSuggestions(IReadOnlyList<Suggestion> suggestions, CaretRect? caret)
     {
         _caret = caret;
@@ -356,7 +363,7 @@ public partial class SuggestionBarWindow : Window
         if (_isRevealed) return;
         _isRevealed = true;
 
-        if (!SystemAppearance.UseMotion)
+        if (!UseMotion)
         {
             RootHost.BeginAnimation(OpacityProperty, null);
             RootTranslate.BeginAnimation(TranslateTransform.YProperty, null);
@@ -393,7 +400,7 @@ public partial class SuggestionBarWindow : Window
 
         _isRevealed = false;
 
-        if (!SystemAppearance.UseMotion)
+        if (!UseMotion)
         {
             RootHost.BeginAnimation(OpacityProperty, null);
             RootHost.Opacity = 0;
@@ -435,7 +442,7 @@ public partial class SuggestionBarWindow : Window
         Lens.LensHeight = targetHeight;
 
         var firstShow = Lens.Opacity < 0.01;
-        if (firstShow || !SystemAppearance.UseMotion)
+        if (firstShow || !UseMotion)
         {
             // Nothing to glide from on the first highlight — appear in place rather than sweeping in from 0,0.
             Lens.BeginAnimation(SelectionLens.LensXProperty, null);
@@ -443,7 +450,7 @@ public partial class SuggestionBarWindow : Window
             Lens.LensX = origin.X;
             Lens.LensWidth = targetWidth;
 
-            if (SystemAppearance.UseMotion)
+            if (UseMotion)
             {
                 Lens.BeginAnimation(OpacityProperty,
                     new DoubleAnimation(1, new Duration(TimeSpan.FromSeconds(motion.FadeInSeconds)))

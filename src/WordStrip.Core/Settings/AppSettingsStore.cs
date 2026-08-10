@@ -11,10 +11,7 @@ public sealed class AppSettingsStore
 
     public AppSettingsStore(string? filePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WordStrip",
-            "settings.json");
+        _filePath = filePath ?? UserDataLocation.File("settings.json");
     }
 
     public AppSettings Load()

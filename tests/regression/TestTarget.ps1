@@ -20,11 +20,22 @@
     Run with -STA. Started by the regression script; not useful on its own.
 #>
 
+param(
+    # "Edit" is the classic Win32 control. "RichEdit" loads msftedit and creates a RICHEDIT50W instead,
+    # which is far closer to what Windows 11 Notepad actually hosts (RichEditD2DPT) and, unlike a plain
+    # EDIT, does enough asynchronous work to expose input-ordering races that a plain EDIT hides.
+    [ValidateSet('Edit', 'RichEdit')]
+    [string] $ControlClass = 'Edit'
+)
+
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 
 public static class TestTarget {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr LoadLibraryW(string name);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr CreateWindowExW(int exStyle, string cls, string name, int style,
         int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
@@ -45,7 +56,7 @@ public static class TestTarget {
         public IntPtr hwnd; public uint message; public IntPtr wParam, lParam; public uint time; public POINT pt;
     }
 
-    public static void Run() {
+    public static void Run(string controlClass) {
         const int WS_OVERLAPPEDWINDOW = 0x00CF0000;
         const int WS_VISIBLE     = 0x10000000;
         const int WS_CHILD       = 0x40000000;
@@ -63,13 +74,19 @@ public static class TestTarget {
         if (parent == IntPtr.Zero)
             throw new Exception("Could not create the parent window: " + Marshal.GetLastWin32Error());
 
+        // msftedit registers RICHEDIT50W; without loading it CreateWindowEx simply fails.
+        if (controlClass == "RichEdit" && LoadLibraryW("msftedit.dll") == IntPtr.Zero)
+            throw new Exception("Could not load msftedit.dll: " + Marshal.GetLastWin32Error());
+
+        string className = controlClass == "RichEdit" ? "RICHEDIT50W" : "EDIT";
+
         // WS_TABSTOP so the dialog class's own focus handling lands on this control when the window is
         // activated, rather than leaving focus on the frame where GetGUIThreadInfo would report no edit.
-        IntPtr edit = CreateWindowExW(0, "EDIT", "",
+        IntPtr edit = CreateWindowExW(0, className, "",
             WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_TABSTOP | ES_MULTILINE | ES_AUTOVSCROLL,
             0, 0, 764, 302, parent, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
         if (edit == IntPtr.Zero)
-            throw new Exception("Could not create the edit control: " + Marshal.GetLastWin32Error());
+            throw new Exception("Could not create the " + className + " control: " + Marshal.GetLastWin32Error());
 
         SendMessageW(edit, WM_SETFONT, GetStockObject(DEFAULT_GUI_FONT), (IntPtr)1);
 
@@ -89,4 +106,4 @@ public static class TestTarget {
 }
 '@
 
-[TestTarget]::Run()
+[TestTarget]::Run($ControlClass)

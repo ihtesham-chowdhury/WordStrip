@@ -369,15 +369,21 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         get
         {
-            var ms = MotionProfile.ForSpeed(_settings.MotionSpeed).LensSeconds * 1000;
+            var profile = MotionProfile.ForSpeed(_settings.MotionSpeed);
+
+            // The far end of the slider turns motion off outright, so it gets a name rather than a duration.
+            // Reporting "0 ms" there would be technically true and completely unhelpful.
+            if (profile.IsInstant) return "Off · no animation";
+
             var name = _settings.MotionSpeed switch
             {
                 < 0.8 => "Relaxed",
                 < 1.2 => "Default",
                 < 1.8 => "Quick",
-                _ => "Instant",
+                _ => "Snappy",
             };
-            return $"{name} · {ms:0} ms";
+
+            return $"{name} · {profile.LensSeconds * 1000:0} ms";
         }
     }
 

@@ -8,6 +8,18 @@ namespace WordStrip.Core.Input;
 /// carries <see cref="NativeMethods.OwnInjectionMarker"/> in dwExtraInfo so <see cref="LowLevelKeyboardHook"/>
 /// can recognise our own output and not mistake it for the user typing.
 ///
+/// <para><b>The backspaces and the replacement text go in one SendInput call.</b> This is the whole
+/// correctness story of this class and it is not optional. Windows guarantees that the events inside a
+/// single SendInput call are delivered to the target serially and are <em>not</em> interleaved with any
+/// other input; it makes no such promise between two calls. Sending the deletions and then the text
+/// separately lets the target begin processing the backspaces while the text is already arriving, and the
+/// still-draining deletions eat the front of it.</para>
+///
+/// <para>That bug shipped, and it was invisible for exactly as long as the common case had nothing to
+/// delete: completing "wor" to "world" shares a prefix, so there were no backspaces and only one call.
+/// A personal-vocabulary entry like "Alexandra Fairbourne Reed" shares no prefix with the typed "iht" — the
+/// capital I does not match — so three backspaces were sent, and the user got "exandra Fairbourne Reed".</para>
+///
 /// Callers must not invoke this from inside the keyboard hook callback while suppressing the triggering
 /// key — input injected from there is discarded. Post it back to the message loop first.
 /// </summary>
@@ -18,8 +30,9 @@ public sealed class Win32TextInjector : ITextInjector
         var final = MatchCase(typedWord, replacement);
         var keep = CommonPrefixLength(typedWord, final);
 
-        SendBackspaces(typedWord.Length - keep);
-        SendText(final[keep..] + (appendTrailingSpace ? " " : string.Empty));
+        Send(BuildReplacement(
+            backspaces: typedWord.Length - keep,
+            text: final[keep..] + (appendTrailingSpace ? " " : string.Empty)));
     }
 
     public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
@@ -28,8 +41,38 @@ public sealed class Win32TextInjector : ITextInjector
         var keep = CommonPrefixLength(typedWord, final);
 
         // +1 for the boundary character the user already typed, which we re-append after the correction.
-        SendBackspaces(typedWord.Length - keep + 1);
-        SendText(final[keep..] + boundaryChar);
+        Send(BuildReplacement(
+            backspaces: typedWord.Length - keep + 1,
+            text: final[keep..] + boundaryChar));
+    }
+
+    /// <summary>
+    /// Builds the deletions and the replacement text as one contiguous event batch.
+    /// </summary>
+    /// <remarks>
+    /// Exposed to tests so the ordering and composition of the batch can be asserted without a real
+    /// keyboard. What goes wrong here does not throw — it produces subtly wrong text in another
+    /// application, which no unit test can observe after the fact.
+    /// </remarks>
+    internal static INPUT[] BuildReplacement(int backspaces, string text)
+    {
+        var deletions = Math.Max(0, backspaces);
+        var inputs = new INPUT[(deletions + text.Length) * 2];
+        var at = 0;
+
+        for (var i = 0; i < deletions; i++)
+        {
+            inputs[at++] = KeyInput(VK_BACK, keyUp: false);
+            inputs[at++] = KeyInput(VK_BACK, keyUp: true);
+        }
+
+        foreach (var c in text)
+        {
+            inputs[at++] = UnicodeInput(c, keyUp: false);
+            inputs[at++] = UnicodeInput(c, keyUp: true);
+        }
+
+        return inputs;
     }
 
     /// <summary>
@@ -65,33 +108,6 @@ public sealed class Win32TextInjector : ITextInjector
         return replacement;
     }
 
-    private static void SendBackspaces(int count)
-    {
-        if (count <= 0) return;
-
-        var inputs = new INPUT[count * 2];
-        for (var i = 0; i < count; i++)
-        {
-            inputs[i * 2] = KeyInput(VK_BACK, keyUp: false);
-            inputs[i * 2 + 1] = KeyInput(VK_BACK, keyUp: true);
-        }
-
-        Send(inputs);
-    }
-
-    private static void SendText(string text)
-    {
-        if (text.Length == 0) return;
-
-        var inputs = new INPUT[text.Length * 2];
-        for (var i = 0; i < text.Length; i++)
-        {
-            inputs[i * 2] = UnicodeInput(text[i], keyUp: false);
-            inputs[i * 2 + 1] = UnicodeInput(text[i], keyUp: true);
-        }
-
-        Send(inputs);
-    }
 
     /// <summary>
     /// Wraps SendInput so a rejected batch surfaces instead of silently doing nothing. SendInput returns the

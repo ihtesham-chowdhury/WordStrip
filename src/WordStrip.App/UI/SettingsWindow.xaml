@@ -182,7 +182,7 @@
                         IsSnapToTickEnabled="True"
                         Margin="0,0,0,4" />
                 <TextBlock Style="{StaticResource Hint}"
-                           Text="How long the highlight takes to move between words. Holding Tab always scrubs faster than this." />
+                           Text="How long the highlight takes to move between words. Holding Tab always scrubs faster than this. Drag all the way to the right to switch animation off completely — the bar and the highlight then appear instantly, which suits fast typing." />
 
                 <Border Background="#FFF4E5" CornerRadius="8" Padding="10,8" Margin="0,12,0,0"
                         Visibility="{Binding MotionDisabledBySystem, Converter={StaticResource BoolToVisibility}}">

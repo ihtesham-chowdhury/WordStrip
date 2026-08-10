@@ -6,4 +6,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The text injector builds a SendInput batch whose ordering is the whole correctness story, and a
+         mistake there produces subtly wrong text in another application rather than an exception. Letting
+         the tests see the batch it would send is the only way to assert that without a real keyboard. -->
+    <InternalsVisibleTo Include="WordStrip.Core.Tests" />
+  </ItemGroup>
+
 </Project>

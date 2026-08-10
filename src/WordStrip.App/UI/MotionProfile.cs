@@ -18,6 +18,17 @@ public readonly record struct MotionProfile
     /// <summary>Cycling faster than this counts as a key-repeat scrub rather than individual presses.</summary>
     public static readonly TimeSpan RepeatThreshold = TimeSpan.FromMilliseconds(160);
 
+    /// <summary>
+    /// True when the speed slider is at its maximum, which means "no animation at all" rather than "very
+    /// fast animation".
+    ///
+    /// <para>The far end of the slider used to be 80 ms, which is quick but still visible — and for someone
+    /// typing at speed, a highlight that slides is a highlight that is briefly in the wrong place. Turning
+    /// motion off is a different thing from making it short, so the end of the travel is where it belongs:
+    /// no extra control to find, and the direction the user is already dragging means what they expect.</para>
+    /// </summary>
+    public required bool IsInstant { get; init; }
+
     public required double LensSeconds { get; init; }
     public required double LensResponse { get; init; }
     public required double LensDamping { get; init; }
@@ -31,11 +42,15 @@ public readonly record struct MotionProfile
 
     public static MotionProfile ForSpeed(double speed)
     {
+        var clamped = Math.Clamp(speed, Core.Settings.AppSettings.MinMotionSpeed, Core.Settings.AppSettings.MaxMotionSpeed);
+
         // Higher speed means shorter animations, so every duration divides by it.
-        var s = 1.0 / Math.Clamp(speed, 0.5, 2.5);
+        var s = 1.0 / clamped;
 
         return new MotionProfile
         {
+            IsInstant = clamped >= Core.Settings.AppSettings.MaxMotionSpeed,
+
             LensSeconds = 0.20 * s,
             LensResponse = 0.15 * s,
             LensDamping = 0.85,

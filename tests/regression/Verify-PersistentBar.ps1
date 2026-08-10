@@ -32,7 +32,16 @@
 param(
     # Resolved below rather than here: $PSScriptRoot is not reliably populated while param defaults are
     # being evaluated, which silently yields a path rooted at the drive instead of at this folder.
-    [string] $ExePath
+    [string] $ExePath,
+
+    # "RichEdit" is much closer to what Windows 11 Notepad hosts, and exposes input-ordering races that a
+    # plain EDIT control processes too synchronously to show.
+    [ValidateSet('Edit', 'RichEdit')]
+    [string] $ControlClass = 'Edit',
+
+    # Milliseconds between synthetic keystrokes. The default is a deliberate, human pace; drop it to press
+    # on the timing between the deferred replacement and whatever the user types next.
+    [int] $PerKeyMs = 90
 )
 
 $ErrorActionPreference = 'Stop'
@@ -188,7 +197,8 @@ function Assert-StillFocused([IntPtr] $editHwnd) {
     (CLAUDE_PROJECT_CONTEXT.md sections 6 and 13). Blasting "helo " that way yields "healo". That is the
     harness outrunning a real keyboard, not a defect, so the harness types at a plausible speed instead.
 #>
-function Send([IntPtr] $editHwnd, [string] $keys, [int] $settleMs = 700, [int] $perKeyMs = 90) {
+function Send([IntPtr] $editHwnd, [string] $keys, [int] $settleMs = 700, [int] $perKeyMs = 0) {
+    if ($perKeyMs -le 0) { $perKeyMs = $script:PerKeyMs }
     Assert-StillFocused $editHwnd
 
     # One token = one keystroke. Brace groups like {TAB} must stay whole, and the modifier prefixes ^ % +
@@ -205,11 +215,40 @@ function Send([IntPtr] $editHwnd, [string] $keys, [int] $settleMs = 700, [int] $
 
 Write-Host "`nWordStrip persistent-bar regression" -ForegroundColor Cyan
 Write-Host "Executable: $ExePath"
+Write-Host "Target control: $ControlClass, $PerKeyMs ms between keys"
 
 if (-not (Test-Path $ExePath)) { throw "Not found: $ExePath. Build the solution first." }
 
 Get-Process -Name 'WordStrip*' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
+
+<#
+    Point the app at a throwaway data folder and seed one known personal entry.
+
+    WORDSTRIP_DATA_DIR moves settings, personal vocabulary and learned data together. Without it this check
+    would have to either write into the user's own vocabulary — destroying their data to run a test — or
+    assert against whatever happens to be in it, which passes by accident on one machine and fails
+    everywhere else.
+
+    The seeded entry is chosen to reproduce the bug it guards: capitalised, so the shared prefix with the
+    typed "iht" is zero and backspaces are unavoidable, and multi-word, so a truncation is obvious.
+#>
+$personalWord = 'Alexandra Fairbourne Reed'
+$personalPrefix = 'iht'
+
+$dataDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("wordstrip-regression-" + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null
+@"
+{
+  "Version": 1,
+  "Words": [
+    { "Key": "alexandrafairbournereed", "Display": "$personalWord", "Frequency": 1 }
+  ]
+}
+"@ | Set-Content -Path (Join-Path $dataDirectory 'personal-vocabulary.json') -Encoding utf8
+
+$env:WORDSTRIP_DATA_DIR = $dataDirectory
+Write-Host "Data folder for this run: $dataDirectory" -ForegroundColor DarkGray
 
 $app = $null
 $target = $null
@@ -227,7 +266,7 @@ try {
     # entries with spaces and quotes nothing, so an unquoted path here is parsed as "-File D:\Claude".
     $targetScript = Join-Path $here 'TestTarget.ps1'
     $target = Start-Process -FilePath 'powershell.exe' `
-        -ArgumentList '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$targetScript`"" `
+        -ArgumentList '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$targetScript`"", '-ControlClass', $ControlClass `
         -PassThru
 
     # Polled rather than slept: a second PowerShell host plus loading System.Windows.Forms lands right around
@@ -311,8 +350,26 @@ try {
         ($afterAccept -ne $beforeAccept -and $afterAccept -notmatch 'wor$') "before='$beforeAccept' after='$afterAccept'"
     Check 'the accepted word is followed by a space' ($afterAccept.EndsWith(' ')) "got '$($afterAccept -replace "`t", '\t')'"
 
-    # --- 5. Esc dismisses -----------------------------------------------------------------------------
-    Write-Host "`n5. Esc dismisses the bar"
+    # --- 5. A multi-word personal entry inserts whole --------------------------------------------------
+    # The regression this guards shipped once. Deletions and text went as two SendInput calls, and the
+    # still-draining backspaces ate the front of the replacement: "Alexandra Fairbourne Reed" arrived as
+    # "exandra Fairbourne Reed". It only shows up when the typed prefix and the entry disagree about
+    # capitalisation, because that is what makes the shared prefix zero and forces backspaces at all.
+    if ($personalWord) {
+        Write-Host "`n5. A multi-word personal entry inserts whole"
+        [W]::ClearText($edit)
+        Start-Sleep -Milliseconds 300
+        Send $edit $personalPrefix
+        Send $edit '{TAB}'
+        Send $edit ' ' 1400
+        $inserted = [W]::TextOf($edit)
+
+        Check "personal entry inserts complete" ($inserted.Trim() -eq $personalWord) `
+            "expected '$personalWord', got '$($inserted.Trim())'"
+    }
+
+    # --- 6. Esc dismisses -----------------------------------------------------------------------------
+    Write-Host "`n6. Esc dismisses the bar"
     Send $edit '{ESC}' 1200
     Check 'bar is hidden after Esc' (-not [W]::HasVisibleWpfWindow($app.Id))
 
@@ -322,6 +379,11 @@ finally {
     Write-Host "`nCleaning up..."
     if ($target -and -not $target.HasExited) { Stop-Process -Id $target.Id -Force -ErrorAction SilentlyContinue }
     Get-Process -Name 'WordStrip*' -ErrorAction SilentlyContinue | Stop-Process -Force
+
+    $env:WORDSTRIP_DATA_DIR = $null
+    if ($dataDirectory -and (Test-Path $dataDirectory)) {
+        Remove-Item $dataDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 if ($script:Failures.Count -gt 0) {

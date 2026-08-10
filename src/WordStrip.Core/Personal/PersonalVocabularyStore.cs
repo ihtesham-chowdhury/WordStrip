@@ -42,10 +42,7 @@ public sealed class PersonalVocabularyStore
 
     public PersonalVocabularyStore(string? filePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WordStrip",
-            "personal-vocabulary.json");
+        _filePath = filePath ?? Settings.UserDataLocation.File("personal-vocabulary.json");
     }
 
     /// <summary>Where the vocabulary lives on disk. Surfaced so the settings window can show the user exactly what file this is.</summary>

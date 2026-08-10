@@ -63,10 +63,7 @@ public sealed class PersonalLanguageModel
 
     public PersonalLanguageModel(string? filePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WordStrip",
-            "personal-language-model.json");
+        _filePath = filePath ?? Settings.UserDataLocation.File("personal-language-model.json");
     }
 
     public string FilePath => _filePath;
