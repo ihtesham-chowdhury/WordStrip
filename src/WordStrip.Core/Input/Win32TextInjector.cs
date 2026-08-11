@@ -72,8 +72,20 @@ public sealed class Win32TextInjector : ITextInjector
     private static void SendReplacement(int backspaces, string text)
     {
         var stopwatch = InjectionLog.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
-
         var deletions = Math.Max(0, backspaces);
+
+        // Deliver straight to the control when there is one. See PostToControl for why this is the primary
+        // path and synthetic keystrokes the fallback.
+        var focus = Automation.FocusedControlInspector.GetFocusedControlInfo();
+        if (focus.IsStandardEditControl && !focus.IsPasswordField && focus.Handle != 0 &&
+            PostToControl(focus.Handle, deletions, text))
+        {
+            stopwatch?.Stop();
+            InjectionLog.Record(text, deletions, deletions + text.Length, (uint)(deletions + text.Length),
+                stopwatch?.Elapsed.TotalMilliseconds ?? 0, chunks: 1, method: "WM_CHAR");
+            return;
+        }
+
         var totalEvents = (deletions + text.Length) * 2;
         uint inserted = 0;
         var chunks = 0;
@@ -94,8 +106,87 @@ public sealed class Win32TextInjector : ITextInjector
         }
 
         stopwatch?.Stop();
-        InjectionLog.Record(text, deletions, totalEvents, inserted, stopwatch?.Elapsed.TotalMilliseconds ?? 0, chunks);
+        InjectionLog.Record(text, deletions, totalEvents, inserted, stopwatch?.Elapsed.TotalMilliseconds ?? 0, chunks, "SendInput");
     }
+
+    /// <summary>
+    /// Posts the deletions and the text to the control as ordinary typed characters.
+    ///
+    /// <para><b>Why this replaced synthetic keystrokes as the primary path.</b> SendInput pretends to be a
+    /// keyboard, so every character is dragged through every low-level keyboard hook on the machine — ours,
+    /// and whatever else the user runs. Measured on a real machine that came to roughly two milliseconds per
+    /// character: eighty milliseconds for a name, two hundred and thirty for an address. Windows accepted
+    /// every event and the app sent exactly the right text, but Windows 11 Notepad mangled a burst that
+    /// long, dropping characters and repeating others. A window message goes straight to the control, in
+    /// order, in microseconds, and no hook ever sees it.</para>
+    ///
+    /// <para>Restricted to Edit and RichEdit because those are the only surfaces this app supports and the
+    /// only ones certain to treat WM_CHAR exactly as real typing — including 0x08 as a backspace. Anything
+    /// else falls back to SendInput, which is universal even if it is slower.</para>
+    ///
+    /// <para>Posted rather than sent, so a busy target can never block the app; a thread's message queue is
+    /// ordered, so the characters still arrive in sequence.</para>
+    /// </summary>
+    private static bool PostToControl(nint control, int backspaces, string text)
+    {
+        // No backspaces at all: select the characters to be replaced and let the first typed one overwrite
+        // them, which is what happens when a person selects a word and types over it.
+        //
+        // Backspace is the single thing the two control types disagree about, and both disagreements were
+        // observed rather than guessed. A plain EDIT deletes on WM_CHAR 0x08; RichEdit ignores the character
+        // and wants WM_KEYDOWN — and sending that key to an EDIT lost characters from the replacement
+        // outright ("Alexandra Haq" arriving as "htshml a"). Selecting the range sidesteps the
+        // disagreement instead of branching on which control happens to have focus.
+        if (backspaces > 0 && !SelectPrecedingCharacters(control, backspaces)) return false;
+
+        foreach (var c in text)
+        {
+            if (!PostMessage(control, WM_CHAR, c, 1)) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Selects the given number of characters immediately before the caret, so the next typed character
+    /// replaces them. False when the caret cannot be established, which sends the caller to SendInput.
+    /// </summary>
+    private static bool SelectPrecedingCharacters(nint control, int count)
+    {
+        // Asked for by value rather than through a pointer: EM_GETSEL can report the selection in its return
+        // value, packed into two words. The richer messages take a struct pointer, which would be an address
+        // in this process and meaningless in the one that owns the control.
+        if (SendMessageTimeout(control, EM_GETSEL, 0, 0, SMTO_ABORTIFHUNG, SelectionTimeoutMs, out var packed) == 0)
+        {
+            InjectionLog.RecordSelection("EM_GETSEL failed", 0, 0, count);
+            return false;
+        }
+
+        var value = (long)packed;
+        if (value < 0) return false;   // beyond 64K of text; the packed form cannot express it
+
+        var low = (int)(value & 0xFFFF);
+        var high = (int)((value >> 16) & 0xFFFF);
+
+        InjectionLog.RecordSelection("EM_GETSEL", low, high, count);
+
+        // The caret is the larger of the two words, and which word carries it is not something to rely on.
+        // The documented packing is start in the low word and end in the high one, but a real Edit control
+        // with the caret at position three and nothing selected was observed returning plain 3 — low word
+        // three, high word zero. Reading that as "start 3, end 0" made the code conclude there was already a
+        // selection and skip selecting anything at all, which is precisely the bug this replaced.
+        //
+        // Taking the maximum is correct under either packing and for an empty selection, where both words
+        // hold the same value anyway.
+        var caret = Math.Max(low, high);
+        if (caret <= 0) return false;
+
+        var from = Math.Max(0, caret - count);
+        return PostMessage(control, EM_SETSEL, from, caret);
+    }
+
+    /// <summary>Long enough for a healthy application, short enough that a wedged one costs a dropped suggestion rather than a freeze.</summary>
+    private const uint SelectionTimeoutMs = 120;
 
     /// <summary>
     /// Builds the deletions and the replacement text as one contiguous event batch.

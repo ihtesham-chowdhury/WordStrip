@@ -41,7 +41,8 @@ public static class FocusedControlInspector
         return new FocusedControlInfo(
             IsStandardEditControl: true,
             IsPasswordField: isPassword,
-            Caret: TryGetCaretScreenRect(info));
+            Caret: TryGetCaretScreenRect(info),
+            Handle: info.hwndFocus);
     }
 
     /// <summary>

@@ -286,11 +286,21 @@ try {
     }
     if ($win -eq [IntPtr]::Zero) { throw "The test window never appeared." }
 
-    [W]::ForceForeground($win)
-    Start-Sleep -Milliseconds 800
+    # Retried rather than attempted once. Another application can hold the foreground — a modern WinUI app
+    # that was already open is quite capable of taking it straight back — and a single attempt turns that
+    # into a spurious failure of the whole run.
+    $edit = [IntPtr]::Zero
+    $editClass = ''
+    foreach ($attempt in 1..10) {
+        [W]::ForceForeground($win)
+        Start-Sleep -Milliseconds 500
 
-    $edit = [W]::FocusedControl()
-    $editClass = [W]::ClassOf($edit)
+        $edit = [W]::FocusedControl()
+        $editClass = [W]::ClassOf($edit)
+        if ($editClass -match '^(Edit|RichEdit|RICHEDIT)') { break }
+
+        Write-Host "  foreground attempt $attempt saw '$editClass', retrying..." -ForegroundColor DarkGray
+    }
     Write-Host "Focused control class: '$editClass'"
     if (-not ($editClass -match '^(Edit|RichEdit)')) {
         throw "Focused control is '$editClass', not a Win32 edit control. Aborting rather than typing blind."

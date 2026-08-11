@@ -35,7 +35,7 @@ public static class InjectionLog
     public static string FilePath => Path;
 
     /// <summary>Records one injection attempt. Cheap no-op when logging is off.</summary>
-    public static void Record(string text, int backspaces, int events, uint inserted, double elapsedMs, int chunks)
+    public static void Record(string text, int backspaces, int events, uint inserted, double elapsedMs, int chunks, string method = "SendInput")
     {
         if (!Enabled) return;
 
@@ -45,7 +45,8 @@ public static class InjectionLog
 
             var line = new StringBuilder()
                 .Append(DateTime.Now.ToString("HH:mm:ss.fff"))
-                .Append("  chunks=").Append(chunks)
+                .Append("  via=").Append(method)
+                .Append(" chunks=").Append(chunks)
                 .Append(" backspaces=").Append(backspaces)
                 .Append(" chars=").Append(text.Length)
                 .Append(" events=").Append(events)
@@ -61,6 +62,21 @@ public static class InjectionLog
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Diagnostics must never be able to break the thing they are diagnosing.
+        }
+    }
+
+    /// <summary>Records what the control reported about its caret, for diagnosing selection-based replacement.</summary>
+    public static void RecordSelection(string what, int start, int end, int wanted)
+    {
+        if (!Enabled) return;
+
+        try
+        {
+            lock (Gate) File.AppendAllText(Path,
+                $"           {what}: start={start} end={end} wantToDelete={wanted}{Environment.NewLine}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 

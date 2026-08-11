@@ -6,7 +6,16 @@ public readonly record struct CaretRect(int Left, int Top, int Right, int Bottom
     public int Height => Bottom - Top;
 }
 
+/// <param name="Handle">
+/// The focused control's window handle, or zero when there isn't one.
+///
+/// <para>Carried so text can be delivered to the control directly rather than pretended at the keyboard.
+/// Synthetic keystrokes are dragged through every low-level keyboard hook on the machine, which measured at
+/// two milliseconds per character — two hundred for an address — and some editors mangle a burst that long.
+/// A window message goes straight to the control.</para>
+/// </param>
 public readonly record struct FocusedControlInfo(
     bool IsStandardEditControl,
     bool IsPasswordField,
-    CaretRect? Caret = null);
+    CaretRect? Caret = null,
+    nint Handle = 0);

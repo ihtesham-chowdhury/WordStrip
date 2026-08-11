@@ -3,7 +3,7 @@
 ; Expects the self-contained publish output in publish\portable\.
 
 #define AppName        "WordStrip"
-#define AppVersion     "0.8.0"
+#define AppVersion     "0.9.0"
 #define AppPublisher   "WordStrip"
 #define AppExeName     "WordStrip.exe"
 
@@ -71,6 +71,7 @@ Filename: "{cmd}"; Parameters: "/C taskkill /IM {#AppExeName} /F"; Flags: runhid
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\WordStrip"
+
 
 
 

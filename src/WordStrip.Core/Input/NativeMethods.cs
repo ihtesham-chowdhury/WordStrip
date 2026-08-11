@@ -13,6 +13,12 @@ internal static class NativeMethods
     public const int WM_SYSKEYDOWN = 0x0104;
     public const int WM_SYSKEYUP = 0x0105;
 
+    /// <summary>
+    /// A typed character, delivered straight to a control rather than pretended at the keyboard. Both Edit
+    /// and RichEdit act on this exactly as they act on real typing, including 0x08 for backspace.
+    /// </summary>
+    public const int WM_CHAR = 0x0102;
+
     public const int WM_LBUTTONDOWN = 0x0201;
     public const int WM_RBUTTONDOWN = 0x0204;
     public const int WM_MBUTTONDOWN = 0x0207;
@@ -32,6 +38,24 @@ internal static class NativeMethods
     /// dwExtraInfo == 0, so an exact match here is effectively unambiguous.
     /// </summary>
     public const nint OwnInjectionMarker = 0x57535452; // ASCII "WSTR"
+
+    /// <summary>
+    /// Selection messages, used to replace text without sending a single backspace.
+    ///
+    /// <para>Backspace turned out to be the one thing the two control types disagree about: a plain EDIT
+    /// treats WM_CHAR 0x08 as a delete and ignores nothing, RichEdit ignores the character and wants the
+    /// key, and sending the key to an EDIT lost characters outright. Selecting the range and letting the
+    /// first typed character overwrite it is what both do identically, because it is what happens when a
+    /// person selects a word and types over it.</para>
+    ///
+    /// <para>Both take plain integers, so they cross a process boundary safely — unlike the richer
+    /// selection messages, which pass a pointer only valid in the caller's own address space.</para>
+    /// </summary>
+    public const int EM_GETSEL = 0x00B0;
+    public const int EM_SETSEL = 0x00B1;
+
+    /// <summary>Give up rather than wait on a target that has stopped responding.</summary>
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
 
     public const int VK_BACK = 0x08;
     public const int VK_TAB = 0x09;
@@ -211,6 +235,22 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
+
+    /// <summary>
+    /// Queues a message to a window and returns immediately.
+    ///
+    /// <para>Posted rather than sent: <c>SendMessage</c> blocks until the target has finished handling it,
+    /// which across a process boundary means the app hangs for as long as the other one is busy. Posting
+    /// keeps the messages in order — a thread's queue is FIFO — without ever waiting on someone else.</para>
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PostMessage(nint hWnd, uint msg, nint wParam, nint lParam);
+
+    /// <summary>Sends a message but refuses to wait forever, so another application being busy cannot hang this one.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint SendMessageTimeout(
+        nint hWnd, uint msg, nint wParam, nint lParam, uint flags, uint timeoutMs, out nint result);
 
     [DllImport("user32.dll")]
     public static extern int ToUnicodeEx(
