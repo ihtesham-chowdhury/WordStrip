@@ -25,14 +25,28 @@ namespace WordStrip.Core.Input;
 /// </summary>
 public sealed class Win32TextInjector : ITextInjector
 {
+    /// <summary>
+    /// Longest run of characters sent in one <c>SendInput</c> call.
+    ///
+    /// <para>Length is the one variable that tracks the partial-insertion reports: an ordinary completion
+    /// sends a handful of characters and has never misbehaved, while a personal-vocabulary address is fifty,
+    /// which is a hundred key events in a single burst. Whatever swallows the tail — a low-level hook
+    /// somewhere in the chain exceeding its timeout, or a target coalescing a burst it did not expect —
+    /// giving it less to swallow at once is the mitigation that does not depend on knowing which.</para>
+    ///
+    /// <para>Twenty-four keeps every ordinary word and most phrases in a single call, so the common path is
+    /// unchanged and still atomic.</para>
+    /// </summary>
+    public const int MaxCharactersPerBatch = 24;
+
     public void ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace)
     {
         var final = MatchCase(typedWord, replacement);
         var keep = CommonPrefixLength(typedWord, final);
 
-        Send(BuildReplacement(
+        SendReplacement(
             backspaces: typedWord.Length - keep,
-            text: final[keep..] + (appendTrailingSpace ? " " : string.Empty)));
+            text: final[keep..] + (appendTrailingSpace ? " " : string.Empty));
     }
 
     public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
@@ -41,9 +55,46 @@ public sealed class Win32TextInjector : ITextInjector
         var keep = CommonPrefixLength(typedWord, final);
 
         // +1 for the boundary character the user already typed, which we re-append after the correction.
-        Send(BuildReplacement(
+        SendReplacement(
             backspaces: typedWord.Length - keep + 1,
-            text: final[keep..] + boundaryChar));
+            text: final[keep..] + boundaryChar);
+    }
+
+    /// <summary>
+    /// Sends the deletions and the text, splitting only when the text is long enough to be worth splitting.
+    ///
+    /// <para>The deletions always travel with the first chunk. That ordering is what the single-batch rule
+    /// above is protecting: separating them lets the target start deleting while the text is arriving and
+    /// eat its front. Splitting <em>within</em> the text is a different and safer thing — every chunk is
+    /// still ordered and atomic, and the user is not typing at this instant because the key that triggered
+    /// the replacement was swallowed.</para>
+    /// </summary>
+    private static void SendReplacement(int backspaces, string text)
+    {
+        var stopwatch = InjectionLog.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
+
+        var deletions = Math.Max(0, backspaces);
+        var totalEvents = (deletions + text.Length) * 2;
+        uint inserted = 0;
+        var chunks = 0;
+
+        var offset = 0;
+        while (offset < text.Length || chunks == 0)
+        {
+            var length = Math.Min(MaxCharactersPerBatch, text.Length - offset);
+            if (length < 0) length = 0;
+
+            var batch = BuildReplacement(chunks == 0 ? deletions : 0, text.Substring(offset, length));
+            inserted += Send(batch);
+
+            chunks++;
+            offset += length;
+
+            if (length == 0) break;
+        }
+
+        stopwatch?.Stop();
+        InjectionLog.Record(text, deletions, totalEvents, inserted, stopwatch?.Elapsed.TotalMilliseconds ?? 0, chunks);
     }
 
     /// <summary>
@@ -114,8 +165,10 @@ public sealed class Win32TextInjector : ITextInjector
     /// number of events actually inserted; anything short of the full batch means the OS refused it (a wrong
     /// cbSize or a blocked injection, e.g. UIPI against an elevated target window).
     /// </summary>
-    private static void Send(INPUT[] inputs)
+    private static uint Send(INPUT[] inputs)
     {
+        if (inputs.Length == 0) return 0;
+
         var inserted = SendInput((uint)inputs.Length, inputs, InputSize);
         if (inserted != (uint)inputs.Length)
         {
@@ -123,6 +176,8 @@ public sealed class Win32TextInjector : ITextInjector
             throw new InvalidOperationException(
                 $"SendInput inserted {inserted} of {inputs.Length} events (cbSize={InputSize}, Win32 error {error}).");
         }
+
+        return inserted;
     }
 
     private static readonly int InputSize = System.Runtime.InteropServices.Marshal.SizeOf<INPUT>();

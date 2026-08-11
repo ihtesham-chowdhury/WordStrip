@@ -40,6 +40,25 @@ public readonly record struct MotionProfile
     public required double FadeInSeconds { get; init; }
     public required double DismissSeconds { get; init; }
 
+    /// <summary>
+    /// Scale the bar grows from as it appears. Below 1 so it expands into place rather than fading in at
+    /// full size — the same gesture a macOS window makes when an application opens.
+    /// </summary>
+    public required double RevealScaleFrom { get; init; }
+
+    /// <summary>
+    /// Damping for the scale spring, deliberately well under 1 so it overshoots and settles back. This is
+    /// the bounce: a critically damped scale arrives correctly and feels like nothing at all, whereas a
+    /// slight overshoot is what reads as a physical object arriving.
+    ///
+    /// <para>Applied only to scale, never to position. Both bouncing together looks like a wobble rather
+    /// than a pop, and the horizontal edges of a wide bar make any positional overshoot very visible.</para>
+    /// </summary>
+    public required double BounceDamping { get; init; }
+
+    /// <summary>Scale the bar shrinks to as it leaves. Closing mirrors opening, which is what makes the pair read as one object appearing and going away.</summary>
+    public required double DismissScaleTo { get; init; }
+
     public static MotionProfile ForSpeed(double speed)
     {
         var clamped = Math.Clamp(speed, Core.Settings.AppSettings.MinMotionSpeed, Core.Settings.AppSettings.MaxMotionSpeed);
@@ -60,7 +79,11 @@ public readonly record struct MotionProfile
             RevealDamping = 0.88,
 
             FadeInSeconds = 0.10 * s,
-            DismissSeconds = 0.10 * s,
+            DismissSeconds = 0.12 * s,
+
+            RevealScaleFrom = 0.88,
+            BounceDamping = 0.55,
+            DismissScaleTo = 0.94,
         };
     }
 

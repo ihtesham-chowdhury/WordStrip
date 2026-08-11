@@ -236,13 +236,20 @@ Start-Sleep -Milliseconds 500
 $personalWord = 'Alexandra Fairbourne Reed'
 $personalPrefix = 'iht'
 
+# A deliberately long entry, taken from a real report. Length is the variable that matters: every character
+# becomes two SendInput events, so a 51-character address is a 102-event batch against a 24-character name's
+# 48. Testing only the short one is what let a length-dependent failure through.
+$longWord = 'Flat 12, 46 Elmwood Crescent, Northfield, Halsted'
+$longPrefix = 'hou'
+
 $dataDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("wordstrip-regression-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null
 @"
 {
   "Version": 1,
   "Words": [
-    { "Key": "alexandrafairbournereed", "Display": "$personalWord", "Frequency": 1 }
+    { "Key": "alexandrafairbournereed", "Display": "$personalWord", "Frequency": 1 },
+    { "Key": "flatelmwoodcrescentnorthfieldhalsted", "Display": "$longWord", "Frequency": 1 }
   ]
 }
 "@ | Set-Content -Path (Join-Path $dataDirectory 'personal-vocabulary.json') -Encoding utf8
@@ -366,6 +373,18 @@ try {
 
         Check "personal entry inserts complete" ($inserted.Trim() -eq $personalWord) `
             "expected '$personalWord', got '$($inserted.Trim())'"
+
+        # Same again with twice the characters. Reported symptom is that the tail goes missing on longer
+        # entries while the trailing space still arrives.
+        [W]::ClearText($edit)
+        Start-Sleep -Milliseconds 300
+        Send $edit $longPrefix
+        Send $edit '{TAB}'
+        Send $edit ' ' 1800
+        $insertedLong = [W]::TextOf($edit)
+
+        Check "long personal entry inserts complete ($($longWord.Length) chars)" ($insertedLong.Trim() -eq $longWord) `
+            "expected '$longWord', got '$($insertedLong.Trim())'"
     }
 
     # --- 6. Esc dismisses -----------------------------------------------------------------------------

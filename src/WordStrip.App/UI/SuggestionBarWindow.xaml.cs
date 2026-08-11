@@ -9,6 +9,7 @@ using WordStrip.App.UI.Theming;
 using WordStrip.Core.Automation;
 using WordStrip.Core.Prediction;
 using WordStrip.Core.Settings;
+using Point = System.Windows.Point;
 using Color = System.Windows.Media.Color;
 using Colors = System.Windows.Media.Colors;
 using Size = System.Windows.Size;
@@ -367,12 +368,24 @@ public partial class SuggestionBarWindow : Window
         {
             RootHost.BeginAnimation(OpacityProperty, null);
             RootTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             RootHost.Opacity = 1;
             RootTranslate.Y = 0;
+            RootScale.ScaleX = 1;
             RootScale.ScaleY = 1;
             return;
         }
+
+        // Grow out of whichever screen edge the bar is anchored to, so it reads as emerging from there
+        // rather than materialising in mid-air. Following the caret has no edge to grow from, so it pops
+        // from its own centre.
+        RootHost.RenderTransformOrigin = _settings.BarPosition switch
+        {
+            BarPosition.TopCenter => new System.Windows.Point(0.5, 0),
+            BarPosition.NearCaret => new System.Windows.Point(0.5, 0.5),
+            _ => new System.Windows.Point(0.5, 1),
+        };
 
         var seconds = _motion.RevealSeconds;
         var duration = new Duration(TimeSpan.FromSeconds(seconds));
@@ -384,10 +397,24 @@ public partial class SuggestionBarWindow : Window
         RootTranslate.BeginAnimation(TranslateTransform.YProperty,
             new DoubleAnimation(0, duration) { EasingFunction = Spring(_motion.RevealResponse, _motion.RevealDamping, seconds) });
 
-        // A slight vertical stretch as it rises: glass arriving, not a box appearing.
-        RootScale.ScaleY = 0.96;
+        // The pop: both axes scale up together past 1 and settle back, the gesture a macOS window makes when
+        // an application opens. Scaling only one axis — as this used to — is a stretch, which reads as the
+        // bar being pulled rather than arriving.
+        //
+        // The bounce lives on scale alone. Letting position overshoot too turns the arrival into a wobble,
+        // and on a bar this wide any vertical overshoot is very visible along its top and bottom edges.
+        var bounce = Spring(_motion.RevealResponse, _motion.BounceDamping, seconds);
+
+        // These two state a From, unlike everything else here. The rule elsewhere is to omit it so a
+        // re-triggered animation continues from wherever the property currently is — right for the selection
+        // lens, which is retargeted mid-flight. An entrance is not that: it is discrete, and it has to start
+        // small every time or there is no pop. Assigning the property instead would do nothing, because a
+        // still-running dismiss animation holds its value and wins over a local set.
+        RootScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(_motion.RevealScaleFrom, 1, duration) { EasingFunction = bounce });
+
         RootScale.BeginAnimation(ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(1, duration) { EasingFunction = Spring(_motion.RevealResponse, _motion.RevealDamping - 0.04, seconds) });
+            new DoubleAnimation(_motion.RevealScaleFrom, 1, duration) { EasingFunction = bounce });
     }
 
     private void Dismiss()
@@ -420,6 +447,17 @@ public partial class SuggestionBarWindow : Window
         RootHost.BeginAnimation(OpacityProperty, fade);
         RootTranslate.BeginAnimation(TranslateTransform.YProperty,
             new DoubleAnimation(6, duration) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+
+        // Shrink away as it goes, mirroring the way it grew. Closing that simply fades leaves the bar
+        // hanging at full size while it disappears, which reads as it being switched off rather than
+        // leaving. No bounce here — an overshoot on the way out just delays getting out of the way.
+        var shrink = new DoubleAnimation(_motion.DismissScaleTo, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+
+        RootScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
+        RootScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
     }
 
     private void MovePillTo(int index) => MovePillTo(index, _motion);
