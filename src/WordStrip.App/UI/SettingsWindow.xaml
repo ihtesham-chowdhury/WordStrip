@@ -286,8 +286,11 @@
                     <TextBlock Text="{Binding NeuralModelDetails}" Style="{StaticResource Hint}" Foreground="#4A5060" />
                 </Border>
 
+                <!-- OneWay stated explicitly. ProgressBar.Value binds two-way by default, which throws on a
+                     read-only source property and takes the whole window down as it opens — download
+                     progress is something the view model reports, never something the bar sets. -->
                 <ProgressBar Height="4" Margin="0,0,0,8" Minimum="0" Maximum="1"
-                             Value="{Binding NeuralProgress}"
+                             Value="{Binding NeuralProgress, Mode=OneWay}"
                              Visibility="{Binding NeuralBusy, Converter={StaticResource BoolToVisibility}}" />
 
                 <DockPanel>

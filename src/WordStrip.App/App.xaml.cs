@@ -36,9 +36,40 @@ public partial class App : System.Windows.Application
     private WordStrip.Neural.OnnxNeuralReranker? _neuralReranker;
     private NeuralRerankCoordinator? _neuralCoordinator;
 
+    /// <summary>
+    /// Where an unhandled exception is recorded before the process dies.
+    ///
+    /// <para>Added after a crash that left nothing behind but a Windows Error Reporting entry saying
+    /// "0xe0434352", which means only "a .NET exception" and identifies nothing. A tray application has no
+    /// console and no window to show a dialog in, so without this a crash is genuinely undiagnosable — and
+    /// the one that prompted it was in the settings window, where the user would simply see the whole app
+    /// vanish.</para>
+    /// </summary>
+    private static readonly string CrashLogPath =
+        Path.Combine(Path.GetTempPath(), "wordstrip_crash.log");
+
+    private static void RecordCrash(string source, Exception exception)
+    {
+        try
+        {
+            File.AppendAllText(CrashLogPath,
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {source}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Nothing sensible to do while already crashing.
+        }
+    }
+
     protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        DispatcherUnhandledException += (_, args) => RecordCrash("dispatcher", args.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception ex) RecordCrash("appdomain", ex);
+        };
 
         var openSettingsOnLaunch = e.Args.Contains("--settings", StringComparer.OrdinalIgnoreCase);
 
