@@ -81,8 +81,23 @@ delete. **[fact]**
 - **In progress:** Nothing. Phase 5 is closed out.
 - **Blocked:** Nothing is blocked. The largest *limitation* (browser/Electron support) is a known
   architectural gap, addressed by Phase 7 (TSF), not a blocker.
-- **Next priority:** The owner is retesting 0.7.0, specifically whether multi-word personal entries now
-  insert whole (§12 item 7 — the fix is unconfirmed). Do **not** start Phase 6 unasked.
+- **Next priority:** **Get the injection log from the owner** (§12 item 7). The partial-insertion bug has
+  been reported twice and reproduced zero times; 0.8.0 adds `WORDSTRIP_INJECTLOG=1` specifically to settle
+  it. After that, finish Phase 6 — the foundation is in, the ONNX implementation is not.
+
+### Phase 6 — what is done and what is not **[fact]**
+
+**Done:** `INeuralReranker` seam, `NeuralRerankCoordinator` (cascade, cancellation, stale-result
+suppression, bounded bonus, graceful failure), `UnavailableNeuralReranker`, `NeuralModelCatalog` with the
+verified model choice, and 15 tests covering every failure mode without needing a model.
+
+**Not done:** the ONNX implementation itself, the download UI, wiring the coordinator into
+`SuggestionController`, and the benchmarks. Needs `Microsoft.ML.OnnxRuntime` (the shipping app's first
+NuGet dependency, ~15 MB of native libraries) and a GPT-2 BPE tokenizer.
+
+**Model decision, made by the owner and verified 2026-08-11:** DistilGPT2, Apache 2.0, 82M parameters,
+~90 MB int8, ~250 MB RAM, CPU only, from `https://huggingface.co/distilbert/distilgpt2`. **Optional
+download, not bundled** — the installer stays ~66 MB and the app is fully functional without it.
 
 ## 4. Directory Structure
 
