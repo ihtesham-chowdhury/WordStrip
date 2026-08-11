@@ -274,6 +274,34 @@
             </StackPanel>
         </Border>
 
+        <TextBlock Text="SMARTER SUGGESTIONS (OPTIONAL)" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                           Text="WordStrip can optionally use a small language model to reorder the suggestions it has already chosen, based on the words before your cursor. It never adds words of its own, and everything runs on this computer — nothing is uploaded. This is entirely optional: WordStrip works exactly as it does now without it." />
+
+                <CheckBox Content="Use the language model to reorder suggestions" IsChecked="{Binding NeuralRerankingEnabled}" Margin="0,0,0,10" />
+
+                <Border Background="#F3F5F9" CornerRadius="8" Padding="10,8" Margin="0,0,0,10">
+                    <TextBlock Text="{Binding NeuralModelDetails}" Style="{StaticResource Hint}" Foreground="#4A5060" />
+                </Border>
+
+                <ProgressBar Height="4" Margin="0,0,0,8" Minimum="0" Maximum="1"
+                             Value="{Binding NeuralProgress}"
+                             Visibility="{Binding NeuralBusy, Converter={StaticResource BoolToVisibility}}" />
+
+                <DockPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                        <Button Content="Download model" Padding="12,4" Margin="0,0,8,0"
+                                IsEnabled="{Binding CanDownloadNeuralModel}" Click="OnDownloadModelClick" />
+                        <Button Content="Delete model" Padding="12,4"
+                                IsEnabled="{Binding CanDeleteNeuralModel}" Click="OnDeleteModelClick" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding NeuralStatus}" Style="{StaticResource Hint}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
         <TextBlock Text="STARTUP" Style="{StaticResource SectionTitle}" />
         <Border Style="{StaticResource Card}">
             <CheckBox Content="Start WordStrip when Windows starts" IsChecked="{Binding StartWithWindows}" />

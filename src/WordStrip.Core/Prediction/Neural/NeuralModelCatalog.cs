@@ -27,6 +27,19 @@ public sealed record NeuralModelDescriptor
 
     /// <summary>Plain-language summary for the settings window, not for developers.</summary>
     public required string Summary { get; init; }
+
+    /// <summary>Files to fetch, as (url, local file name). Sizes are verified, not estimated.</summary>
+    public required IReadOnlyList<(string Url, string FileName, long Bytes)> Files { get; init; }
+
+    public long TotalBytes
+    {
+        get
+        {
+            long total = 0;
+            foreach (var file in Files) total += file.Bytes;
+            return total;
+        }
+    }
 }
 
 /// <summary>The models WordStrip knows how to use.</summary>
@@ -41,23 +54,38 @@ public static class NeuralModelCatalog
     /// budget on a CPU, and it only ever reranks — it cannot introduce a word the statistical stack did not
     /// already offer.</para>
     ///
-    /// <para><b>Licence verified 2026-08-11:</b> Apache 2.0, which permits redistribution. WordStrip still
-    /// does not bundle it — the download is the user's explicit choice, so nobody pays for a feature they
-    /// did not ask for.</para>
+    /// <para><b>Licence:</b> the upstream model is Apache 2.0, which permits redistribution. The ONNX
+    /// conversion is republished by onnx-community and carries no licence statement of its own, so the
+    /// upstream terms are what apply — worth stating plainly rather than quietly assuming. WordStrip does
+    /// not bundle it either way: the download is the user's explicit choice.</para>
+    ///
+    /// <para><b>Sizes verified against the publisher on 2026-08-11, not estimated.</b> An earlier figure of
+    /// ~90 MB quoted in planning was wrong by a factor of nearly three. int8 is chosen over the smaller
+    /// fp16 build deliberately: this runs on the CPU, where fp16 is usually widened back to fp32 and ends
+    /// up slower, and latency is the whole constraint here.</para>
     /// </summary>
     public static NeuralModelDescriptor DistilGpt2 { get; } = new()
     {
         Name = "DistilGPT2",
-        Publisher = "Hugging Face",
-        License = "Apache 2.0",
-        SourceUrl = "https://huggingface.co/distilbert/distilgpt2",
-        DownloadMegabytes = 90,
-        ExpectedRamMegabytes = 250,
+        Publisher = "Hugging Face (ONNX conversion by onnx-community)",
+        License = "Apache 2.0 (from the upstream distilbert/distilgpt2 model)",
+        SourceUrl = "https://huggingface.co/onnx-community/distilgpt2-ONNX",
+        DownloadMegabytes = 227,
+        ExpectedRamMegabytes = 400,
         Quantization = "int8 (ONNX)",
         Requirements = "CPU only; no GPU required. Runs entirely on this machine.",
         Summary =
             "A small language model that reads the words before your cursor and reorders the suggestions " +
             "WordStrip has already chosen. It never adds words of its own, never sends anything anywhere, " +
             "and WordStrip works exactly as it does now without it.",
+
+        Files = new[]
+        {
+            (Base + "onnx/model_int8.onnx", "model.onnx", 236_714_483L),
+            (Base + "vocab.json", "vocab.json", 798_156L),
+            (Base + "merges.txt", "merges.txt", 456_318L),
+        },
     };
+
+    private const string Base = "https://huggingface.co/onnx-community/distilgpt2-ONNX/resolve/main/";
 }

@@ -5,6 +5,7 @@ using WordStrip.App.UI;
 using WordStrip.Core.Input;
 using WordStrip.Core.Personal;
 using WordStrip.Core.Prediction;
+using WordStrip.Core.Prediction.Neural;
 using WordStrip.Core.Settings;
 using WordStrip.Core.Suggestions;
 
@@ -31,6 +32,9 @@ public partial class App : System.Windows.Application
     private System.Windows.Threading.DispatcherTimer? _learningSaveTimer;
     private PersonalVocabularyStore? _personalVocabulary;
     private PersonalLanguageModel? _personalLearning;
+    private NeuralModelStore? _neuralModelStore;
+    private WordStrip.Neural.OnnxNeuralReranker? _neuralReranker;
+    private NeuralRerankCoordinator? _neuralCoordinator;
 
     protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {
@@ -90,10 +94,42 @@ public partial class App : System.Windows.Application
                 emoji: EmojiSuggester.Default);
         });
 
+        // Loaded after the engine, on the same background thread, and only if the user has both downloaded a
+        // model and switched the feature on. Three seconds of ONNX initialisation must never sit between
+        // launching the app and being able to type.
+        await LoadNeuralModelAsync();
+
         StartSuggestionEngine(predictionEngine);
 
         if (openSettingsOnLaunch)
             ShowSettingsWindow();
+    }
+
+    /// <summary>
+    /// Loads the neural model if there is one and the user wants it.
+    ///
+    /// <para>Every branch out of here leaves the app fully working. No model, feature switched off, a
+    /// corrupt file, an ONNX runtime that will not start on this CPU — all end with no coordinator, which
+    /// the controller reads as "do not rerank" and the statistical stack carries on exactly as it does for
+    /// everyone who never downloads anything.</para>
+    /// </summary>
+    private async System.Threading.Tasks.Task LoadNeuralModelAsync()
+    {
+        _neuralModelStore = new NeuralModelStore();
+
+        if (!_settings.NeuralRerankingEnabled || !_neuralModelStore.IsDownloaded) return;
+
+        var reranker = new WordStrip.Neural.OnnxNeuralReranker();
+        var loaded = await System.Threading.Tasks.Task.Run(() => reranker.TryLoad(_neuralModelStore));
+
+        if (!loaded)
+        {
+            reranker.Dispose();
+            return;
+        }
+
+        _neuralReranker = reranker;
+        _neuralCoordinator = new NeuralRerankCoordinator(reranker);
     }
 
     private void StartSuggestionEngine(PredictionEngine predictionEngine)
@@ -113,7 +149,8 @@ public partial class App : System.Windows.Application
 
         _suggestionController = new SuggestionController(
             _typingSession, predictionEngine, textInjector, _settings, postToMessageLoop,
-            personalLearning: _personalLearning)
+            personalLearning: _personalLearning,
+            neuralReranking: _neuralCoordinator)
         {
             IsPaused = _trayIcon?.IsPaused ?? false,
         };
@@ -212,6 +249,8 @@ public partial class App : System.Windows.Application
         SavePersonalData();
         viewModel.RefreshLearnedDataLabel();
 
+        if (_neuralModelStore is not null) viewModel.AttachNeuralModel(_neuralModelStore);
+
         _settingsWindow = new SettingsWindow(viewModel, _settings);
         _settingsWindow.Show();
     }
@@ -224,6 +263,8 @@ public partial class App : System.Windows.Application
         // Last chance to persist what was learned since the previous tick.
         SavePersonalData();
 
+        _neuralCoordinator?.Dispose();
+        _neuralReranker?.Dispose();
         _keyboardHook?.Dispose();
         _mouseHook?.Dispose();
         _typingSession?.Dispose();

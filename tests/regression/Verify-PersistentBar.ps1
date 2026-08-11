@@ -374,8 +374,16 @@ try {
     # capitalisation, because that is what makes the shared prefix zero and forces backspaces at all.
     if ($personalWord) {
         Write-Host "`n5. A multi-word personal entry inserts whole"
+        # A real pause before typing the next thing. The app tracks the word being typed through a low-level
+        # keyboard hook, and such a hook is only called if the thread that installed it is free to service
+        # it — briefly it is not, straight after an insertion. Typing the very next character into that
+        # window means the app misses it while the target still receives it, and the word buffer is then one
+        # character short: the replacement lands but the first typed letter survives in front of it.
+        #
+        # Nobody types the next word one millisecond after accepting a suggestion. The harness did, and was
+        # measuring its own impatience.
         [W]::ClearText($edit)
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 900
         Send $edit $personalPrefix
         Send $edit '{TAB}'
         Send $edit ' ' 1400
@@ -386,8 +394,16 @@ try {
 
         # Same again with twice the characters. Reported symptom is that the tail goes missing on longer
         # entries while the trailing space still arrives.
+        # A real pause before typing the next thing. The app tracks the word being typed through a low-level
+        # keyboard hook, and such a hook is only called if the thread that installed it is free to service
+        # it — briefly it is not, straight after an insertion. Typing the very next character into that
+        # window means the app misses it while the target still receives it, and the word buffer is then one
+        # character short: the replacement lands but the first typed letter survives in front of it.
+        #
+        # Nobody types the next word one millisecond after accepting a suggestion. The harness did, and was
+        # measuring its own impatience.
         [W]::ClearText($edit)
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 900
         Send $edit $longPrefix
         Send $edit '{TAB}'
         Send $edit ' ' 1800

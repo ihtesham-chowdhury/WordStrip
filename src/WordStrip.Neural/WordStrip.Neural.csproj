@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Kept out of WordStrip.Core deliberately. Core has no external dependencies and that is worth protecting:
+    it is the reason the prediction stack is predictable and the reason a broken package can never take the
+    app down. The seam (INeuralReranker) lives in Core; only this project knows what ONNX is.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WordStrip.Core\WordStrip.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.0.1" />
+  </ItemGroup>
+
+</Project>

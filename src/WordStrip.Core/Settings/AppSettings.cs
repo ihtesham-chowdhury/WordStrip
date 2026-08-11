@@ -114,5 +114,14 @@ public sealed class AppSettings
     /// </summary>
     public bool PhraseSuggestionsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether the downloaded neural model may reorder suggestions.
+    ///
+    /// <para>Off by default and meaningless until a model is downloaded, which is itself an explicit act.
+    /// Separate from the download so the feature can be switched off without throwing away 227 MB, and so
+    /// turning it off is instant rather than a decision about disk space.</para>
+    /// </summary>
+    public bool NeuralRerankingEnabled { get; set; }
+
     public bool StartWithWindows { get; set; }
 }

@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using WordStrip.App.UI.Theming;
 using WordStrip.Core.Personal;
 using WordStrip.Core.Platform;
+using WordStrip.Core.Prediction.Neural;
 using WordStrip.Core.Settings;
 
 namespace WordStrip.App.UI;
@@ -158,6 +159,124 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     public void RefreshLearnedDataLabel() => OnPropertyChanged(nameof(LearnedDataLabel));
+
+    // --- Neural model -------------------------------------------------------------------------------
+
+    private NeuralModelStore? _neuralModelStore;
+    private string _neuralStatus = string.Empty;
+    private double _neuralProgress;
+    private bool _neuralBusy;
+
+    public void AttachNeuralModel(NeuralModelStore store)
+    {
+        _neuralModelStore = store;
+        RefreshNeuralStatus();
+    }
+
+    public bool HasNeuralModelStore => _neuralModelStore is not null;
+
+    public NeuralModelDescriptor NeuralModel => _neuralModelStore?.Descriptor ?? NeuralModelCatalog.DistilGpt2;
+
+    /// <summary>Everything the user is entitled to know before choosing to download a quarter of a gigabyte.</summary>
+    public string NeuralModelDetails =>
+        $"{NeuralModel.Name} · {NeuralModel.DownloadMegabytes} MB download · " +
+        $"about {NeuralModel.ExpectedRamMegabytes} MB memory when in use\n" +
+        $"{NeuralModel.Quantization} · {NeuralModel.Requirements}\n" +
+        $"Licence: {NeuralModel.License}\nFrom: {NeuralModel.SourceUrl}";
+
+    public string NeuralStatus
+    {
+        get => _neuralStatus;
+        private set { _neuralStatus = value; OnPropertyChanged(); }
+    }
+
+    public double NeuralProgress
+    {
+        get => _neuralProgress;
+        private set { _neuralProgress = value; OnPropertyChanged(); }
+    }
+
+    public bool NeuralBusy
+    {
+        get => _neuralBusy;
+        private set
+        {
+            _neuralBusy = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanDownloadNeuralModel));
+            OnPropertyChanged(nameof(CanDeleteNeuralModel));
+        }
+    }
+
+    public bool IsNeuralModelDownloaded => _neuralModelStore?.IsDownloaded ?? false;
+
+    public bool CanDownloadNeuralModel => _neuralModelStore is not null && !_neuralBusy && !IsNeuralModelDownloaded;
+
+    public bool CanDeleteNeuralModel => _neuralModelStore is not null && !_neuralBusy && IsNeuralModelDownloaded;
+
+    public bool NeuralRerankingEnabled
+    {
+        get => _settings.NeuralRerankingEnabled;
+        set
+        {
+            if (_settings.NeuralRerankingEnabled == value) return;
+            _settings.NeuralRerankingEnabled = value;
+            Persist();
+            OnPropertyChanged();
+            RefreshNeuralStatus();
+        }
+    }
+
+    public async Task DownloadNeuralModelAsync()
+    {
+        if (_neuralModelStore is null || _neuralBusy) return;
+
+        NeuralBusy = true;
+        NeuralProgress = 0;
+
+        try
+        {
+            var progress = new Progress<ModelDownloadProgress>(p =>
+            {
+                NeuralProgress = p.Fraction;
+                NeuralStatus = $"Downloading {p.FileName} — {p.BytesReceived / 1024 / 1024:N0} of {p.BytesTotal / 1024 / 1024:N0} MB";
+            });
+
+            await _neuralModelStore.DownloadAsync(progress);
+            NeuralStatus = "Downloaded. Restart WordStrip to start using it.";
+        }
+        catch (Exception ex)
+        {
+            // Reported rather than thrown: a failed download is an ordinary outcome on a home connection,
+            // and the app is entirely usable without the model.
+            NeuralStatus = $"Download failed: {ex.Message}";
+        }
+        finally
+        {
+            NeuralBusy = false;
+            OnPropertyChanged(nameof(IsNeuralModelDownloaded));
+        }
+    }
+
+    public void DeleteNeuralModel()
+    {
+        _neuralModelStore?.Delete();
+        OnPropertyChanged(nameof(IsNeuralModelDownloaded));
+        OnPropertyChanged(nameof(CanDownloadNeuralModel));
+        OnPropertyChanged(nameof(CanDeleteNeuralModel));
+        RefreshNeuralStatus();
+    }
+
+    private void RefreshNeuralStatus()
+    {
+        if (_neuralModelStore is null) { NeuralStatus = string.Empty; return; }
+
+        NeuralStatus = !_neuralModelStore.IsDownloaded
+            ? "Not downloaded. WordStrip works fully without it."
+            : _settings.NeuralRerankingEnabled
+                ? "Downloaded and in use."
+                : "Downloaded, but switched off above.";
+    }
 
     public IReadOnlyList<ThemeChoice> Themes { get; } =
         ThemeCatalog.All.Select(t => new ThemeChoice(t.Id, t.Name, t.Description)).ToList();

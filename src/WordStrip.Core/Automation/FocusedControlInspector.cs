@@ -42,7 +42,9 @@ public static class FocusedControlInspector
             IsStandardEditControl: true,
             IsPasswordField: isPassword,
             Caret: TryGetCaretScreenRect(info),
-            Handle: info.hwndFocus);
+            Handle: info.hwndFocus,
+            IsRichEdit: className.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase) ||
+                        className.StartsWith("RICHEDIT", StringComparison.Ordinal));
     }
 
     /// <summary>

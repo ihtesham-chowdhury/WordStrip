@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WordStrip.Core\WordStrip.Core.csproj" />
+    <ProjectReference Include="..\WordStrip.Neural\WordStrip.Neural.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -41,9 +42,9 @@
     <AssemblyTitle>WordStrip</AssemblyTitle>
     <Description>Word suggestions and autocorrect for the Windows physical keyboard.</Description>
     <Company>WordStrip</Company>
-    <Version>0.9.0</Version>
-    <FileVersion>0.9.0.0</FileVersion>
-    <AssemblyVersion>0.9.0.0</AssemblyVersion>
+    <Version>0.10.0</Version>
+    <FileVersion>0.10.0.0</FileVersion>
+    <AssemblyVersion>0.10.0.0</AssemblyVersion>
 
     <!-- Per-monitor DPI awareness: without it Windows bitmap-stretches the bar on scaled displays and the
          glass edges and text go soft. -->
@@ -56,6 +57,8 @@
   </PropertyGroup>
 
 </Project>
+
+
 
 
 

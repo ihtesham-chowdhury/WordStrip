@@ -39,8 +39,12 @@ internal static class NativeMethods
     /// </summary>
     public const nint OwnInjectionMarker = 0x57535452; // ASCII "WSTR"
 
+    /// <summary>Backspace as a character rather than a virtual key. A plain Edit deletes on this; RichEdit ignores it and wants the key.</summary>
+    public const char BackspaceCharacter = '\b';
+
     /// <summary>
-    /// Selection messages, used to replace text without sending a single backspace.
+    /// Selection messages. Retained for reading the caret in diagnostics; replacement no longer uses them —
+    /// see Win32TextInjector for why absolute positions turned out to be unsafe here.
     ///
     /// <para>Backspace turned out to be the one thing the two control types disagree about: a plain EDIT
     /// treats WM_CHAR 0x08 as a delete and ignores nothing, RichEdit ignores the character and wants the

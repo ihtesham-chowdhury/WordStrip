@@ -53,10 +53,9 @@ delete. **[fact]**
 
 ## 3. Current Status
 
-- **Overall status:** **Phase 5 is complete and built as 0.7.0**, along with emoji suggestions, an
-  animation-off option, and a fix to text injection. The installer exists at
-  `publish\WordStrip-Setup-0.7.0.exe`. The owner has been running a 0.6.0-era build (their personal
-  vocabulary file is populated) and asked for everything to be shipped in one go for retesting. **[fact]**
+- **Overall status:** **All six planned phases are complete, built as 0.10.0.** Only Phase 7 (TSF) remains
+  from the original plan. The long-running partial-insertion bug is **fixed and confirmed by the owner**.
+  **[fact]**
 - **Completed:**
   - Keyboard hook, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -77,27 +76,39 @@ delete. **[fact]**
   - **Phase 5: multi-word phrase suggestions via bounded beam search** **[fact]**
   - **Emoji suggestions, animation-off at the far end of the speed slider, and a single-batch
     `SendInput` fix for partially-inserted replacements** **[fact]**
-  - **248 unit tests and the 0.7.0 build** **[fact]**
-- **In progress:** Nothing. Phase 5 is closed out.
+  - Phase 5 + emoji + the 0.7.0 build **[fact]**
+  - **Text insertion by window message rather than synthetic keystrokes — the fix for the partial-insertion
+    bug, confirmed by the owner. 233 ms → 5.9 ms for a 51-character entry.** **[fact]**
+  - **Apple-style bounce on the bar's entrance and exit** **[fact]**
+  - **Phase 6: ONNX neural reranking, optional 227 MB download, with the full cascade, async execution,
+    cancellation and stale-result suppression** **[fact]**
+  - **271 unit tests and the 0.10.0 build** **[fact]**
+- **In progress:** Nothing. Phases 1–6 are closed out.
 - **Blocked:** Nothing is blocked. The largest *limitation* (browser/Electron support) is a known
   architectural gap, addressed by Phase 7 (TSF), not a blocker.
-- **Next priority:** **Get the injection log from the owner** (§12 item 7). The partial-insertion bug has
-  been reported twice and reproduced zero times; 0.8.0 adds `WORDSTRIP_INJECTLOG=1` specifically to settle
-  it. After that, finish Phase 6 — the foundation is in, the ONNX implementation is not.
+- **Next priority:** Owner's call. Phase 7 (TSF) is the only planned phase left and is by far the largest —
+  it is what would make WordStrip work in browsers and Electron apps. Do **not** start it unasked.
 
-### Phase 6 — what is done and what is not **[fact]**
+### Phase 6 — as shipped **[fact]**
 
-**Done:** `INeuralReranker` seam, `NeuralRerankCoordinator` (cascade, cancellation, stale-result
-suppression, bounded bonus, graceful failure), `UnavailableNeuralReranker`, `NeuralModelCatalog` with the
-verified model choice, and 15 tests covering every failure mode without needing a model.
+**Model:** DistilGPT2, int8 ONNX. **227 MB download** (verified against the publisher, *not* the ~90 MB
+quoted during planning, which was an estimate and wrong by nearly three times). Apache 2.0 from the upstream
+`distilbert/distilgpt2`; the ONNX conversion at `onnx-community/distilgpt2-ONNX` carries no licence
+statement of its own, so upstream terms apply. CPU only.
 
-**Not done:** the ONNX implementation itself, the download UI, wiring the coordinator into
-`SuggestionController`, and the benchmarks. Needs `Microsoft.ML.OnnxRuntime` (the shipping app's first
-NuGet dependency, ~15 MB of native libraries) and a GPT-2 BPE tokenizer.
+**Optional download, never bundled.** The installer grew **66.1 → 70.7 MB (+4.6 MB)** for ONNX Runtime —
+also better than the ~15 MB warned about. The app is fully functional with no model, which is the default
+state.
 
-**Model decision, made by the owner and verified 2026-08-11:** DistilGPT2, Apache 2.0, 82M parameters,
-~90 MB int8, ~250 MB RAM, CPU only, from `https://huggingface.co/distilbert/distilgpt2`. **Optional
-download, not bundled** — the installer stays ~66 MB and the app is fully functional without it.
+**Measured:** cold load 3.0–4.4 s (background thread, never blocks startup) · warm inference **54–80 ms** ·
+one pass scores the whole candidate list, so five candidates cost the same as one · ~2.2 MB allocated per
+call · ~550 MB process working set with the model loaded.
+
+**Honest quality note:** first-token scoring on an 82M model quantised to int8 gives a useful but coarse
+signal. It reliably rejects nonsense — "forward" beats "banana" after "i am looking" — and it clearly reads
+context, scoring "you" about 7.5 nats higher after "thank" than after "looking". It does **not** reliably
+make finer calls: after "i am really looking" it narrowly prefers "you" to "forward". The tests assert what
+it can actually do, not what would be nice.
 
 ## 4. Directory Structure
 
@@ -499,7 +510,17 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
    offered as completions, but `SymSpellIndex` is built from the general dictionary at startup and never
    rebuilt, so "githb" will not become "GitHub". **[fact]** *[recommendation: rebuild the fuzzy index when
    the personal vocabulary changes — deliberately out of scope for Phase 3.]*
-7. ⚠️ **Multi-word personal entries reportedly insert only partly — fix UNCONFIRMED.** The owner reported
+7. **The word buffer can miss a keystroke if the UI thread is briefly busy.** A low-level keyboard hook is
+   only called if the thread that installed it is free to service it; if not, Windows times the hook out and
+   the app never sees that key, while the target application still receives it. The buffer is then one
+   character short, so a replacement lands with the first typed letter surviving in front of it
+   ("aAlexandra Fairbourne Reed"). **[fact — reproduced in the harness roughly one run in six]**
+   *[Mitigated rather than fixed: message-based insertion cut the busy window from 80–233 ms to 1–2 ms, and
+   it now only reproduces when typing resumes within a few hundred milliseconds of an insertion, which the
+   harness did and people do not. A real fix would verify the text before the caret against the buffer
+   before replacing, and correct the deletion count when they disagree.]*
+8. ⚠️ **Multi-word personal entries reportedly insert only partly — RESOLVED, see §14.** Left here as the
+   record of a bug that took three rounds to find. The owner reported
    entries like "Alexandra Fairbourne Reed" arriving truncated, with blank gaps. A real ordering hazard was
    found and fixed (two `SendInput` calls; see §13), but **it did not reproduce in testing** — not against a
    plain `EDIT`, and not against a `RICHEDIT50W` at 25 ms per keystroke. So the fix removes a genuine hazard
@@ -508,24 +529,24 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
    document as a literal tab character AND hit `IsContextInvalidatingKey`, wiping the word buffer — which
    matches both the truncation and the blank gaps in the report. That was fixed separately. If the owner
    reports it again on 0.7.0, get the exact keystrokes; do not assume this is closed.]*
-8. **Phrases inherit the corpus's register.** Multi-word suggestions come from Victorian novels, so "thank
+9. **Phrases inherit the corpus's register.** Multi-word suggestions come from Victorian novels, so "thank
    you" is as likely to suggest "sir said the" as anything from a modern email. Grammatical, just dated.
    Personal learning is the practical mitigation. **[fact]**
 
 ### Technical debt / known issues
 
-9. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
+10. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
    DWM Mica/Acrylic impossible, because they cannot apply to a layered window. The UI control was removed
    but the enum and the `AppSettings.BackdropBlur` property remain and are read nowhere meaningful.
    **[fact]** *[recommendation: delete the property and enum, or reintroduce blur via
    `SetWindowCompositionAttribute`, which does work on layered windows but paints a square-cornered
    region.]*
-10. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
+11. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
    on a background thread so the tray icon appears immediately, but first-run feels slow. **[fact]**
-11. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
+12. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
    pixels just outside the bar, which is a heuristic and can mis-read over unusual backgrounds.
-12. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
-13. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
+13. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
+14. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
    `HKCU\...\Run` value directly, while the settings window writes both the registry and
    `AppSettings.StartWithWindows`. On the dev machine the Run key is set while `StartWithWindows` is
    `false`, so the settings checkbox shows the wrong state. **[fact — observed 2026-08-09]**
@@ -533,34 +554,34 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 
 ### Testing gotchas discovered the hard way — read before writing UI tests
 
-14. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
+15. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
     translucency from a `PrintWindow` grab is meaningless. **[fact]**
-15. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
+16. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
     into undersized bitmaps and silently cropped. The dev display is at 150%. **[fact]**
-16. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
+17. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
     technique, and always verify the foreground window class before sending keystrokes — otherwise test
     input lands in whatever the user is actually using. **[fact]**
-17. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
+18. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
     packaged single-instance app: `notepad.exe` exits immediately and `MainWindowHandle` is empty. A
     WinForms `TextBox` reports class `WindowsForms10.EDIT.app.0.<hash>`, which does **not** start with
     `Edit`, so `FocusedControlInspector` ignores it and no bar ever appears. `TestTarget.ps1` creates a
     real `EDIT` control with `CreateWindowEx` instead. **[fact — both tried and discarded]**
-18. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
+19. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
     microseconds; replacements are deferred onto the message loop, so the burst is still draining into the
     target when the replacement fires and the two interleave — `helo ` came out as `healo`. Send one key at
     a time. This is the harness outrunning hardware, **not** a product defect. **[fact]**
-19. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
+20. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
     path and can land after the check that reads the text back, which looks like a half-applied correction.
     The self-contained single-file build is worse, since it also self-extracts. **[fact]**
-20. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
+21. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
     *and* from `hello`, so the tie falls to frequency and `help` wins — correct behaviour, useless
     assertion. `teh` → `the` is unambiguous. **[fact]**
-21. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no
+22. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no
     byte-order mark, and Windows PowerShell decodes such a file as Windows-1252 — where an em dash's third
     byte becomes a smart closing quote that the parser honours as a string delimiter. It reports as
     "missing terminator" at the *bottom* of the file, hundreds of lines from the dash. Harmless in comments,
     fatal inside a string. **[fact — cost a debugging cycle]**
-22. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
+23. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
     deliberately doesn't run (its pump omits `IsDialogMessage` so Tab reaches the control as a character).
     Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
 

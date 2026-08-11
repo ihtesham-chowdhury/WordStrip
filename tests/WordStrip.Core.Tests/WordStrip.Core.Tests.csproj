@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- Matches WordStrip.Core, which targets net8.0-windows for its Win32 interop. -->
@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WordStrip.Core\WordStrip.Core.csproj" />
+    <ProjectReference Include="..\..\src\WordStrip.Neural\WordStrip.Neural.csproj" />
   </ItemGroup>
 
 </Project>
+

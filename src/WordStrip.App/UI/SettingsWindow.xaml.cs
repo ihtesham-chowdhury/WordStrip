@@ -211,6 +211,43 @@ public partial class SettingsWindow : Window
         ViewModel.ExportPersonalWords(dialog.FileName);
     }
 
+    private async void OnDownloadModelClick(object sender, RoutedEventArgs e)
+    {
+        // Confirmed with the size stated, because a quarter of a gigabyte on a metered or slow connection is
+        // not something to start on a single stray click.
+        var model = ViewModel.NeuralModel;
+        var confirmed = System.Windows.MessageBox.Show(
+            this,
+            $"Download {model.Name} ({model.DownloadMegabytes} MB)?\n\n" +
+            $"Licence: {model.License}\nFrom: {model.SourceUrl}\n\n" +
+            "This is the only time WordStrip connects to the internet. Nothing about you or what you type " +
+            "is sent — it is a plain download of a public file.",
+            "Download language model",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question,
+            MessageBoxResult.Cancel);
+
+        if (confirmed != MessageBoxResult.OK) return;
+
+        await ViewModel.DownloadNeuralModelAsync();
+    }
+
+    private void OnDeleteModelClick(object sender, RoutedEventArgs e)
+    {
+        var confirmed = System.Windows.MessageBox.Show(
+            this,
+            "Delete the downloaded language model?\n\nSuggestions will go back to how they work without it. " +
+            "You can download it again at any time.",
+            "Delete model",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (confirmed != MessageBoxResult.Yes) return;
+
+        ViewModel.DeleteNeuralModel();
+    }
+
     private void OnClearLearnedDataClick(object sender, RoutedEventArgs e)
     {
         // Confirmed because it cannot be undone, and because the user may not realise how much has built up.

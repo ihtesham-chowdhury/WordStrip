@@ -29,6 +29,7 @@ public sealed class SuggestionController : IDisposable
     private readonly Action<Action> _postToMessageLoop;
     private readonly IFocusedControlProvider _focusProvider;
     private readonly PersonalLanguageModel? _personalLearning;
+    private readonly Prediction.Neural.NeuralRerankCoordinator? _neuralReranking;
 
     /// <summary>
     /// Set when the user explicitly took the bar away (Esc, or a click outside it) and cleared as soon as
@@ -67,8 +68,10 @@ public sealed class SuggestionController : IDisposable
         AppSettings settings,
         Action<Action>? postToMessageLoop = null,
         IFocusedControlProvider? focusProvider = null,
-        PersonalLanguageModel? personalLearning = null)
+        PersonalLanguageModel? personalLearning = null,
+        Prediction.Neural.NeuralRerankCoordinator? neuralReranking = null)
     {
+        _neuralReranking = neuralReranking;
         _typingSession = typingSession;
         _predictionEngine = predictionEngine;
         _textInjector = textInjector;
@@ -172,10 +175,16 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
+        var context = BuildContext(word);
         var suggestions = _predictionEngine.GetLiveSuggestions(
-            word, _settings.SuggestionCount, BuildContext(word), _settings.EmojiSuggestionsEnabled);
+            word, _settings.SuggestionCount, context, _settings.EmojiSuggestionsEnabled);
 
         Publish(new SuggestionUpdate(suggestions, focus.Caret));
+
+        // The statistical answer is already on screen. If a neural model is loaded and the answer looked
+        // uncertain, ask it in the background and republish only if it still applies — never block the
+        // keystroke on tens of milliseconds of inference.
+        RerankInBackground(context, suggestions, focus.Caret);
     }
 
     private void OnWordCommitted(object? sender, WordCommittedEventArgs e)
@@ -258,6 +267,43 @@ public sealed class SuggestionController : IDisposable
                 includePhrases: _settings.PhraseSuggestionsEnabled),
             focus.Caret,
             IsIdle: true));
+    }
+
+    /// <summary>
+    /// Asks the neural model to reorder what is already on the bar, and republishes only if the answer is
+    /// still relevant when it arrives.
+    ///
+    /// <para>Deliberately fire-and-forget. The statistical suggestions have already been published, so the
+    /// user sees something immediately and inference is pure upside — if it is slow, cancelled, superseded
+    /// or broken, nothing happens and nobody notices. Awaiting it here would put tens of milliseconds of
+    /// model inference inside a keyboard hook callback, which is the one thing this whole design exists to
+    /// avoid.</para>
+    ///
+    /// <para>The guard before republishing is what stops the bar rearranging itself under the user: by the
+    /// time an answer comes back they may have typed on, and the suggestions on screen would then be for a
+    /// different word entirely.</para>
+    /// </summary>
+    private void RerankInBackground(PredictionContext context, IReadOnlyList<Suggestion> published, CaretRect? caret)
+    {
+        if (_neuralReranking is null || !_settings.NeuralRerankingEnabled) return;
+        if (!_neuralReranking.ShouldRerank(published)) return;
+
+        var word = context.PartialWord;
+
+        _ = Task.Run(async () =>
+        {
+            var reranked = await _neuralReranking.RerankAsync(context, published).ConfigureAwait(false);
+            if (ReferenceEquals(reranked, published)) return;
+
+            _postToMessageLoop(() =>
+            {
+                // Still the same word being typed? If not, this describes text that has already gone.
+                if (!string.Equals(_typingSession.CurrentWord, word, StringComparison.Ordinal)) return;
+                if (IsPaused || _dismissed) return;
+
+                Publish(new SuggestionUpdate(reranked, caret));
+            });
+        });
     }
 
     /// <summary>

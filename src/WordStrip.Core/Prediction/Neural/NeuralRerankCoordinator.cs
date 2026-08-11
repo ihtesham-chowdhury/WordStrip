@@ -18,11 +18,14 @@ public sealed record NeuralRerankOptions
     public double MaxNeuralBonus { get; init; } = 25;
 
     /// <summary>
-    /// How long a single inference may take before it is abandoned. A late answer is worthless — by then the
-    /// user has typed on and the bar has moved — so waiting longer buys nothing but a stale result to throw
-    /// away.
+    /// How long a single inference may take before it is abandoned.
+    ///
+    /// <para>Generous rather than tight, because correctness does not depend on it: the sequence number
+    /// already guarantees a superseded answer is discarded, so this only exists to stop work running
+    /// unbounded. Measured inference on the shipped model is 55–80 ms and varies with machine load, and a
+    /// timeout close to that would abandon perfectly good answers for no benefit.</para>
     /// </summary>
-    public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(120);
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(250);
 
     /// <summary>Largest candidate list worth scoring. The bar shows at most seven.</summary>
     public int MaxCandidates { get; init; } = 8;
