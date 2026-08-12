@@ -105,6 +105,20 @@
                           Padding="8,6"
                           Margin="0,0,0,8" />
                 <TextBlock Style="{StaticResource Hint}" Text="{Binding SelectedThemeDescription}" />
+
+                <Separator Margin="0,14,0,12" Opacity="0.35" />
+
+                <TextBlock Text="Light or dark" Style="{StaticResource RowLabel}" Margin="0,0,0,6" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <RadioButton Content="Match the background" GroupName="Appearance"
+                                 IsChecked="{Binding AppearanceAuto}" Margin="0,0,16,0" />
+                    <RadioButton Content="Always light" GroupName="Appearance"
+                                 IsChecked="{Binding AppearanceLight}" Margin="0,0,16,0" />
+                    <RadioButton Content="Always dark" GroupName="Appearance"
+                                 IsChecked="{Binding AppearanceDark}" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Matching the background looks best over a page that stays put, but it can flip between light and dark as you scroll or switch tabs in a browser. Pick one to stop it changing." />
             </StackPanel>
         </Border>
 
@@ -167,6 +181,26 @@
                         Margin="0,0,0,4" />
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
                            Text="A thinner bar gets in the way less, which matters most when it follows the text cursor." />
+
+                <CheckBox Content="Keep the bar one width" IsChecked="{Binding FixedBarWidth}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,10"
+                           Text="A phone keyboard's suggestion row is always the same width. By default this bar sizes itself to the words on it, which wastes no space but means it resizes as you type." />
+
+                <StackPanel Margin="24,0,0,4"
+                            Visibility="{Binding FixedBarWidth, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel Margin="0,0,0,2">
+                        <TextBlock Text="{Binding BarWidthLabel}" Width="112" DockPanel.Dock="Right" Style="{StaticResource ValueLabel}" />
+                        <TextBlock Text="Bar width" Style="{StaticResource RowLabel}" />
+                    </DockPanel>
+                    <Slider Minimum="{Binding MinBarWidthFraction}"
+                            Maximum="{Binding MaxBarWidthFraction}"
+                            Value="{Binding BarWidthFraction}"
+                            TickFrequency="0.01"
+                            IsSnapToTickEnabled="True"
+                            Margin="0,0,0,4" />
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
+                               Text="Words too long for the bar are shortened with an ellipsis rather than making it wider." />
+                </StackPanel>
 
                 <Border Background="#FFF4E5" CornerRadius="8" Padding="10,8" Margin="0,12,0,0"
                         Visibility="{Binding TransparencyDisabledBySystem, Converter={StaticResource BoolToVisibility}}">

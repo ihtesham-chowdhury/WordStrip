@@ -94,11 +94,16 @@
                                 </ControlTemplate>
                             </Button.Template>
 
+                            <!-- Trimming matters only in fixed-width mode, where a long phrase would
+                                 otherwise push the strip wider than the width the user asked for. An
+                                 ellipsis is a visible, understandable degradation; a strip that quietly
+                                 stops being the size it promised is not. -->
                             <TextBlock Text="{Binding Word}"
                                        FontFamily="Segoe UI Variable Text, Segoe UI"
                                        FontSize="{Binding FontSize}"
                                        FontWeight="{Binding FontWeight}"
-                                       Foreground="{Binding Foreground}" />
+                                       Foreground="{Binding Foreground}"
+                                       TextTrimming="CharacterEllipsis" />
                         </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

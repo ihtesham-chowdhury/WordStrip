@@ -366,6 +366,86 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    // --- Light or dark ------------------------------------------------------------------------------
+
+    public bool AppearanceAuto
+    {
+        get => _settings.AppearanceMode == AppearanceMode.Auto;
+        set { if (value) SetAppearanceMode(AppearanceMode.Auto); }
+    }
+
+    public bool AppearanceLight
+    {
+        get => _settings.AppearanceMode == AppearanceMode.Light;
+        set { if (value) SetAppearanceMode(AppearanceMode.Light); }
+    }
+
+    public bool AppearanceDark
+    {
+        get => _settings.AppearanceMode == AppearanceMode.Dark;
+        set { if (value) SetAppearanceMode(AppearanceMode.Dark); }
+    }
+
+    private void SetAppearanceMode(AppearanceMode mode)
+    {
+        if (_settings.AppearanceMode == mode) return;
+
+        _settings.AppearanceMode = mode;
+        Persist();
+        NotifyAppearance();
+
+        OnPropertyChanged(nameof(AppearanceAuto));
+        OnPropertyChanged(nameof(AppearanceLight));
+        OnPropertyChanged(nameof(AppearanceDark));
+    }
+
+    // --- Fixed width --------------------------------------------------------------------------------
+
+    public bool FixedBarWidth
+    {
+        get => _settings.FixedBarWidth;
+        set
+        {
+            if (_settings.FixedBarWidth == value) return;
+            _settings.FixedBarWidth = value;
+            Persist();
+            NotifyAppearance();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BarWidthLabel));
+        }
+    }
+
+    public double MinBarWidthFraction => AppSettings.MinBarWidthFraction;
+
+    public double MaxBarWidthFraction => AppSettings.MaxBarWidthFraction;
+
+    public double BarWidthFraction
+    {
+        get => _settings.BarWidthFraction;
+        set
+        {
+            if (Math.Abs(_settings.BarWidthFraction - value) < 0.001) return;
+            _settings.BarWidthFraction = value;
+            Persist();
+            NotifyAppearance();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BarWidthLabel));
+        }
+    }
+
+    /// <summary>
+    /// The width in pixels as well as a percentage, because a fraction of the work area is the right thing
+    /// to store and the wrong thing to show someone deciding how wide they want it.
+    /// </summary>
+    public string BarWidthLabel
+    {
+        get
+        {
+            var pixels = System.Windows.SystemParameters.WorkArea.Width * _settings.BarWidthFraction;
+            return $"{_settings.BarWidthFraction * 100:0}% · {pixels:0} px";
+        }
+    }
+
     public bool BlurAuto
     {
         get => _settings.BackdropBlur == BackdropBlur.Auto;

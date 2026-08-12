@@ -22,10 +22,22 @@ public sealed class AppSettings
     public const double MinMotionSpeed = 0.5;
     public const double MaxMotionSpeed = 2.5;
 
+    /// <summary>
+    /// Fixed-width bounds, as a fraction of the screen's work area.
+    ///
+    /// <para>A fraction rather than a pixel count so the choice survives being carried to a different
+    /// display. The floor is not lower because a strip narrower than a fifth of the screen cannot hold
+    /// several words without clipping most of them; the ceiling stops short of the full width because a
+    /// strip running edge to edge stops reading as an overlay.</para>
+    /// </summary>
+    public const double MinBarWidthFraction = 0.20;
+    public const double MaxBarWidthFraction = 0.90;
+
     private int _suggestionCount = 4;
     private double _glassTint = 0.62;
     private double _barScale = 1.0;
     private double _motionSpeed = 1.0;
+    private double _barWidthFraction = 0.42;
 
     /// <summary>How many candidates to show on the strip. Clamped to [3, 7].</summary>
     public int SuggestionCount
@@ -67,6 +79,35 @@ public sealed class AppSettings
 
     /// <summary>Which visual personality the bar wears. Purely presentational — behaviour is identical in all.</summary>
     public BarTheme Theme { get; set; } = BarTheme.FluentAcrylic;
+
+    /// <summary>
+    /// Whether the strip adapts its palette to the backdrop, or is pinned to light or dark.
+    ///
+    /// <para>Defaults to <see cref="AppearanceMode.Auto"/>, which is the behaviour that already existed and
+    /// is the better one over a backdrop that holds still. Anyone who spends their day in a browser will
+    /// want to pin it — see the remarks on the enum.</para>
+    /// </summary>
+    public AppearanceMode AppearanceMode { get; set; } = AppearanceMode.Auto;
+
+    /// <summary>
+    /// Whether the strip keeps one width regardless of what is on it.
+    ///
+    /// <para>Off by default, which sizes the strip to its content — that is what it has always done and it
+    /// wastes no space. On, it behaves like a phone keyboard's suggestion row: one width, always, with the
+    /// words centred inside it. Which is better is a matter of taste, but a strip that resizes on every
+    /// keystroke is undeniably busier, and on a phone nobody has ever wanted that.</para>
+    /// </summary>
+    public bool FixedBarWidth { get; set; }
+
+    /// <summary>
+    /// How wide the strip is when <see cref="FixedBarWidth"/> is on, as a fraction of the work area.
+    /// Clamped to [0.20, 0.90]. Ignored entirely when the strip is sizing to its content.
+    /// </summary>
+    public double BarWidthFraction
+    {
+        get => _barWidthFraction;
+        set => _barWidthFraction = Math.Clamp(value, MinBarWidthFraction, MaxBarWidthFraction);
+    }
 
     /// <summary>
     /// Backdrop blur override. <see cref="BackdropBlur.Auto"/> defers to whatever the chosen theme was

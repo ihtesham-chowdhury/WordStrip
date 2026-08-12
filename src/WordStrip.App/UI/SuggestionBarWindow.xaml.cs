@@ -132,6 +132,22 @@ public partial class SuggestionBarWindow : Window
     /// </summary>
     private void AdaptToBackground(bool reappearing)
     {
+        // Pinned to a palette: no screen probe, no hysteresis, no cost. The whole point of choosing light or
+        // dark is that the strip stops changing underneath you, so sampling and then ignoring the answer
+        // would be both wasteful and a lie about what the setting does.
+        if (_settings.AppearanceMode != AppearanceMode.Auto)
+        {
+            var pinned = _settings.AppearanceMode == AppearanceMode.Dark
+                ? GlassAppearance.OverDark
+                : GlassAppearance.OverLight;
+
+            if (pinned == _appearance) return;
+
+            _appearance = pinned;
+            ApplyPalette();
+            return;
+        }
+
         if (!SystemAppearance.UseGlass) return;
 
         var now = DateTime.UtcNow;
@@ -258,6 +274,7 @@ public partial class SuggestionBarWindow : Window
         Lens.IndicatorWidthFactor = _metrics.IndicatorWidthFactor;
         Lens.IndicatorGap = Math.Max(2, _metrics.IndicatorReserve * 0.45);
 
+        ApplyFixedWidth();
         ApplyPalette();
 
         // Chip sizing lives on the view models, so re-create them to pick up new metrics.
@@ -283,6 +300,38 @@ public partial class SuggestionBarWindow : Window
 
         UpdateLayout();
         Reposition();
+    }
+
+    /// <summary>
+    /// Pins the strip to one width, or releases it to size itself to its content.
+    ///
+    /// <para>The width is set on the root element rather than the window, because the window is
+    /// <c>SizeToContent="WidthAndHeight"</c> and takes its size from what it contains. Setting
+    /// <see cref="double.NaN"/> is how WPF is told to go back to measuring.</para>
+    ///
+    /// <para>Content wider than the fixed width is clipped rather than allowed to push the strip out,
+    /// because "fixed" has to mean fixed — a width that mostly holds is worse than no promise at all. Long
+    /// phrases lose their tail to an ellipsis instead, which is visible and understandable, and the user can
+    /// widen the strip or ask for fewer suggestions.</para>
+    /// </summary>
+    private void ApplyFixedWidth()
+    {
+        if (!_settings.FixedBarWidth)
+        {
+            RootHost.Width = double.NaN;
+            // Qualified: UseWindowsForms adds an implicit global using that makes the bare name ambiguous.
+            ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+            ContentLayer.ClipToBounds = false;
+            return;
+        }
+
+        // Device-independent units, which is what WPF lays out in — the work area is already in those, so no
+        // DPI conversion belongs here.
+        RootHost.Width = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction);
+
+        // Centred, the way a phone keyboard's row is, rather than left-packed with dead space on the right.
+        ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
+        ContentLayer.ClipToBounds = true;
     }
 
     /// <summary>

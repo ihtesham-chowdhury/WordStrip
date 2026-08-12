@@ -1,9 +1,9 @@
-﻿; Inno Setup script for WordStrip.
+; Inno Setup script for WordStrip.
 ; Build with:  iscc installer\WordStrip.iss
 ; Expects the self-contained publish output in publish\portable\.
 
 #define AppName        "WordStrip"
-#define AppVersion     "0.10.1"
+#define AppVersion     "0.11.0"
 #define AppPublisher   "WordStrip"
 #define AppExeName     "WordStrip.exe"
 
