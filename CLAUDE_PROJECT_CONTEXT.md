@@ -867,26 +867,45 @@ the project directory.
 - **Explicit instruction in the brief:** *"Do not claim WordStrip is a full Windows input method until the
   implementation and compatibility testing genuinely justify that claim."*
 
-### What a future session must understand before starting
+### Stage 1 spike — results **[fact, 2026-08-12]**
 
-*[assumption — not yet verified against a working prototype, flagged because it shapes the whole approach]*
-A TSF text service is an **in-process COM server** that Windows loads into every application that accepts
-text. That has consequences worth confirming early rather than discovering late:
+A TSF text service is an **in-process COM server** that Windows loads into every application accepting text.
+Three questions had to be answered before designing one. All three were answered **empirically, from the 21
+text services already registered on this machine** — no compiler required, which is why this was worth doing
+while the toolchain was still blocked. Method: enumerate `HKLM\SOFTWARE\Microsoft\CTF\TIP`, then read each
+CLSID's `InprocServer32` under `HKLM\SOFTWARE\Classes\CLSID` and `...\WOW6432Node\CLSID`.
 
-- It is conventionally a native DLL. Whether a managed .NET 8 DLL can be registered as a TIP and loaded
-  reliably into arbitrary host processes — including native, elevated and sandboxed ones — is **Unknown** and
-  is the first thing to establish. A C++/WinRT or C++ shim is the likely answer.
-- Registration touches `CLSID` and the TSF category registry. Whether the per-user scope WordStrip currently
-  installs under is sufficient, or whether this forces an admin/UAC installer, is **Unknown** and directly
-  contradicts the brief's "do not require administrator rights unless absolutely unavoidable" if it turns out
-  to need elevation. **Establish this before writing the service**, because it changes the installer story.
-- A TIP appears in the user's language bar and input-method list. That is a visible, system-wide change to
-  the machine, unlike everything WordStrip has done so far.
-- Chromium and Electron support TSF but not uniformly; "Chrome works" will need to be demonstrated, not
-  assumed. The brief says exactly this.
+| Question | Answer | Evidence |
+|---|---|---|
+| Managed or native? | **Native. Do not attempt managed.** | 11 TIPs have a COM server registered. **0 are managed** — not one points at `mscoree.dll` or a `.comhost.dll`. Every IME Microsoft ships (Japanese, Korean ×2, Chinese), plus speech, the touch keyboard and the table text service, is a native DLL |
+| Per-user or admin registration? | **Machine-wide. Requires administrator rights.** | **21 registrations under `HKLM`, 0 under `HKCU`.** The COM servers live under `HKLM\SOFTWARE\Classes\CLSID` |
+| Visible to the user? | **Yes — a selectable input method, but it can ship switched off** | Visibility comes from `LanguageProfile\<langid>\<profileguid>` carrying `Description`, `IconFile` and `Enable`. The Japanese IME is registered with **`Enable = 0`**: machine-level registration does not force a TIP on, the user opts in. Per-user choice lives in `HKCU\SOFTWARE\Microsoft\CTF\Assemblies` and `SortOrder\AssemblyItem` |
 
-**Recommended next action: a Stage 1 spike scoped to answering the three Unknowns above**, before any
-production code. Do not design the service around an assumption about which of them resolves how.
+**A fourth constraint turned up that was not on the list, and it is the expensive one:**
+
+- **All 11 register *both* an x64 and a WOW64 32-bit server. Every single one.** A 32-bit host process loads
+  the 32-bit TIP; there is no thunking. WordStrip is x64-only today (`-r win-x64`,
+  `ArchitecturesAllowed=x64compatible`), so supporting 32-bit applications means **building and shipping a
+  second architecture of the TIP**. Dropping 32-bit support is a legitimate choice, but it must be a choice
+  rather than a discovery made after the x64 build works. **[fact]**
+- **Threading model is `Apartment` (STA) on all of them**, which is the concrete form of the brief's warning
+  about following the TSF threading contract.
+
+**What this changes about the plan:**
+
+1. **The installer story breaks.** `installer/WordStrip.iss` is deliberately `PrivilegesRequired=lowest` —
+   per-user, no UAC, chosen so testers doing a favour are not asked to elevate (§9). Registering a TIP
+   cannot be done that way. Either the installer gains an elevated component, or TIP registration becomes a
+   separate opt-in step inside Settings that requests elevation when the user asks for it.
+   *[recommendation: the second. It keeps the default install exactly as it is, and it matches the pattern
+   already used for the neural model — a capability the user turns on deliberately, having been told the
+   cost.]*
+2. **Native C++ is confirmed**, not assumed. The `ITextContextProvider` seam is what keeps this contained:
+   the DLL only has to gather context and hand it over.
+3. **Decide on 32-bit before writing any build script.**
+
+**Still unknown, and needs the compiler:** whether Chromium/Electron and Office actually deliver usable
+context in practice. The brief says not to assume this, and nothing in the registry answers it.
 
 ## 15. Recommended Next Steps
 
@@ -909,21 +928,25 @@ Ordered.
    Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
    Test-Path "$env:ProgramData\Microsoft\VisualStudio\Packages"
    ```
-4. **Spike TSF registration and hosting to answer the three Unknowns in §14** — managed vs native, per-user
-   vs admin registration, and language-bar visibility — *before* committing to an implementation shape. A day
-   spent here is worth more than a week of code built on a wrong assumption. **[recommendation]**
-5. **Then Stage 1 proper:** a registerable text service that receives context, with the existing path
+4. ~~Spike TSF registration and hosting~~ — **done, from the registry, without a compiler.** All three
+   questions answered plus a fourth found; see §14. **[fact]**
+5. **Decide the two things the spike surfaced, before writing any C++:**
+   **(a)** how TIP registration gets its administrator rights without turning the ordinary install into a
+   UAC prompt — a separate opt-in step in Settings is the recommendation; **(b)** whether to ship a 32-bit
+   TIP alongside the x64 one, or to declare 32-bit host applications unsupported. Both change the build and
+   the installer, so they are cheaper to settle now than after the x64 DLL works. **[recommendation]**
+6. **Then Stage 1 proper:** a registerable text service that receives context, with the existing path
    untouched and still primary.
-6. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
+7. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
    and explicitly forbids claiming universal support. Record `works`/`partial`/`unsupported`/`fallback` per
    app in this file as each is tested.
-7. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
+8. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
    Small, and it is the owner-facing documentation.
-8. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
+9. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
    should quote a total rather than a delta now that the loaded figure is over a gigabyte.
-9. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
-   something.
-10. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
+10. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
+    something.
+11. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
 
 **Release checklist, for whenever the next build ships:**
 
