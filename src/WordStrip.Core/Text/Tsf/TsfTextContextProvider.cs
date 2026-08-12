@@ -28,6 +28,12 @@ public sealed class TsfTextContextProvider : ITextContextProvider
     private string _lastWord = string.Empty;
     private bool _connected;
 
+    /// <summary>
+    /// The raw text the service last reported, kept so an accepted suggestion can be applied to it
+    /// optimistically. See <see cref="NoteTextInserted"/> for why that is worth the extra field.
+    /// </summary>
+    private string _textBeforeCaret = string.Empty;
+
     /// <param name="post">
     /// Marshals events onto the thread the UI expects. Messages arrive on a background pipe thread, while
     /// everything downstream — the controller, the bar — has always been driven from the UI thread by a
@@ -72,15 +78,84 @@ public sealed class TsfTextContextProvider : ITextContextProvider
     }
 
     /// <summary>
-    /// No-op, and correct rather than lazy. The hook provider has to be told about text it did not see typed,
-    /// because its state is a guess it maintains itself. This one's state is the document, and the service
-    /// reports the document again the moment it changes — so an insertion arrives as an ordinary update,
-    /// already correct, without anyone having to remember to announce it.
+    /// Applies an accepted suggestion to the cached context immediately, without waiting for the document to
+    /// report back.
+    ///
+    /// <para><b>This was a no-op, on the reasoning that the document is the source of truth and the service
+    /// re-reports it the moment it changes. That reasoning is correct and the behaviour was still wrong.</b>
+    /// The controller publishes the between-words list synchronously the instant a suggestion is accepted,
+    /// and the document's own update has to travel through a deferred injection, the host application, a TSF
+    /// edit notification, a pipe and a dispatcher before it lands. In that window the bar was being filled
+    /// from a context one word out of date — so accepting a word showed predictions for the word before it,
+    /// which then corrected themselves a moment later. It reads as the bar stalling.</para>
+    ///
+    /// <para>So: predict what the document is about to say, and let the next real snapshot confirm or
+    /// correct it. The document remains the source of truth; this only stops the bar guessing from stale
+    /// text while the truth is in flight.</para>
     /// </summary>
-    public void NoteTextInserted(string text) { }
+    public void NoteTextInserted(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
 
-    /// <summary>No-op, for the same reason as <see cref="NoteTextInserted"/>.</summary>
-    public void NoteWordCorrected(string correctedWord) { }
+        lock (_gate)
+        {
+            if (!_context.IsEditable) return;
+
+            // The controller replaces the word in progress and appends a space, so mirror exactly that.
+            var kept = _textBeforeCaret.Length >= _context.CurrentWord.Length
+                ? _textBeforeCaret[..^_context.CurrentWord.Length]
+                : string.Empty;
+
+            ApplyTextLocked(kept + text + " ");
+        }
+    }
+
+    /// <summary>
+    /// Rewrites the last finished word after autocorrect changed it, for the same reason as
+    /// <see cref="NoteTextInserted"/>.
+    ///
+    /// <para>Unreachable today — autocorrect fires from <c>WordCommitted</c>, which this provider never
+    /// raises. Implemented anyway so that turning that event on in Stage 3 does not silently leave the
+    /// context describing the typo instead of the correction.</para>
+    /// </summary>
+    public void NoteWordCorrected(string correctedWord)
+    {
+        if (string.IsNullOrWhiteSpace(correctedWord)) return;
+
+        lock (_gate)
+        {
+            if (!_context.IsEditable) return;
+
+            var trimmed = _textBeforeCaret.TrimEnd();
+            var start = trimmed.Length;
+            while (start > 0 && KeyTranslator.IsWordCharacter(trimmed[start - 1])) start--;
+            if (start == trimmed.Length) return;  // nothing word-shaped to replace
+
+            var trailing = _textBeforeCaret[trimmed.Length..];
+            ApplyTextLocked(trimmed[..start] + correctedWord + trailing);
+        }
+    }
+
+    /// <summary>Re-parses cached text into the context. Caller holds <see cref="_gate"/>.</summary>
+    private void ApplyTextLocked(string textBeforeCaret)
+    {
+        if (textBeforeCaret.Length > TsfContextMessage.MaxTextChars)
+            textBeforeCaret = textBeforeCaret[^TsfContextMessage.MaxTextChars..];
+
+        _textBeforeCaret = textBeforeCaret;
+
+        var (preceding, currentWord, atSentenceStart) = Parse(textBeforeCaret);
+
+        _context = _context with
+        {
+            CurrentWord = currentWord,
+            PrecedingWords = preceding,
+            IsAtSentenceStart = atSentenceStart,
+            HasSelection = false,
+        };
+
+        _lastWord = currentWord;
+    }
 
     /// <summary>Called when a text service connects or drops. A disconnect must take availability with it.</summary>
     public void SetConnected(bool connected)
@@ -97,6 +172,7 @@ public sealed class TsfTextContextProvider : ITextContextProvider
             {
                 _context = TextContext.None;
                 _lastWord = string.Empty;
+                _textBeforeCaret = string.Empty;
             }
         }
 
@@ -120,6 +196,9 @@ public sealed class TsfTextContextProvider : ITextContextProvider
         lock (_gate)
         {
             var wasEditable = _context.IsEditable;
+
+            // Kept so an accepted suggestion can be applied to it before the document reports back.
+            _textBeforeCaret = message.TextBeforeCaret ?? string.Empty;
 
             _context = new TextContext(
                 IsEditable: message.IsEditable,

@@ -64,11 +64,11 @@ files the user can read and delete. **[fact]**
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
   **Phase 7 (TSF migration) is the active task. Stages 0, 1, 2 and 4 are done. The service is registered,
-  loads in Chrome, Edge, Brave, Claude, Word, Notepad and Explorer, and now reads the text before the caret
-  and sends it to WordStrip over a named pipe — verified end to end in Notepad (`PIPE-OK` in the load log).
-  357 tests. Not yet confirmed by hand in Chrome or Word; that and the password-field check are the next
-  things to establish. Stage 3, committing through TSF, is not started, so autocorrect and personal
-  learning still do not work on the TSF path.** See §14. **[fact]**
+  reads the text before the caret and sends it to WordStrip over a named pipe. **Suggestions confirmed
+  working by hand in Chrome, Brave, Edge, Claude desktop, Word and Notepad, with password fields correctly
+  suppressed** — the gap that motivated the whole phase is closed. 362 tests. Stage 3, committing through
+  TSF, is not started, so autocorrect and personal learning still do not work on the TSF path.** See §14.
+  **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -92,9 +92,9 @@ files the user can read and delete. **[fact]**
   - **Phase 7 Stage 4: `CompositeTextContextProvider` — per-call provider selection, demotion of providers
     that throw, and a guarantee that no provider failure can stop typing. In the shipping path.** **[fact]**
   - **Phase 7 Stage 2, managed half: the wire format, the named-pipe channel, `TsfTextContextProvider`, and
-    the provider wired into the composite ahead of the hook.** 357 unit tests. The native half — the service
-    actually reading document text and sending it — is not written, so the TSF provider is never available
-    yet. **[fact]**
+    the provider wired into the composite ahead of the hook.** **[fact]**
+  - **Phase 7 Stage 2, native half: the service reads the document and sends it. Prediction works in
+    Chrome, Brave, Edge, Electron and Word.** 362 unit tests. **[fact]**
 - **In progress:** **Phase 7 — TSF migration.** Stages 0 and 4 complete. Stage 1 built and statically
   verified, **awaiting first registration**. Stages 2–3 not started. **[fact]**
 - **Blocked:** Nothing is blocked. Registration needs administrator rights, so it is the owner's action
@@ -269,7 +269,7 @@ D:\Claude Code\WordStrip\
 │   ├── Tray/TrayIconController.cs          WinForms NotifyIcon (the only WinForms use)
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-├── tests/WordStrip.Core.Tests/       xUnit, 357 tests
+├── tests/WordStrip.Core.Tests/       xUnit, 362 tests
 │   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
 │   ├── TestLanguageModel.cs          Hand-written n-gram fixture
 │   ├── PrefixCompletionTests.cs / FuzzyMatchingTests.cs / AutocorrectionTests.cs
@@ -418,7 +418,7 @@ Open the settings window directly (also what the Start Menu shortcut does):
 "D:/Claude Code/WordStrip/src/WordStrip.App/bin/Release/net8.0-windows/WordStrip.exe" --settings
 ```
 
-Run all unit tests (357):
+Run all unit tests (362):
 
 ```bash
 dotnet test "D:/Claude Code/WordStrip/tests/WordStrip.Core.Tests/WordStrip.Core.Tests.csproj"
@@ -577,12 +577,44 @@ document text left the host, crossed the pipe and was accepted by WordStrip. **[
 `aAlexandra Fairbourne Reed` string that §12 item 8 records as this timing bug's signature, then passed 4 of 4
 on a repeat measurement. Same rate as the two earlier builds. **[fact]**
 
-**Password fields are an open risk on this path.** TSF has no explicit password flag. `IsInputAllowed`
-rejects read-only contexts and anything the host marks with `GUID_COMPARTMENT_KEYBOARD_DISABLED`, which is
-the mechanism applications are supposed to use — but **whether Chrome and Word actually set it on password
-inputs is untested**. Nothing is learned or written on this path, so the exposure is a visible suggestion
-rather than a stored secret. **Test this before the phase is called done**: focus a password field in Chrome
-and confirm the bar stays down. **[fact — an unverified assumption, deliberately recorded as one]**
+### Stage 2 result: it works in every application tested **[fact, 2026-08-13]**
+
+Confirmed by the owner, by hand, after restarting the hosts so they picked up the rebuilt DLL.
+
+| Application | Suggestions appear | Status |
+|---|---|---|
+| Chrome | yes | `works` |
+| Brave | yes | `works` |
+| Edge | yes | `works` |
+| Claude desktop (Electron) | yes | `works` |
+| Microsoft Word | yes | `works` |
+| Notepad | yes | `works` (also `PIPE-OK` in the log) |
+| Password fields | **no bar — correctly suppressed** | `works` |
+| 32-bit hosts | not tested | `fallback` by decision (§14) |
+
+**`works` here means prediction works.** Autocorrect and personal learning still do not run on the TSF path —
+`WordCommitted` is deliberately unraised until Stage 3. The owner's stated priority is prediction in
+browsers, with corrections in Word as a later nice-to-have, so that ordering matches what they want.
+
+**The password-field risk recorded above is now closed by test.** `GUID_COMPARTMENT_KEYBOARD_DISABLED` is
+in fact set by the hosts tested, and the bar stays down. **[fact — verified, not assumed]**
+
+### The bar stalled after accepting a word — cause and fix **[fact]**
+
+Reported as the bar getting "muffled or stuck on loading the next word" after inserting one.
+
+`NoteTextInserted` was a **deliberate no-op** on this provider, reasoned as: the document is the source of
+truth and the service re-reports it the moment it changes. That reasoning is correct and the behaviour was
+still wrong. `SuggestionController.AcceptSuggestion` publishes the between-words list **synchronously**,
+while the document's own update has to travel through a deferred injection, the host application, a TSF edit
+notification, a pipe and a dispatcher. In that window the bar was filled from a context one word out of
+date — so accepting a word showed predictions for the word before it, which corrected themselves a moment
+later.
+
+Fixed by applying the accepted word to the cached context optimistically and letting the next real snapshot
+confirm or correct it. The document remains the authority; this only stops the bar guessing from stale text
+while the truth is in flight. **Worth remembering as a pattern:** "the source of truth will tell us" is not
+sufficient when something downstream reads the value synchronously and sooner.
 
 **Phase 7 Stage 2, managed half: document context over a pipe.** **[fact]**
 
@@ -1111,7 +1143,7 @@ Ordered.
 
 - Stop the running app first (it locks its own exe).
 - Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
-- `dotnet test` (357), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- `dotnet test` (362), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
 - Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
   single-file build is a different code path (embedded dictionary) and starts more slowly.
 - **Open every settings card** before shipping. §13 records why.

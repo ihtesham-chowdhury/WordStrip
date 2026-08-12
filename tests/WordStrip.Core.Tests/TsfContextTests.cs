@@ -301,17 +301,86 @@ public class TsfContextTests
     }
 
     [Fact]
-    public void Being_told_about_an_insertion_changes_nothing()
+    public void An_accepted_word_is_applied_before_the_document_reports_back()
     {
         using var provider = new TsfTextContextProvider();
         provider.SetConnected(true);
-        provider.Apply(Editable("hello "));
+        provider.Apply(Editable("how are yo"));
+
+        provider.NoteTextInserted("you");
+
+        // The controller publishes the between-words list synchronously on accept, while the document's own
+        // update is still travelling through a deferred injection, the host, TSF, a pipe and a dispatcher.
+        // Without this the bar would be filled from a context one word out of date, which is what the stall
+        // after accepting a word actually was.
+        var context = provider.GetContext();
+        Assert.Equal(new[] { "how", "are", "you" }.TakeLast(2), context.PrecedingWords);
+        Assert.Equal(string.Empty, context.CurrentWord);
+    }
+
+    [Fact]
+    public void An_accepted_word_replaces_the_partial_word_rather_than_appending_to_it()
+    {
+        using var provider = new TsfTextContextProvider();
+        provider.SetConnected(true);
+        provider.Apply(Editable("I said hel"));
+
+        provider.NoteTextInserted("hello");
+
+        Assert.Equal(new[] { "said", "hello" }, provider.GetContext().PrecedingWords);
+    }
+
+    [Fact]
+    public void An_accepted_word_with_nothing_typed_simply_extends_the_context()
+    {
+        using var provider = new TsfTextContextProvider();
+        provider.SetConnected(true);
+        provider.Apply(Editable("how are "));
+
+        provider.NoteTextInserted("you");
+
+        Assert.Equal(new[] { "are", "you" }, provider.GetContext().PrecedingWords);
+    }
+
+    [Fact]
+    public void The_real_document_update_overrides_the_optimistic_guess()
+    {
+        using var provider = new TsfTextContextProvider();
+        provider.SetConnected(true);
+        provider.Apply(Editable("how are yo"));
+        provider.NoteTextInserted("you");
+
+        // The host is the authority. If the insertion did not land the way it was predicted - a rejected
+        // keystroke, an autocorrecting editor - the next snapshot is what counts.
+        provider.Apply(Editable("how are yodelling"));
+
+        Assert.Equal("yodelling", provider.GetContext().CurrentWord);
+    }
+
+    [Fact]
+    public void Nothing_is_applied_optimistically_outside_an_editable_surface()
+    {
+        using var provider = new TsfTextContextProvider();
+        provider.SetConnected(true);
+        provider.Apply(new TsfContextMessage(false, false, false, null, ""));
 
         provider.NoteTextInserted("world");
 
-        // The document is the source of truth and the service will report it again. Unlike the hook, this
-        // provider has no guess that needs correcting.
-        Assert.Equal(new[] { "hello" }, provider.GetContext().PrecedingWords);
+        Assert.Empty(provider.GetContext().PrecedingWords);
+    }
+
+    [Fact]
+    public void A_correction_rewrites_the_last_word_of_the_cached_context()
+    {
+        using var provider = new TsfTextContextProvider();
+        provider.SetConnected(true);
+        provider.Apply(Editable("please recieve "));
+
+        provider.NoteWordCorrected("receive");
+
+        // Unreachable today - WordCommitted is never raised - but wired so that turning it on in Stage 3
+        // does not silently leave the context describing the typo.
+        Assert.Equal(new[] { "please", "receive" }, provider.GetContext().PrecedingWords);
     }
 
     [Fact]
