@@ -94,12 +94,22 @@ files the user can read and delete. **[fact]**
 - **Blocked:** **The TSF service is blocked on tooling.** This machine has **no C++ toolchain at all** — no
   Visual Studio, no Build Tools, no Windows SDK, no cmake, no msbuild; only the .NET 8 SDK. A TSF text
   service is conventionally a native COM DLL, so this must be resolved before Stage 1.
-  **Re-verified 2026-08-12 after the owner reported having installed it: still absent.** `winget list` finds
-  no Build Tools package, the uninstall registry has only VC++ *redistributables* (which ship with countless
-  apps and contain no compiler), `%ProgramData%\Microsoft\VisualStudio\Packages` does not exist, and no
-  `vcvarsall.bat` exists within six directory levels of `C:\` or `D:\`. The winget logs record no install
-  attempt at all — only the `list` and `search` calls made while checking. **[fact]**
-- **Next priority:** Get the C++ toolchain actually installed, then the Stage 1 spike (see §14 and §15).
+  **Verified absent twice on 2026-08-12**, after the owner reported installing it both times. No `vswhere`,
+  no VS package cache, no Windows SDK, and no `cl` / `clang` / `clang-cl` / `gcc` / `cmake` / `msbuild` /
+  `ninja` on `PATH`. The uninstall registry holds only VC++ *redistributables* — those ship with countless
+  applications and contain no compiler, so they are the obvious false positive to watch for. **[fact]**
+
+  **Cause found: Windows has a restart pending, and the Visual Studio Installer refuses to run until it is
+  cleared.** All three markers are set — `Component Based Servicing\RebootPending`,
+  `WindowsUpdate\Auto Update\RebootRequired`, and 10 `PendingFileRenameOperations` entries. KB5121003,
+  KB5123304 and KB5120708 all installed on 2026-08-12 while the machine had been up since 2026-08-09
+  without rebooting. The bootstrapper bails before writing anything, which is exactly why two attempts left
+  no package cache, no installer directory and no log to read. **[fact]**
+
+  Permissions are **not** the problem, which is worth recording so nobody chases it: the account is in the
+  local Administrators group and UAC sits at the normal prompt level (`EnableLUA=1`,
+  `ConsentPromptBehaviorAdmin=5`), with no Windows Installer restriction policy set. **[fact]**
+- **Next priority:** Restart Windows, install the toolchain, verify it, then the Stage 1 spike (§14, §15).
 
 ### Documentation debt carried into this session **[fact]**
 
@@ -883,10 +893,13 @@ production code. Do not design the service around an assumption about which of t
 Ordered.
 
 1. ~~Introduce `ITextContextProvider`~~ and ~~the fallback machinery~~ — **both done.** See §11 and §14.
-2. **Install a C++ toolchain — and verify it afterwards rather than assuming.** Visual Studio Build Tools
-   with the "Desktop development with C++" workload and a Windows 10/11 SDK. Multi-gigabyte, needs
+2. **Restart Windows first.** A pending restart is what blocked two install attempts — see §3. The Visual
+   Studio Installer checks for this and exits before doing anything, so retrying without rebooting will fail
+   the same silent way a third time. **[fact]**
+3. **Then install the C++ toolchain — and verify it afterwards rather than assuming.** Visual Studio Build
+   Tools with the "Desktop development with C++" workload and a Windows 10/11 SDK. Multi-gigabyte, needs
    administrator rights, so it is the owner's action rather than something to run unattended. Nothing in
-   Stages 1–3 can start without it. **[fact that it is missing; recommendation as to which workload]**
+   Stages 1–3 can start without it. **[recommendation as to which workload]**
 
    Confirm with this — all three must answer, and a bare `winget list` is not sufficient because VC++
    *redistributables* look superficially like a hit and contain no compiler:
@@ -896,21 +909,21 @@ Ordered.
    Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
    Test-Path "$env:ProgramData\Microsoft\VisualStudio\Packages"
    ```
-3. **Spike TSF registration and hosting to answer the three Unknowns in §14** — managed vs native, per-user
+4. **Spike TSF registration and hosting to answer the three Unknowns in §14** — managed vs native, per-user
    vs admin registration, and language-bar visibility — *before* committing to an implementation shape. A day
    spent here is worth more than a week of code built on a wrong assumption. **[recommendation]**
-4. **Then Stage 1 proper:** a registerable text service that receives context, with the existing path
+5. **Then Stage 1 proper:** a registerable text service that receives context, with the existing path
    untouched and still primary.
-5. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
+6. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
    and explicitly forbids claiming universal support. Record `works`/`partial`/`unsupported`/`fallback` per
    app in this file as each is tested.
-6. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
+7. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
    Small, and it is the owner-facing documentation.
-7. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
+8. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
    should quote a total rather than a delta now that the loaded figure is over a gigabyte.
-8. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
+9. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
    something.
-9. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
+10. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
 
 **Release checklist, for whenever the next build ships:**
 
