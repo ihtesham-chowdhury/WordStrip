@@ -562,6 +562,32 @@ Inspect these first, roughly in this order:
 
 ## 11. Recent Work
 
+**Memory: the SymSpell index rebuilt, 291 MB → 28.9 MB.** **[fact, 2026-08-13]**
+
+The assumption recorded for months — "the bulk is the SymSpell edit-distance-2 index" — was measured and
+found correct, and understated. An outside reviewer had independently proposed a Bloom filter, a DAWG and an
+FST for it; all three are real techniques and all three would have been wasted effort if the assumption had
+been wrong. `MemoryProfileTests` exists now so the next such question is answered before anyone codes.
+
+The structure was `Dictionary<string, List<string>>` over ~1.8 million delete variants. Three costs, and the
+largest was not the obvious one:
+
+| Cost | Why |
+|---|---|
+| ~1.8M `List<string>` objects | Each with its own backing array, holding on average barely more than one entry — roughly 150 MB of container for a payload that fits in an `int`. **The biggest single waste, and invisible in the source.** |
+| ~1.8M key strings | Every delete variant a separate heap object, 22 bytes of header before any characters |
+| Dictionary buckets and entries | Sized for 1.8 million items |
+
+Replaced with three flat arrays and a binary search: variants stored as 64-bit FNV-1a hashes, postings as
+word *indices* packed end to end with an offset table. Four objects instead of millions.
+
+**Hashing the key is only sound because every candidate is then verified with bounded
+Damerau-Levenshtein.** A collision costs one wasted comparison and can never produce a wrong suggestion.
+Remove that verification and the design becomes unsound — the comment in the file says so.
+
+**It also got faster**, because 1.8 million scattered heap objects are not cache-friendly and allocating
+them is not free: index build **6.2 s → 2.05 s**, autocorrection **274.5 µs → 149.2 µs**.
+
 **Phase 7 Stage 2, native half: the service reads the document.** **[fact, 2026-08-13]**
 
 | File | Change | Reason |
@@ -773,14 +799,23 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
    check fails carries no information — it depends on whichever keystroke happens to be dropped.
    *[recommendation: four runs each is a small sample. If this rate ever needs to be a real number rather
    than a reassurance, the harness needs a repeat flag and a tally.]*
-9. **Memory: ~524 MB private with no neural model, and ~1104 MB private with it.** Both measured on the
-   running 0.10.1 process on 2026-08-12. **[fact]** The n-gram model accounts for only 26.3 MB of the
-   baseline. *[assumption: the bulk of the baseline is the SymSpell edit-distance-2 index, which has existed
-   since Phase 1 and has never been profiled. Unverified.]*
-   **The model's ~580 MB delta is broadly consistent with the "about 400 MB" the settings card advertises,
-   but the card states a delta while a user will read a total — and the total is over a gigabyte.** That is a
-   lot for a keyboard utility and should be understood, and probably reworded, before this goes to anyone
-   beyond the owner's testers.
+9. ~~**Memory: ~524 MB private, ~1104 MB with the neural model.**~~ **Diagnosed and largely fixed on
+   2026-08-13 — see §11.** The assumption that the SymSpell index was the bulk was **correct and
+   understated**: measured at **291 MB**, ninety per cent of the prediction stack. Rebuilt as flat arrays;
+   now **28.9 MB**. **[fact]**
+
+   | | Before | After |
+   |---|---|---|
+   | SymSpell index | 291.0 MB | **28.9 MB** |
+   | Prediction stack (managed) | 322.4 MB | **60.2 MB** |
+   | App, no neural (private) | ~524 MB | **222 MB** |
+   | App, with neural (private) | ~1104 MB | **749 MB** |
+
+   **Still worth knowing:** with the neural model on, the process is 749 MB private, and the settings card
+   advertises "about 400 MB" — a *delta* that a user will read as a total. The wording should change.
+   The remaining ~160 MB of non-neural, non-prediction memory is the CLR, WPF and native allocation, which
+   is ordinary for a WPF application and has not been attacked. *[recommendation: leave it. 222 MB is a
+   reasonable figure for this app, and the next 50 MB would cost far more than the first 300 did.]*
 10. **`PerformanceTests.MeasureLanguageModelPerformance` is load-sensitive and can fail spuriously.**
     Observed **[fact]**: on a busy machine the same phrase-generation call measured 548.6 µs at one call site
     and 2612.4 µs at the assertion 18 lines later, tripping the 2000 µs threshold. Re-run on an idle machine:

@@ -109,10 +109,10 @@ an ordinally sorted array. Prefix ranges are found by binary search. **4.6–14.
 replaced a linear scan and is 600–700× faster.
 
 **Fuzzy matching.** A SymSpell delete-variant index at edit distance 2, with bounded Damerau-Levenshtein for
-verification. Index build costs **~6.2 s at startup** on a background thread.
+verification. Index build costs **~2.05 s at startup** on a background thread, and the index holds **28.9 MB** (see §6 — it was 291 MB until 2026-08-13).
 
 **Autocorrect** applies only on a word boundary, only above a frequency-confidence threshold, and never to a
-word in the user's personal dictionary. **274.5 µs per call.**
+word in the user's personal dictionary. **149.2 µs per call.**
 
 ### 4.2 Context
 
@@ -284,9 +284,21 @@ Per keystroke, against the real dictionary and model:
 Startup: dictionary 185 ms · SymSpell index ~6.2 s · n-gram model 1.5–3.4 s · neural model 3.0–4.4 s. All on
 background threads; the tray icon appears immediately.
 
-**Memory is the weak number: ~524 MB private working set with no neural model, ~1.1 GB with it.** The n-gram
-model accounts for only 26 MB. *[Assumption, unverified: the bulk is the SymSpell edit-distance-2 index.]*
-See §11.
+**Memory**, measured 2026-08-13 after the fix described below: **222 MB private with no neural model, 749 MB
+with it.**
+
+It was 524 MB / 1.1 GB until the SymSpell index was rebuilt. The assumption that the index was the bulk
+turned out to be correct and understated — it measured **291 MB**, ninety per cent of the prediction stack,
+stored as `Dictionary<string, List<string>>` over 1.8 million delete variants. The largest cost was not the
+strings but the 1.8 million `List` objects, each with its own backing array, holding on average barely more
+than one entry.
+
+Replaced with three flat arrays and a binary search: variants as 64-bit hashes, postings as word indices
+packed end to end with an offset table. **291 MB → 28.9 MB**, and *faster*: index build 6.2 s → 2.05 s,
+autocorrection 274.5 µs → 149.2 µs.
+
+Hashing the key is sound here only because every candidate is verified with bounded Damerau-Levenshtein
+afterwards, so a collision costs one wasted comparison and can never produce a wrong suggestion.
 
 ---
 
@@ -391,15 +403,21 @@ Currently: rerank an existing candidate list by first-token score, capped at +25
 - Would a small model **fine-tuned for this task** beat a general 82M model at the same size?
 - Is 82M the right size, given a 250 ms budget on CPU and a 227 MB download?
 
-### 11.4 Memory
+### 11.4 Memory — largely answered, 2026-08-13
 
-~524 MB baseline is a lot for a keyboard utility. The presumed cause is the SymSpell edit-distance-2 index
-over 60,000 words.
+**Resolved, and left here because the answer may still be improvable.** The SymSpell index measured 291 MB
+and is now 28.9 MB; the app is 222 MB private without the neural model, down from 524 MB. The fix was flat
+arrays and a binary search rather than `Dictionary<string, List<string>>` — details in §6.
 
-- Is that plausible, or is the assumption wrong?
-- What is the standard way to make a fuzzy index of this size compact — a trie, an FST, a BK-tree, symmetric
-  delete with a bloom prefilter?
-- Would a well-chosen structure fit in tens of megabytes without losing correction quality?
+Remaining questions, for anyone who wants to push further:
+
+- The index is now 1.8M 64-bit hashes plus postings. **An FST or DAWG over the dictionary would likely reach
+  single-digit megabytes.** Is the extra complexity worth 20 MB, given the lookup is currently 166 µs and an
+  FST would be slower?
+- Would it be better to persist the built index to disk at install time and memory-map it, rather than
+  rebuild it in 2 seconds on every launch?
+- ~160 MB remains that is neither the prediction stack nor the neural model — CLR, WPF, native. Is that
+  ordinary for a WPF tray application, or is something wrong?
 
 ### 11.5 The dropped-keystroke bug
 
