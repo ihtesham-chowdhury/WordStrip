@@ -3,18 +3,23 @@ using WordStrip.Core.Input;
 using WordStrip.Core.Personal;
 using WordStrip.Core.Prediction;
 using WordStrip.Core.Settings;
+using WordStrip.Core.Text;
 
 namespace WordStrip.Core.Suggestions;
 
 /// <summary>
-/// Ties everything together: watches <see cref="TypingSession"/> for the word currently being typed,
-/// asks <see cref="PredictionEngine"/> for candidates, checks <see cref="IFocusedControlProvider"/> so
-/// suggestions never appear over an unsupported control or a password field, and performs replacements
-/// via <see cref="ITextInjector"/> when a suggestion is accepted or an autocorrect fires. This is the
-/// only class the UI layer needs to talk to — it never touches hooks or the prediction engine directly.
-/// Reads suggestion count / autocorrect-enabled / persistent-bar live from the shared <see cref="AppSettings"/>
-/// instance rather than caching its own copies, so changes made in the settings window take effect on the
-/// very next keystroke with no extra event plumbing.
+/// Ties everything together: watches an <see cref="ITextContextProvider"/> for the word currently being
+/// typed and what surrounds it, asks <see cref="PredictionEngine"/> for candidates, and performs
+/// replacements via <see cref="ITextInjector"/> when a suggestion is accepted or an autocorrect fires. This
+/// is the only class the UI layer needs to talk to — it never touches hooks or the prediction engine
+/// directly. Reads suggestion count / autocorrect-enabled / persistent-bar live from the shared
+/// <see cref="AppSettings"/> instance rather than caching its own copies, so changes made in the settings
+/// window take effect on the very next keystroke with no extra event plumbing.
+///
+/// <para>Since Phase 7 the context arrives through a provider rather than from a keyboard hook directly.
+/// Nothing here knows which mechanism is behind it, and that is the point: a Text Services Framework
+/// provider must be able to take over in the applications that support it while the hook keeps serving
+/// everywhere else, without this class changing at all.</para>
 ///
 /// <para>Between words the strip's content depends on <see cref="AppSettings.PersistentBar"/>: on, it shows
 /// common words and stays put; off, it hides until the next word starts. Either way the user can always
@@ -22,30 +27,39 @@ namespace WordStrip.Core.Suggestions;
 /// </summary>
 public sealed class SuggestionController : IDisposable
 {
-    private readonly TypingSession _typingSession;
+    private readonly ITextContextProvider _context;
     private readonly PredictionEngine _predictionEngine;
     private readonly ITextInjector _textInjector;
     private readonly AppSettings _settings;
     private readonly Action<Action> _postToMessageLoop;
-    private readonly IFocusedControlProvider _focusProvider;
     private readonly PersonalLanguageModel? _personalLearning;
     private readonly Prediction.Neural.NeuralRerankCoordinator? _neuralReranking;
 
     /// <summary>
+    /// Whether this instance created the context provider and must therefore dispose it. False when one was
+    /// handed in, because the caller that built it may well be using it for something else. Mirrors
+    /// <c>TypingSession._ownsHooks</c>.
+    /// </summary>
+    private readonly bool _ownsContextProvider;
+
+    /// <summary>
     /// Set when the user explicitly took the bar away (Esc, or a click outside it) and cleared as soon as
     /// they start typing a word again. Without it, a dismissed bar would immediately come back: dismissing
-    /// is usually accompanied by a buffer reset, and the reset itself would republish the idle list.
+    /// is usually accompanied by a context loss, and that itself would republish the idle list.
     /// </summary>
     private bool _dismissed;
 
     /// <summary>Whether the last thing published was non-empty, i.e. the bar is currently showing something.</summary>
     private bool _isShowing;
 
-    /// <summary>Set while <see cref="AcceptSuggestion"/> resets the buffer, so the resulting BufferReset doesn't publish on top of it.</summary>
+    /// <summary>Set while <see cref="AcceptSuggestion"/> clears the word in progress, so the resulting ContextLost doesn't publish on top of it.</summary>
     private bool _suppressIdlePublish;
 
     /// <summary>Global on/off switch, e.g. from the tray icon's "Pause" menu item. Deliberately not persisted — always starts unpaused.</summary>
     public bool IsPaused { get; set; }
+
+    /// <summary>Which input mechanism is currently feeding this controller. Diagnostics only — no behaviour depends on it.</summary>
+    public TextContextSource ContextSource => _context.Source;
 
     /// <summary>Fires with the candidates to show plus caret position; an empty candidate list means "hide the bar."</summary>
     public event EventHandler<SuggestionUpdate>? SuggestionsChanged;
@@ -57,6 +71,24 @@ public sealed class SuggestionController : IDisposable
     /// suppressed) or interleaves with the key still in flight, corrupting the text. Defaults to running
     /// inline, which is only appropriate for tests that drive the controller directly rather than via a hook.
     /// </param>
+    public SuggestionController(
+        ITextContextProvider contextProvider,
+        PredictionEngine predictionEngine,
+        ITextInjector textInjector,
+        AppSettings settings,
+        Action<Action>? postToMessageLoop = null,
+        PersonalLanguageModel? personalLearning = null,
+        Prediction.Neural.NeuralRerankCoordinator? neuralReranking = null)
+        : this(contextProvider, ownsContextProvider: false, predictionEngine, textInjector, settings,
+               postToMessageLoop, personalLearning, neuralReranking)
+    {
+    }
+
+    /// <summary>
+    /// Convenience overload for the keyboard-hook path, which is still how the application is composed.
+    /// Wraps the session and focus provider in a <see cref="KeyboardHookTextContextProvider"/> and disposes
+    /// it along with this controller.
+    /// </summary>
     /// <param name="focusProvider">
     /// Defaults to live Win32 inspection. Tests supply a fake, since the real one reads the foreground window
     /// and would report "not a text field" under a test runner.
@@ -70,32 +102,47 @@ public sealed class SuggestionController : IDisposable
         IFocusedControlProvider? focusProvider = null,
         PersonalLanguageModel? personalLearning = null,
         Prediction.Neural.NeuralRerankCoordinator? neuralReranking = null)
+        : this(new KeyboardHookTextContextProvider(typingSession, focusProvider), ownsContextProvider: true,
+               predictionEngine, textInjector, settings, postToMessageLoop, personalLearning, neuralReranking)
     {
-        _neuralReranking = neuralReranking;
-        _typingSession = typingSession;
+    }
+
+    private SuggestionController(
+        ITextContextProvider contextProvider,
+        bool ownsContextProvider,
+        PredictionEngine predictionEngine,
+        ITextInjector textInjector,
+        AppSettings settings,
+        Action<Action>? postToMessageLoop,
+        PersonalLanguageModel? personalLearning,
+        Prediction.Neural.NeuralRerankCoordinator? neuralReranking)
+    {
+        _context = contextProvider;
+        _ownsContextProvider = ownsContextProvider;
         _predictionEngine = predictionEngine;
         _textInjector = textInjector;
         _settings = settings;
         _postToMessageLoop = postToMessageLoop ?? (action => action());
-        _focusProvider = focusProvider ?? Win32FocusedControlProvider.Instance;
         _personalLearning = personalLearning;
+        _neuralReranking = neuralReranking;
 
-        _typingSession.CurrentWordChanged += OnCurrentWordChanged;
-        _typingSession.WordCommitted += OnWordCommitted;
-        _typingSession.BufferReset += OnBufferReset;
+        _context.CurrentWordChanged += OnCurrentWordChanged;
+        _context.WordCommitted += OnWordCommitted;
+        _context.ContextLost += OnContextLost;
     }
 
     /// <summary>Call when the user accepts a candidate from the bar (Tab to highlight, then Space/Enter, or a click).</summary>
     public void AcceptSuggestion(Suggestion suggestion)
     {
         // Snapshot what was typed before clearing state — the replacement runs later, off the hook callback.
-        var typed = _typingSession.CurrentWord;
+        var context = _context.GetContext();
+        var typed = context.CurrentWord;
 
         // An empty buffer is a legitimate accept when the bar is persistent: the candidates on show are
         // common words offered between words, so there is nothing to replace and the word is simply typed.
-        // The injector already handles this — no shared prefix means no backspaces. Guard on focus rather
-        // than on the buffer, so an accept can never inject into a surface we wouldn't have suggested for.
-        if (typed.Length == 0 && !IsSuggestible(_focusProvider.GetFocusedControlInfo()))
+        // The injector already handles this — no shared prefix means no backspaces. Guard on the surface
+        // rather than on the buffer, so an accept can never inject where we wouldn't have suggested.
+        if (typed.Length == 0 && !context.IsSuggestible)
         {
             // Nothing to replace, and nowhere sensible to put it. The bar being up at all means it has gone
             // stale — focus moved between the last update and this click — so take it down rather than leave
@@ -104,15 +151,15 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        // NoteWordInserted rather than ResetBuffer: the word is about to be typed into the field, so it
-        // becomes part of the context the next prediction works from. ResetBuffer would throw that away and
-        // the model would go blind for a word every time the user accepted a suggestion.
+        // NoteTextInserted rather than discarding the context: the word is about to be typed into the field,
+        // so it becomes part of what the next prediction works from. Throwing it away would make the model go
+        // blind for a word every time the user accepted a suggestion.
         //
-        // It raises BufferReset, which publishes the idle list by itself — but only when the buffer was
-        // non-empty, which it isn't on the between-words accept path. Silence it and publish once here, so
+        // It raises ContextLost, which publishes the idle list by itself — but only when a word was in
+        // progress, which it isn't on the between-words accept path. Silence it and publish once here, so
         // both paths behave the same and the bar is never updated twice for one accepted word.
         _suppressIdlePublish = true;
-        try { _typingSession.NoteWordInserted(suggestion.Word); }
+        try { _context.NoteTextInserted(suggestion.Word); }
         finally { _suppressIdlePublish = false; }
 
         // Straight back to the idle list rather than blanking the bar, so accepting a word doesn't produce
@@ -142,7 +189,7 @@ public sealed class SuggestionController : IDisposable
     public void PollFocus()
     {
         if (!_isShowing) return;
-        if (IsSuggestible(_focusProvider.GetFocusedControlInfo())) return;
+        if (_context.GetContext().IsSuggestible) return;
 
         // Not a dismissal: the user hasn't rejected the bar, focus just went elsewhere. Leaving _dismissed
         // alone means typing in the next text field brings it straight back.
@@ -168,45 +215,46 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        var focus = _focusProvider.GetFocusedControlInfo();
-        if (!IsSuggestible(focus))
+        var snapshot = _context.GetContext();
+        if (!snapshot.IsSuggestible)
         {
             Publish(SuggestionUpdate.Empty);
             return;
         }
 
-        var context = BuildContext(word);
+        // The event's word wins over the snapshot's, so a provider that reads its state asynchronously can
+        // never publish suggestions for a word other than the one it just announced.
+        var context = BuildContext(word, snapshot);
         var suggestions = _predictionEngine.GetLiveSuggestions(
             word, _settings.SuggestionCount, context, _settings.EmojiSuggestionsEnabled);
 
-        Publish(new SuggestionUpdate(suggestions, focus.Caret));
+        Publish(new SuggestionUpdate(suggestions, snapshot.Caret));
 
         // The statistical answer is already on screen. If a neural model is loaded and the answer looked
         // uncertain, ask it in the background and republish only if it still applies — never block the
         // keystroke on tens of milliseconds of inference.
-        RerankInBackground(context, suggestions, focus.Caret);
+        RerankInBackground(context, suggestions, snapshot.Caret);
     }
 
     private void OnWordCommitted(object? sender, WordCommittedEventArgs e)
     {
-        // The CurrentWordChanged("") that TypingSession raises straight after this is what repopulates the
-        // bar, so there is nothing to publish here.
+        // The CurrentWordChanged("") that follows this is what repopulates the bar, so there is nothing to
+        // publish here.
         if (IsPaused) return;
 
-        // One focus check for both jobs below. It is also the privacy gate for learning: a control we would
-        // not offer suggestions in — a password box, or anything we cannot identify — is one we must not
-        // learn from either.
-        var focus = _focusProvider.GetFocusedControlInfo();
-        if (!IsSuggestible(focus)) return;
+        // One check for both jobs below. It is also the privacy gate for learning: a control we would not
+        // offer suggestions in — a password box, or anything we cannot identify — is one we must not learn
+        // from either.
+        if (!_context.GetContext().IsSuggestible) return;
 
         var wordOnScreen = e.Word;
 
         if (_settings.AutocorrectEnabled && _predictionEngine.GetAutocorrection(e.Word) is { } correction)
         {
-            // The context has to follow the correction, not the typo. TypingSession recorded what was
-            // actually typed; once autocorrect decides to rewrite it, the word on screen is the corrected
-            // one and that is what the next prediction must be conditioned on.
-            _typingSession.ReplaceLastWord(correction.Word);
+            // The context has to follow the correction, not the typo. The provider recorded what was actually
+            // typed; once autocorrect decides to rewrite it, the word on screen is the corrected one and that
+            // is what the next prediction must be conditioned on.
+            _context.NoteWordCorrected(correction.Word);
             wordOnScreen = correction.Word;
 
             // Deferred so the boundary key the user just pressed lands in the target app first; correcting
@@ -236,12 +284,11 @@ public sealed class SuggestionController : IDisposable
         _personalLearning.Learn(word, precedingWords);
     }
 
-    private void OnBufferReset(object? sender, EventArgs e) => PublishIdle();
+    private void OnContextLost(object? sender, EventArgs e) => PublishIdle();
 
     /// <summary>
     /// What the bar shows when no word is in progress: common words if it's meant to stay put, nothing if
-    /// it's meant to appear per-word. Purely frequency-based for now — <see cref="PredictionEngine.GetFrequentWords"/>
-    /// is the seam where context-aware predictions land later.
+    /// it's meant to appear per-word.
     /// </summary>
     private void PublishIdle()
     {
@@ -253,8 +300,8 @@ public sealed class SuggestionController : IDisposable
             return;
         }
 
-        var focus = _focusProvider.GetFocusedControlInfo();
-        if (!IsSuggestible(focus))
+        var snapshot = _context.GetContext();
+        if (!snapshot.IsSuggestible)
         {
             Publish(SuggestionUpdate.Empty);
             return;
@@ -262,10 +309,10 @@ public sealed class SuggestionController : IDisposable
 
         Publish(new SuggestionUpdate(
             _predictionEngine.GetNextWords(
-                BuildContext(string.Empty),
+                BuildContext(string.Empty, snapshot),
                 _settings.SuggestionCount,
                 includePhrases: _settings.PhraseSuggestionsEnabled),
-            focus.Caret,
+            snapshot.Caret,
             IsIdle: true));
     }
 
@@ -298,7 +345,7 @@ public sealed class SuggestionController : IDisposable
             _postToMessageLoop(() =>
             {
                 // Still the same word being typed? If not, this describes text that has already gone.
-                if (!string.Equals(_typingSession.CurrentWord, word, StringComparison.Ordinal)) return;
+                if (!string.Equals(_context.GetContext().CurrentWord, word, StringComparison.Ordinal)) return;
                 if (IsPaused || _dismissed) return;
 
                 Publish(new SuggestionUpdate(reranked, caret));
@@ -307,19 +354,19 @@ public sealed class SuggestionController : IDisposable
     }
 
     /// <summary>
-    /// Packages what the typing layer knows into the value the prediction layer consumes. Everything here
-    /// comes from <see cref="TypingSession"/> rather than from reading the focused application, so the
-    /// context is exactly as trustworthy as the word buffer is — and goes away at the same moment.
+    /// Packages what the input layer knows into the value the prediction layer consumes.
+    ///
+    /// <para>The partial word is passed separately rather than taken from the snapshot so the caller can pin
+    /// it to the word the provider announced. Everything else comes from the snapshot, which means the
+    /// prediction layer receives whatever fidelity the active provider offers and cannot tell the
+    /// difference.</para>
     /// </summary>
-    private PredictionContext BuildContext(string partialWord) => new(
+    private static PredictionContext BuildContext(string partialWord, TextContext snapshot) => new(
         partialWord,
-        _typingSession.RecentWords,
-        _typingSession.IsAtSentenceStart,
+        snapshot.PrecedingWords,
+        snapshot.IsAtSentenceStart,
         PrecedingPunctuation: null,
-        ShouldCapitalize: _typingSession.IsAtSentenceStart);
-
-    private static bool IsSuggestible(FocusedControlInfo focus) =>
-        focus.IsStandardEditControl && !focus.IsPasswordField;
+        ShouldCapitalize: snapshot.IsAtSentenceStart);
 
     private void Publish(SuggestionUpdate update)
     {
@@ -329,8 +376,10 @@ public sealed class SuggestionController : IDisposable
 
     public void Dispose()
     {
-        _typingSession.CurrentWordChanged -= OnCurrentWordChanged;
-        _typingSession.WordCommitted -= OnWordCommitted;
-        _typingSession.BufferReset -= OnBufferReset;
+        _context.CurrentWordChanged -= OnCurrentWordChanged;
+        _context.WordCommitted -= OnWordCommitted;
+        _context.ContextLost -= OnContextLost;
+
+        if (_ownsContextProvider) _context.Dispose();
     }
 }

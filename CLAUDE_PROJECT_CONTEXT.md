@@ -1,194 +1,210 @@
 # Project Context
 
 > Handoff document for continuing WordStrip in a fresh Claude Code session.
-> Everything below marked **[fact]** was verified by inspecting or running the project.
+> Everything marked **[fact]** was verified by inspecting or running the project on the date below.
 > Anything marked **[assumption]** or **[recommendation]** is judgement, not established fact.
+> `Unknown` means exactly that — it has not been determined, and what is missing is stated.
 
 ## 1. Project Identity
 
-- **Project name:** WordStrip **[fact]** (assembly name `WordStrip`, solution `WordStrip.sln`)
-- **Project type:** Windows desktop utility — a background tray application with a floating overlay window **[fact]**
-- **One-sentence purpose:** Adds phone-keyboard-style word suggestions and offline autocorrect to the physical Windows keyboard, shown in a small floating strip near where you type.
+- **Project name:** WordStrip **[fact]** — assembly name `WordStrip`, solution `WordStrip.sln`
+- **Project type:** Windows desktop utility — a background tray application with a floating, never-focused
+  overlay window. Not a service, not a web app, no server component. **[fact]**
+- **One-sentence purpose:** Adds phone-keyboard-style word suggestions and offline autocorrect to the
+  physical Windows keyboard, shown in a small floating strip near where you type.
 - **Current absolute project path:** `D:\Claude Code\WordStrip` **[fact]**
-- **Repository:** Local git repository, created 2026-08-09. No remote. **[fact]**
-- **Main branch:** `master` (only branch)
-- **Current branch:** `master`
-- **Last inspected date:** 2026-08-09
+- **Repository:** Local git repository. **No remote configured** (`git remote -v` is empty), so there is no
+  origin to push to and no backup outside this machine. **[fact]**
+- **Main branch:** `master` — the only branch. **[fact]**
+- **Current branch:** `master`, working tree clean at commit `9f24130`. **[fact]**
+- **Version:** 0.10.1 — declared in **two** places that must be bumped together:
+  `src/WordStrip.App/WordStrip.App.csproj` and `installer/WordStrip.iss`. **[fact]**
+- **Last inspected date:** 2026-08-12
 
 ### How the project root was identified
 
-The session's working directory is `D:\Claude Code`, which is the *parent*. The real root is
-`D:\Claude Code\WordStrip`, identified by the presence of `WordStrip.sln` and confirmed by
-`dotnet sln list` resolving all three projects relative to it. **[fact]**
+The Claude Code session's working directory is `D:\Claude Code`, which is the **parent**, not the root.
+`D:\Claude Code` is itself not a git repository. The real project root is `D:\Claude Code\WordStrip`,
+identified by the presence of `WordStrip.sln` and `.git\`, and confirmed by every project reference in the
+solution resolving relative to it. **[fact]**
 
-The `.gitignore` (`bin/`, `obj/`, `publish/`, …) is now live: the initial commit captured 73 files and no
-build output. **[fact]**
+Always pass absolute paths to `dotnet`, or `cd` into the root first.
 
 ## 2. Product or Software Description
 
 WordStrip runs in the system tray with no main window. A global low-level keyboard hook watches typing;
-while a word is in progress, a small glass strip appears showing ranked candidate words.
+a small glass strip shows ranked candidate words near the caret.
 
 **Main workflow:**
 
 1. User types in a supported text field.
 2. The strip appears with 3–7 candidates.
-3. `Tab` highlights the next candidate (hold to scrub quickly); `Space` inserts the highlighted one;
-   `Esc` puts the bar away; clicking a word inserts it directly with no need to press Tab first.
+3. `Tab` highlights the next candidate (hold to scrub); `Space` inserts the highlighted one; `Esc` puts the
+   bar away; clicking a chip inserts directly with no need to press Tab first.
 4. On finishing a word (space/punctuation), conservative autocorrect may replace an obvious misspelling.
-5. The strip **stays on screen between words**, predicting what comes next (default; switchable). Tab
-   cycles those predictions too — see §12 item 4, which records the cost of that.
-6. Right-click the tray icon → Settings for theme, word count, persistent bar, bar thickness, glass tint,
-   animation speed and bar position, all applying live with a preview.
+5. The strip **stays on screen between words** by default, predicting what comes next. Tab cycles those
+   predictions too — see §12 item 4 for what that costs.
+6. Right-click the tray icon → Settings for theme, word count, phrases, emoji, autocorrect, persistent bar,
+   bar thickness, glass tint, animation speed, position, personal words, learning, the optional language
+   model, and autostart. Everything applies live with a preview.
 
-**Who uses it:** currently the project owner and a small circle of friends/family testing preview builds.
-The owner's motivation is that they mistype often and Windows has no equivalent of the Android/iOS
-suggestion bar. **[fact — stated by the owner]**
+**Who uses it:** the project owner and a small circle of friends and family testing preview builds. The
+owner's stated motivation is that they mistype often and Windows has no equivalent of the Android/iOS
+suggestion row. **[fact — stated by the owner]**
 
-**Privacy posture:** entirely local. No network calls at runtime, no telemetry, no account. The strip
-disables itself inside password fields (`ES_PASSWORD`), and so does personal learning. By default nothing
-typed is written to disk at all; with learning switched on, what is written is counts of words, pairs and
-triples — never text. Everything lives in `%LOCALAPPDATA%\WordStrip` as plain files the user can read and
-delete. **[fact]**
+**Privacy posture:** entirely local. **The application makes no network calls of its own** — the single
+exception is `NeuralModelStore`, which performs plain HTTPS GETs for public model files, and only when the
+user presses a button in Settings having been shown the size, licence and publisher. No telemetry, no
+account, no analytics. The strip and personal learning both disable themselves inside password fields
+(`ES_PASSWORD`). By default nothing typed is written to disk at all; with learning on, what is written is
+*counts* of words, pairs and triples — never text. Everything lives in `%LOCALAPPDATA%\WordStrip` as plain
+files the user can read and delete. **[fact]**
 
 ## 3. Current Status
 
-- **Overall status:** **All six planned phases are complete, built as 0.10.0.** Only Phase 7 (TSF) remains
-  from the original plan. The long-running partial-insertion bug is **fixed and confirmed by the owner**.
-  **[fact]**
+- **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
+  **Phase 7 (TSF migration) is the active task. Stage 0 — the provider abstraction — is done, built and
+  tested (305 tests). The TSF service itself has not been started and is blocked on a missing C++
+  toolchain.** See §14. **[fact]**
 - **Completed:**
-  - Keyboard hook, text injection, word-buffer tracking
+  - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
-  - Floating glass strip with 7 selectable themes, selection lens and position indicator
-  - Spring-based motion system with accessibility fallbacks
+  - Floating glass strip, 7 themes, selection lens, position indicator
+  - Spring-based motion with accessibility fallbacks, plus Apple-style bounce on entrance/exit
   - Settings window with live light/dark preview
-  - Single-instance handling, tray icon, autostart, installer + portable exe
-  - Phase 1 engine hardening: `PrefixIndex`, `ICandidateRanker`/`FrequencyRanker`, additive
-    `Suggestion` metadata, performance harness **[fact]**
-  - Persistent bar + settings toggle, `IFocusedControlProvider` seam, an end-to-end regression script,
-    and the 0.4.0 installer **[fact]**
-  - Phase 2: trigram/bigram language model, contextual ranking, typing-history capture, an offline model
-    builder, and the 0.5.0 build **[fact]**
-  - **Tab fix: the bar claims Tab whenever it is visible** (reported from real use — see §14) **[fact]**
-  - **Phase 3: personal vocabulary with casing preservation, autocorrect protection and a settings UI** **[fact]**
-  - **Phase 4: personal learning with bounding, decay, cold-start ramp and privacy controls** **[fact]**
-  - Phase 3 + Phase 4 + the 0.6.0 build **[fact]**
-  - **Phase 5: multi-word phrase suggestions via bounded beam search** **[fact]**
-  - **Emoji suggestions, animation-off at the far end of the speed slider, and a single-batch
-    `SendInput` fix for partially-inserted replacements** **[fact]**
-  - Phase 5 + emoji + the 0.7.0 build **[fact]**
-  - **Text insertion by window message rather than synthetic keystrokes — the fix for the partial-insertion
-    bug, confirmed by the owner. 233 ms → 5.9 ms for a 51-character entry.** **[fact]**
-  - **Apple-style bounce on the bar's entrance and exit** **[fact]**
-  - **Phase 6: ONNX neural reranking, optional 227 MB download, with the full cascade, async execution,
-    cancellation and stale-result suppression** **[fact]**
-  - **271 unit tests and the 0.10.0 build** **[fact]**
-- **In progress:** Nothing. Phases 1–6 are closed out.
-- **Blocked:** Nothing is blocked. The largest *limitation* (browser/Electron support) is a known
-  architectural gap, addressed by Phase 7 (TSF), not a blocker.
-- **Next priority:** Owner's call. Phase 7 (TSF) is the only planned phase left and is by far the largest —
-  it is what would make WordStrip work in browsers and Electron apps. Do **not** start it unasked.
+  - Single-instance handling, tray icon, autostart, per-user installer + portable exe
+  - Phase 1: `PrefixIndex`, `ICandidateRanker`/`FrequencyRanker`, additive `Suggestion` metadata
+  - Persistent bar + toggle, `IFocusedControlProvider` seam, end-to-end regression harness
+  - Phase 2: trigram/bigram model, contextual ranking, typing history, offline model builder
+  - Tab claims the bar whenever it is visible (owner request, reversed the 0.4.0 decision)
+  - Phase 3: personal vocabulary with casing preservation and autocorrect protection
+  - Phase 4: personal learning with bounding, decay, cold-start ramp, privacy controls
+  - Phase 5: multi-word phrases via bounded beam search; emoji suggestions; animation-off
+  - **Text insertion by window message rather than synthetic keystrokes** — the real fix for the
+    partial-insertion bug, confirmed by the owner. 233 ms → 5.9 ms for a 51-character entry.
+  - Phase 6: optional ONNX neural reranking with cascade, async execution, cancellation, stale suppression
+  - Crash logging to `%TEMP%\wordstrip_crash.log`
+  - **Phase 7 Stage 0: the `ITextContextProvider` abstraction, the keyboard-hook adapter behind it, and
+    `SuggestionController` rewired to consume it.** 305 unit tests. **[fact]**
+- **In progress:** **Phase 7 — TSF migration.** Stage 0 complete; Stage 1 (the text service itself) not
+  started. **[fact]**
+- **Blocked:** **The TSF service is blocked on tooling.** This machine has **no C++ toolchain at all** — no
+  Visual Studio, no Build Tools, no Windows SDK, no cmake, no msbuild; only the .NET 8 SDK. Verified with
+  `vswhere`, the SDK registry key and `Get-Command`. A TSF text service is conventionally a native COM DLL,
+  so this must be resolved before Stage 1. The owner has approved adding a C++ toolchain; it is not yet
+  installed. **[fact]**
+- **Next priority:** Install the C++ toolchain, then the Stage 1 spike (see §14 and §15).
 
-### Phase 6 — as shipped **[fact]**
+### Documentation debt carried into this session **[fact]**
 
-**Model:** DistilGPT2, int8 ONNX. **227 MB download** (verified against the publisher, *not* the ~90 MB
-quoted during planning, which was an estimate and wrong by nearly three times). Apache 2.0 from the upstream
-`distilbert/distilgpt2`; the ONNX conversion at `onnx-community/distilgpt2-ONNX` carries no licence
-statement of its own, so upstream terms apply. CPU only.
-
-**Optional download, never bundled.** The installer grew **66.1 → 70.7 MB (+4.6 MB)** for ONNX Runtime —
-also better than the ~15 MB warned about. The app is fully functional with no model, which is the default
-state.
-
-**Measured:** cold load 3.0–4.4 s (background thread, never blocks startup) · warm inference **54–80 ms** ·
-one pass scores the whole candidate list, so five candidates cost the same as one · ~2.2 MB allocated per
-call · ~550 MB process working set with the model loaded.
-
-**Honest quality note:** first-token scoring on an 82M model quantised to int8 gives a useful but coarse
-signal. It reliably rejects nonsense — "forward" beats "banana" after "i am looking" — and it clearly reads
-context, scoring "you" about 7.5 nats higher after "thank" than after "looking". It does **not** reliably
-make finer calls: after "i am really looking" it narrowly prefers "you" to "forward". The tests assert what
-it can actually do, not what would be nice.
+`README.md` and `installer/READ-ME-FIRST.txt` were **not** updated for 0.9.0/0.10.x. The README still
+describes 248 tests and lacks the message-based-insertion rationale, the Phase 6/neural section and the
+bounce animation. This document is current; those two are not. **[fact]**
 
 ## 4. Directory Structure
 
+Verified tree, build output excluded. **[fact]**
+
 ```
 D:\Claude Code\WordStrip\
-├── WordStrip.sln                     Solution: App, Core, Core.Tests
-├── README.md                         Engineering documentation (design + rationale)
+├── WordStrip.sln                     4 projects: App, Core, Neural, Core.Tests (+ NGramBuilder tool)
+├── README.md                         Engineering documentation — STALE at 0.8.0, see §3
 ├── CLAUDE_PROJECT_CONTEXT.md         This file
-├── build-release.ps1                 One-shot: publish portable exe + build installer
-├── .gitignore                        bin/, obj/, publish/, .corpus/
+├── build-release.ps1                 One shot: publish portable exe + build installer
+├── .gitignore                        bin/, obj/, publish/, .vs/, *.user, *.suo, .corpus/
 │
-├── .corpus/                          Downloaded corpus (gitignored, ~47 MB). Regenerate, don't commit.
+├── .corpus/                          Downloaded corpus (gitignored, ~47 MB, 61 Gutenberg books +
+│                                     symspell_bigrams.txt). Regenerate, never commit.
 │
 ├── assets/
 │   ├── dict/frequency_dictionary_en_82_765.txt   SymSpell word+frequency list (MIT)
-│   ├── ngram/ngram-2.txt, ngram-3.txt            NEW: generated model, committed (7.25 MB)
-│   └── wordstrip.ico                 Multi-resolution app icon (generated)
+│   ├── ngram/ngram-2.txt, ngram-3.txt            Generated model, committed (7.25 MB)
+│   └── wordstrip.ico                             Multi-resolution app icon
 │
-├── tools/                            Build-time only; never shipped (build-release publishes only the App)
+├── tools/                            Build-time only; never shipped
 │   ├── ngram/Fetch-Corpus.ps1        Downloads Gutenberg texts + SymSpell bigrams
-│   └── WordStrip.NGramBuilder/       Counts, blends, prunes and writes the model files
+│   └── WordStrip.NGramBuilder/       Counts, blends, prunes, writes the model files
 │
 ├── installer/
-│   ├── WordStrip.iss                 Inno Setup script (per-user install, no UAC)
-│   └── READ-ME-FIRST.txt             Tester-facing instructions, copied into publish/
+│   ├── WordStrip.iss                 Inno Setup 6, per-user install, no UAC. VERSION LIVES HERE TOO.
+│   └── READ-ME-FIRST.txt             Tester-facing notes — STALE at 0.8.0, see §3
 │
 ├── publish/                          Build output (gitignored, not source)
-│   ├── WordStrip-Setup-<ver>.exe
-│   ├── portable/WordStrip.exe
+│   ├── WordStrip-Setup-0.10.1.exe    70.7 MB
+│   ├── portable/WordStrip.exe        79,130,621 bytes, self-contained single file
+│   ├── portable/onnxruntime*.lib     2 stray import libraries — see §12 item 16
 │   └── READ-ME-FIRST.txt
 │
-├── src/WordStrip.Core/               No UI dependencies
-│   ├── Input/                        Win32 hooks, injection, key translation, word buffer
+├── src/WordStrip.Core/               NO UI dependencies, NO NuGet dependencies
+│   ├── Input/
 │   │   ├── NativeMethods.cs          All P/Invoke declarations
 │   │   ├── LowLevelKeyboardHook.cs   WH_KEYBOARD_LL, Suppress flag
 │   │   ├── LowLevelMouseHook.cs      WH_MOUSE_LL, ignores clicks on our own windows
-│   │   ├── TypingSession.cs          Reconstructs the in-progress word
-│   │   ├── Win32TextInjector.cs      SendInput; minimal-diff + case preservation
-│   │   ├── ITextInjector.cs          Seam for a future TSF implementation
-│   │   └── KeyTranslator.cs          vkCode → character via layout
-│   ├── Personal/                     ← Phases 3 and 4. Local files only; no network code anywhere below.
-│   │   ├── PersonalWord.cs           NEW: key + display casing + usage
-│   │   ├── PersonalVocabularyStore.cs NEW: the user's own words; atomic writes, corruption-tolerant
-│   │   └── PersonalLanguageModel.cs  NEW: learned counts, bounded, decaying, cold-start ramped
-│   ├── Prediction/                   ← Phases 1 and 2 both landed here
-│   │   ├── FrequencyDictionary.cs    Vocabulary + frequency source
+│   │   ├── TypingSession.cs          Reconstructs the in-progress word + last two words of history
+│   │   ├── Win32TextInjector.cs      Message-based insertion, SendInput fallback — READ §13 FIRST
+│   │   ├── InjectionLog.cs           Opt-in diagnostics (WORDSTRIP_INJECTLOG)
+│   │   ├── ITextInjector.cs          Seam — Phase 7's TSF commit path plugs in here
+│   │   ├── KeyTranslator.cs          vkCode → character via layout
+│   │   └── WordCommittedEventArgs.cs Carries PrecedingWords snapshotted pre-update
+│   ├── Automation/
+│   │   ├── FocusedControlInfo.cs     record struct: IsStandardEditControl, IsPasswordField, Caret,
+│   │   │                             Handle, IsRichEdit
+│   │   ├── FocusedControlInspector.cs Static live Win32 inspection
+│   │   └── IFocusedControlProvider.cs Seam over the above, so focus can be faked in tests
+│   ├── Personal/
+│   │   ├── PersonalWord.cs           Key + display casing + usage; date-only recency
+│   │   ├── PersonalVocabularyStore.cs Atomic writes, corruption-tolerant, 5000 cap
+│   │   └── PersonalLanguageModel.cs  Learned counts, bounded, decaying, cold-start ramped
+│   ├── Prediction/
+│   │   ├── FrequencyDictionary.cs    Vocabulary + frequency source (top 60,000 loaded)
 │   │   ├── PrefixIndex.cs            Sorted array + binary search; cached top-frequency list
-│   │   ├── SymSpellIndex.cs          Delete-variant fuzzy candidate generation
+│   │   ├── SymSpellIndex.cs          Delete-variant fuzzy candidates (edit distance 2)
 │   │   ├── DamerauLevenshtein.cs     Bounded edit distance
-│   │   ├── ICandidateRanker.cs       Ranking abstraction + RankingContext (+ PredictionContext)
-│   │   ├── FrequencyRanker.cs        Deterministic banded scoring — Phase 1, untouched by Phase 2
-│   │   ├── ContextualRanker.cs       NEW: wraps the above and adds the n-gram signal
-│   │   ├── PredictionContext.cs      NEW: partial word, preceding words, sentence-start
-│   │   ├── PredictionEngine.cs       Candidate orchestration; GetLiveSuggestions + GetNextWords
-│   │   ├── PhraseGenerator.cs        NEW: bounded beam search for multi-word candidates
-│   │   ├── EmojiSuggester.cs         NEW: keyword matching, ambiguity refusal
-│   │   ├── EmojiTable.cs             NEW: ~300 curated keyword→emoji entries
-│   │   ├── Suggestion.cs             Candidate contract (+ Source, Score, Confidence, WordCount)
-│   │   └── NGram/
-│   │       ├── NGramFormat.cs        NEW: on-disk contract, shared with the builder
-│   │       ├── NGramTokenizer.cs     NEW: shared tokenizer — drift here silently kills every lookup
-│   │       └── NGramLanguageModel.cs NEW: tables, stupid backoff, ContextLookup
+│   │   ├── ICandidateRanker.cs       Ranking abstraction + RankingContext
+│   │   ├── FrequencyRanker.cs        Banded deterministic scoring — Phase 1, wrap it, don't edit it
+│   │   ├── ContextualRanker.cs       Wraps the above, adds the n-gram signal
+│   │   ├── PredictionContext.cs      Partial word, preceding words, sentence-start
+│   │   ├── PredictionEngine.cs       GetLiveSuggestions + GetNextWords + WithEmoji
+│   │   ├── PhraseGenerator.cs        Bounded beam search, up to 3 words
+│   │   ├── EmojiSuggester.cs         Keyword matching, ambiguity refusal, min prefix 3
+│   │   ├── EmojiTable.cs             ~300 curated keyword→emoji entries
+│   │   ├── Suggestion.cs             Candidate contract (Source, Score, Confidence, WordCount)
+│   │   ├── NGram/
+│   │   │   ├── NGramFormat.cs        On-disk contract, shared with the builder
+│   │   │   ├── NGramTokenizer.cs     Shared tokenizer — drift here silently kills every lookup
+│   │   │   └── NGramLanguageModel.cs Tables, stupid backoff, ContextLookup fast path
+│   │   └── Neural/                   Dependency-free seam; knows nothing about ONNX
+│   │       ├── INeuralReranker.cs    IsReady + ScoreAsync; null return means "no opinion"
+│   │       ├── NeuralRerankCoordinator.cs Cascade, sequence numbers, cancellation, ≤25 bonus, 250 ms
+│   │       ├── UnavailableNeuralReranker.cs Null object
+│   │       ├── NeuralModelCatalog.cs Verified descriptor: name, publisher, licence, sizes, URLs
+│   │       └── NeuralModelStore.cs   The ONLY code in WordStrip that touches the network
+│   ├── Text/                         ← PHASE 7. The input-mechanism abstraction
+│   │   ├── TextContext.cs            The snapshot the prediction layer consumes, + TextContextSource enum
+│   │   ├── ITextContextProvider.cs   The seam a TSF provider will implement alongside the hook
+│   │   └── KeyboardHookTextContextProvider.cs  The existing path as a provider. Pure adapter, no logic
 │   ├── Suggestions/
-│   │   ├── SuggestionController.cs   The only class the UI talks to; owns the persistent-bar state machine
-│   │   └── SuggestionUpdate.cs       Render contract (+ IsIdle — decides whether the bar may claim keys)
-│   ├── Automation/                   Focused-control + caret detection
-│   │   ├── FocusedControlInspector.cs    Static live Win32 inspection
-│   │   └── IFocusedControlProvider.cs    NEW: seam over the above, so focus can be faked in tests
-│   ├── Settings/                     AppSettings, store, enums (BarTheme, BarPosition, BackdropBlur)
-│   │   └── UserDataLocation.cs       NEW: one place decides where user data lives; WORDSTRIP_DATA_DIR
+│   │   ├── SuggestionController.cs   The only class the UI talks to; persistent-bar state machine.
+│   │   │                             Consumes ITextContextProvider — knows nothing about hooks
+│   │   └── SuggestionUpdate.cs       Render contract (+ IsIdle)
+│   ├── Settings/                     AppSettings, AppSettingsStore, BarTheme, BarPosition, BackdropBlur
+│   │   └── UserDataLocation.cs       One place decides where user data lives; WORDSTRIP_DATA_DIR
 │   └── Platform/AutostartManager.cs  HKCU Run key
 │
-├── src/WordStrip.App/                WPF, net8.0-windows
+├── src/WordStrip.Neural/             ONNX isolated here so Core stays dependency-free
+│   ├── WordStrip.Neural.csproj       Microsoft.ML.OnnxRuntime 1.20.1, Microsoft.ML.Tokenizers 1.0.1
+│   └── OnnxNeuralReranker.cs         TryLoad never throws; discovers input_ids, attention_mask,
+│                                     position_ids, logits name and past_key_values layer count
+│
+├── src/WordStrip.App/                WPF, net8.0-windows, AssemblyName=WordStrip
 │   ├── App.xaml.cs                   Composition root — subscription order is load-bearing
 │   ├── SingleInstance.cs             Mutex + "show settings" signal
-│   ├── Coordination/BarInputRouter.cs   Tab/Space/Enter/Esc handling
+│   ├── Coordination/BarInputRouter.cs Tab/Space/Enter/Esc handling
 │   ├── UI/
 │   │   ├── SuggestionBarWindow.xaml(.cs)  The floating strip
 │   │   ├── SettingsWindow.xaml(.cs)       Settings + live preview
-│   │   ├── Theming/ThemeCatalog.cs        THE SEVEN THEMES live here
+│   │   ├── SettingsViewModel.cs           Including the neural download/delete commands
+│   │   ├── Theming/ThemeCatalog.cs        THE SEVEN THEMES live here and nowhere else
 │   │   ├── Theming/ThemeTokens.cs         Token contract
 │   │   ├── ThemeBrushes.cs                Tokens → frozen brushes
 │   │   ├── GlassPlate.cs / SelectionLens.cs   Custom render-only elements
@@ -198,27 +214,28 @@ D:\Claude Code\WordStrip\
 │   │   ├── SystemAppearance.cs             Accessibility preferences
 │   │   └── FrameProbe.cs                   Opt-in frame-time diagnostic
 │   ├── Interop/GlassWindowBehavior.cs      No-activate, no-taskbar window
+│   ├── Tray/TrayIconController.cs          WinForms NotifyIcon (the only WinForms use)
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-├── tests/WordStrip.Core.Tests/       xUnit, 248 tests
+├── tests/WordStrip.Core.Tests/       xUnit, 305 tests
 │   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
-│   ├── PrefixCompletionTests.cs
-│   ├── FuzzyMatchingTests.cs
-│   ├── AutocorrectionTests.cs
-│   ├── RankingTests.cs
-│   ├── PrefixIndexTests.cs
+│   ├── TestLanguageModel.cs          Hand-written n-gram fixture
+│   ├── PrefixCompletionTests.cs / FuzzyMatchingTests.cs / AutocorrectionTests.cs
+│   ├── RankingTests.cs / PrefixIndexTests.cs
 │   ├── SuggestionControllerTests.cs  Persistent-bar state machine
-│   ├── TestLanguageModel.cs          NEW: hand-written n-gram fixture + its own vocabulary
-│   ├── NGramLanguageModelTests.cs    NEW: backoff, sentence boundaries, determinism, parsing
-│   ├── ContextualPredictionTests.cs  The two modes and the ranking contract
-│   ├── TypingHistoryTests.cs         When context must be forgotten
-│   ├── PersonalVocabularyTests.cs    NEW: store, casing, corruption, autocorrect protection (36)
-│   ├── PersonalLearningTests.cs      NEW: counts, bounds, decay, cold start, privacy (28)
+│   ├── NGramLanguageModelTests.cs / ContextualPredictionTests.cs / TypingHistoryTests.cs
+│   ├── PersonalVocabularyTests.cs (36) / PersonalLearningTests.cs (28)
+│   ├── TextInjectionTests.cs (10)    Asserts the batch that WOULD be sent, via InternalsVisibleTo
+│   ├── PhraseSuggestionTests.cs (19) / EmojiSuggestionTests.cs (28)
+│   ├── NeuralRerankTests.cs (15)     Cascade, staleness, cancellation — no model needed
+│   ├── OnnxRerankerTests.cs          SKIPPED unless WORDSTRIP_TEST_MODEL_DIR is set
+│   ├── TextContextTests.cs (34)      Phase 7. Also covers controller paths that were unreachable
+│   │                                 before a provider could be faked — see its class comment
 │   └── PerformanceTests.cs           Timings against the real vocabulary and the real model
 │
-└── tests/regression/                 NEW: end-to-end, drives a real Win32 edit control
-    ├── Verify-PersistentBar.ps1      6 checks; see §12 for the traps it took to get right
-    └── TestTarget.ps1                Throwaway window with a real "Edit" control
+└── tests/regression/                 End-to-end, drives a real Win32 edit control
+    ├── Verify-PersistentBar.ps1      9 checks; see §12 for the traps it took to get right
+    └── TestTarget.ps1                Throwaway window with a real EDIT or RICHEDIT50W control
 ```
 
 ## 5. Technology Stack
@@ -226,23 +243,28 @@ D:\Claude Code\WordStrip\
 | Item | Version / detail | Source |
 |---|---|---|
 | Language | C# 12 | **[fact]** |
-| Runtime | .NET 8 (`net8.0-windows`) | **[fact]** |
+| Runtime | .NET 8, `net8.0-windows` on every project | **[fact]** |
 | SDK installed | 8.0.423 | **[fact]** `dotnet --version` |
 | UI framework | WPF | **[fact]** |
 | Secondary UI | WinForms — **only** for the tray `NotifyIcon` | **[fact]** |
+| Neural runtime | `Microsoft.ML.OnnxRuntime` 1.20.1, `Microsoft.ML.Tokenizers` 1.0.1 | **[fact]** |
 | Tests | xUnit 2.5.3, Microsoft.NET.Test.Sdk 17.8.0, coverlet.collector 6.0.0 | **[fact]** |
 | Installer | Inno Setup 6 (`ISCC.exe` at `%LOCALAPPDATA%\Programs\Inno Setup 6`) | **[fact]** |
-| OS (dev machine) | Windows 11, build 10.0.26200 | **[fact]** |
+| OS (dev machine) | Windows 11 Pro, build 10.0.26200 | **[fact]** |
 | Display (dev machine) | 1920×1080 at **150% scaling** — matters for capture/testing | **[fact]** |
 | Dictionary | SymSpell `frequency_dictionary_en_82_765.txt` (MIT), top 60,000 loaded | **[fact]** |
-| Language model | Own format, built from Project Gutenberg (public domain) + SymSpell bigrams (MIT) | **[fact]** |
-| External services | **None at runtime.** No APIs, no database, no network calls | **[fact]** |
+| Language model | Own text format, built from Project Gutenberg (public domain) + SymSpell bigrams (MIT) | **[fact]** |
+| Optional neural model | DistilGPT2 int8 ONNX, Apache 2.0, 227 MB, downloaded by the user only | **[fact]** |
+| Databases | **None.** Plain JSON and text files | **[fact]** |
+| APIs / external services | **None at runtime**, except the user-initiated model download from huggingface.co | **[fact]** |
 
-There are **no NuGet dependencies in the shipping app** — only the test project has package references. **[fact]**
+**`WordStrip.Core` has zero NuGet dependencies and this is deliberate** — it is why the prediction stack is
+predictable and why a broken package cannot take the app down. ONNX lives in `WordStrip.Neural` behind the
+`INeuralReranker` seam. **[fact]**
 
-⚠️ **The app makes no network calls, but the *build* does.** `tools\ngram\Fetch-Corpus.ps1` downloads ~47 MB
-of corpus text to regenerate the model. That is a developer step, not something the shipped app ever does —
-the model is committed under `assets\ngram\` and embedded in the exe. **[fact]**
+⚠️ **The app makes essentially no network calls, but the *build* does.** `tools\ngram\Fetch-Corpus.ps1`
+downloads ~47 MB of corpus text to regenerate the model. That is a developer step. The model is committed
+under `assets\ngram\` and embedded in the exe. **[fact]**
 
 ## 6. Architecture and Data Flow
 
@@ -253,13 +275,19 @@ LowLevelKeyboardHook (WH_KEYBOARD_LL)
    ↓  (subscription order is load-bearing — see §13)
 BarInputRouter ── consumes Tab/Space/Enter/Esc, sets e.Suppress
    ↓
-TypingSession ── skips suppressed keys; rebuilds the in-progress word
+TypingSession ── skips suppressed keys; rebuilds the in-progress word; keeps last two words
    ↓  CurrentWordChanged / WordCommitted / BufferReset
 SuggestionController ── the only class the UI talks to
-   ├→ FocusedControlInspector  (is this a text field? a password box? where is the caret?)
-   ├→ PredictionEngine → PrefixIndex + SymSpellIndex → FrequencyRanker
+   ├→ IFocusedControlProvider  (text field? password box? Edit or RichEdit? handle? caret?)
+   ├→ PredictionEngine
+   │     ├→ PrefixIndex + SymSpellIndex + PersonalVocabularyStore  (candidate generation)
+   │     ├→ PhraseGenerator  (beam search over NGramLanguageModel)
+   │     ├→ ContextualRanker → FrequencyRanker  (ordering)
+   │     └→ EmojiSuggester  (at most one, placed last by policy)
+   ├→ NeuralRerankCoordinator  (async, cancellable, skipped when confident) → OnnxNeuralReranker
+   ├→ PersonalLanguageModel.Learn  (gated on the same focus check as suggesting)
    └→ ITextInjector (Win32TextInjector) — deferred via postToMessageLoop
-   ↓  SuggestionsChanged(SuggestionUpdate{ Suggestions, Caret })
+   ↓  SuggestionsChanged(SuggestionUpdate{ Suggestions, Caret, IsIdle })
 SuggestionBarWindow ── renders; never takes keyboard focus
 ```
 
@@ -269,133 +297,193 @@ SuggestionBarWindow ── renders; never takes keyboard focus
   `postToMessageLoop` delegate and routes every replacement through it. Injecting from inside the hook
   either gets discarded (when the key is suppressed) or interleaves with the in-flight keystroke and
   corrupts the text. **[fact — this was a real bug, fixed]**
+- **Insertion prefers window messages over synthetic input.** When focus is a non-password Edit/RichEdit
+  with a real handle, `Win32TextInjector` posts `WM_CHAR`/`WM_KEYDOWN` straight to the control. Otherwise it
+  falls back to chunked `SendInput`. See §13 for why the deletion encoding branches on `IsRichEdit`.
 - The prediction layer contains **no UI code** and the UI contains no prediction logic.
-- Settings are a single shared mutable `AppSettings` instance; the settings window mutates it and calls
-  back into the bar, so changes apply on the next keystroke with no event plumbing.
+- Neural reranking is a **cascade, not a stage**: it is skipped entirely when the statistical top candidate
+  is already confident (`Confidence >= 0.62`), runs asynchronously with a 250 ms timeout, and a result that
+  arrives after the context moved on is discarded by sequence number.
+- Settings are a single shared mutable `AppSettings` instance; the settings window mutates it and calls back
+  into the bar, so changes apply on the next keystroke with no event plumbing.
+
+**Where Phase 7 fits:** the brief's `ITextContextProvider` sits between the Windows input layer and
+`SuggestionController`, replacing the direct `TypingSession` + `FocusedControlInspector` coupling with an
+abstraction that either the hook path or a TSF path can satisfy. `ITextInjector` is already the seam for
+TSF commits. `PredictionEngine` and below must not change at all.
 
 ## 7. Setup and Installation
 
 ```powershell
-# Prerequisite: .NET 8 SDK (already installed on this machine, 8.0.423)
 winget install --id Microsoft.DotNet.SDK.8 -e
+```
 
-# Optional, only needed to build the installer:
+```powershell
 winget install --id JRSoftware.InnoSetup -e
+```
 
-# Restore + build
-cd "D:\Claude Code\WordStrip"
-dotnet build
+```powershell
+dotnet build "D:\Claude Code\WordStrip\WordStrip.sln"
+```
+
+**Phase 7 only — not yet installed on this machine, and needed before the TSF service can be built.** A TSF
+text service is conventionally a native COM DLL, and nothing here can compile one today: `vswhere`, the
+Windows SDK registry key, `cmake` and `msbuild` are all absent. This is a multi-gigabyte download and
+requires administrator rights, so run it interactively rather than unattended:
+
+```bash
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 ```
 
 There are **no secrets, API keys, connection strings or `.env` files** in this project, and none are
-required. **[fact]**
+required. Nothing in §9 is a secret. **[fact]**
 
 ## 8. Run, Build, Test, and Debug Commands
 
-```powershell
-# Build the whole solution
-dotnet build "D:\Claude Code\WordStrip\WordStrip.sln" -c Release
+**IMPORTANT — the app locks its own exe.** Stop the running process *before* building, or the build fails
+with MSB3027 "file is locked":
+
+```bash
+powershell -c "Stop-Process -Name 'WordStrip*' -Force -ErrorAction SilentlyContinue"
 ```
 
-```powershell
-# Run the app (tray only — no main window appears)
-& "D:\Claude Code\WordStrip\src\WordStrip.App\bin\Release\net8.0-windows\WordStrip.exe"
+Build the whole solution:
+
+```bash
+dotnet build "D:/Claude Code/WordStrip/WordStrip.sln" -c Release
 ```
 
-```powershell
-# Open the settings window directly (also what the Start Menu shortcut does)
-& "D:\Claude Code\WordStrip\src\WordStrip.App\bin\Release\net8.0-windows\WordStrip.exe" --settings
+Run the app (tray only — no main window appears):
+
+```bash
+"D:/Claude Code/WordStrip/src/WordStrip.App/bin/Release/net8.0-windows/WordStrip.exe"
 ```
 
-```powershell
-# Run all unit tests (248)
-dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj"
+Open the settings window directly (also what the Start Menu shortcut does):
+
+```bash
+"D:/Claude Code/WordStrip/src/WordStrip.App/bin/Release/net8.0-windows/WordStrip.exe" --settings
 ```
 
-```powershell
-# Regenerate the n-gram model. Downloads ~47 MB of corpus the first time; takes about a minute to build.
-powershell -File "D:\Claude Code\WordStrip\tools\ngram\Fetch-Corpus.ps1"
-dotnet run --project "D:\Claude Code\WordStrip\tools\WordStrip.NGramBuilder" -c Release
+Run all unit tests (305):
+
+```bash
+dotnet test "D:/Claude Code/WordStrip/tests/WordStrip.Core.Tests/WordStrip.Core.Tests.csproj"
 ```
 
-```powershell
-# Same, with looser pruning for a bigger model (defaults: 3 / 3 / 12)
-dotnet run --project "D:\Claude Code\WordStrip\tools\WordStrip.NGramBuilder" -c Release -- --min-bigram 2 --min-trigram 2 --top 16
+Print the performance measurements (needs the detailed logger to see the numbers):
+
+```bash
+dotnet test "D:/Claude Code/WordStrip/tests/WordStrip.Core.Tests/WordStrip.Core.Tests.csproj" --logger "console;verbosity=detailed" --filter "FullyQualifiedName~PerformanceTests"
 ```
 
-```powershell
-# End-to-end regression: 6 checks against a real Win32 edit control. Takes over the keyboard and the
-# foreground for about a minute. Pass -ExePath to test the portable or installed build instead.
-powershell -File "D:\Claude Code\WordStrip\tests\regression\Verify-PersistentBar.ps1"
+Run the ONNX tests, which skip themselves unless pointed at a downloaded model:
+
+```bash
+powershell -c "$env:WORDSTRIP_TEST_MODEL_DIR='$env:LOCALAPPDATA\WordStrip\model'; dotnet test 'D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj' --filter 'FullyQualifiedName~OnnxRerankerTests'"
 ```
 
-```powershell
-# Print the performance measurements (needs detailed logger to see the numbers)
-dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj" --logger "console;verbosity=detailed" --filter "FullyQualifiedName~PerformanceTests"
+End-to-end regression: 9 checks against a real Win32 edit control. **Takes over the keyboard and the
+foreground for about a minute** — do not run it while typing something else:
+
+```bash
+powershell -File "D:/Claude Code/WordStrip/tests/regression/Verify-PersistentBar.ps1"
 ```
 
-```powershell
-# Produce publish\portable\WordStrip.exe and publish\WordStrip-Setup-<ver>.exe
-powershell -File "D:\Claude Code\WordStrip\build-release.ps1"
+Same, against a RichEdit target at a slower typing rate (a plain `EDIT` processes input too synchronously to
+expose ordering races):
+
+```bash
+powershell -File "D:/Claude Code/WordStrip/tests/regression/Verify-PersistentBar.ps1" -ControlClass RichEdit -PerKeyMs 25
 ```
 
-```powershell
-# Silent install / uninstall of a built installer (useful for verification)
-# In-place upgrade. Same AppId, so it replaces the existing install and PRESERVES settings.
-# /TASKS=startupicon keeps the autostart entry; /TASKS= (empty) would leave an existing one untouched.
-# Do NOT verify by uninstalling and reinstalling — uninstall deletes %LOCALAPPDATA%\WordStrip (§9).
-Start-Process "D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.7.0.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=startupicon" -Wait
+Regenerate the n-gram model. Downloads ~47 MB of corpus the first time; about a minute to build:
+
+```bash
+powershell -File "D:/Claude Code/WordStrip/tools/ngram/Fetch-Corpus.ps1"
 ```
 
-**Debugging aids (opt-in via environment variable, off by default):**
-
-- `WORDSTRIP_FRAMELOG=1` — `FrameProbe` writes per-frame intervals to `%TEMP%\wordstrip_frames.log`,
-  used to diagnose animation smoothness. **[fact]**
-
-**IMPORTANT — the app locks its own exe.** Always stop the running process *before* building, or the
-build fails with MSB3027 "file is locked":
-
-```powershell
-Stop-Process -Name "WordStrip*" -Force -ErrorAction SilentlyContinue
+```bash
+dotnet run --project "D:/Claude Code/WordStrip/tools/WordStrip.NGramBuilder" -c Release
 ```
+
+Produce `publish\portable\WordStrip.exe` and `publish\WordStrip-Setup-<ver>.exe`:
+
+```bash
+powershell -File "D:/Claude Code/WordStrip/build-release.ps1"
+```
+
+Silent in-place upgrade of a built installer. Same AppId, so it replaces the existing install and
+**preserves settings**. Do **not** verify by uninstalling and reinstalling — uninstall deletes
+`%LOCALAPPDATA%\WordStrip` (§9):
+
+```bash
+powershell -c "Start-Process 'D:\Claude Code\WordStrip\publish\WordStrip-Setup-0.10.1.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=startupicon' -Wait"
+```
+
+**Debugging aids — all opt-in via environment variable, all off by default:**
+
+| Variable | Effect |
+|---|---|
+| `WORDSTRIP_INJECTLOG=1` | `InjectionLog` writes every replacement to `%TEMP%\wordstrip_injection.log`: `via=`, `chunks=`, `backspaces=`, `chars=`, `events=`, `inserted=`, `ms=`, `focus=`, `text=[...]`. **This is what finally diagnosed the insertion bug** — reach for it before reasoning. **[fact]** |
+| `WORDSTRIP_FRAMELOG=1` | `FrameProbe` writes per-frame intervals to `%TEMP%\wordstrip_frames.log` |
+| `WORDSTRIP_DATA_DIR=<path>` | Relocates **all** user data. Used by the regression harness to seed a known vocabulary without touching the real one |
+| `WORDSTRIP_TEST_MODEL_DIR=<path>` | Points `OnnxRerankerTests` at a downloaded model; without it they skip |
+
+**Crash log — always on.** Unhandled dispatcher and app-domain exceptions append to
+`%TEMP%\wordstrip_crash.log`. A tray app has no console and nowhere to show a dialog, so without this an
+unhandled exception is untraceable — Windows Error Reporting gives only `0xe0434352`. **[fact — this is the
+only reason the 0.10.0 Settings crash was diagnosable.]**
 
 ## 9. Configuration and Environment Variables
 
-| Name | Kind | Purpose |
+**No secrets exist in this project and none are required.** No API keys, no tokens, no certificates, no
+`.env` file, no connection strings, no ports, no URLs to configure. **[fact]**
+
+| Path | Kind | Purpose |
 |---|---|---|
 | `%LOCALAPPDATA%\WordStrip\settings.json` | File | User settings, written by the app |
-| `%LOCALAPPDATA%\WordStrip\personal-vocabulary.json` | File | Phase 3: the user's own words, casing and usage |
+| `%LOCALAPPDATA%\WordStrip\personal-vocabulary.json` | File | Phase 3: the user's own words, casing, usage |
 | `%LOCALAPPDATA%\WordStrip\personal-language-model.json` | File | Phase 4: learned counts. Absent unless learning is on |
+| `%LOCALAPPDATA%\WordStrip\model\` | Folder | Phase 6: `model.onnx`, `vocab.json`, `merges.txt`. Absent unless downloaded |
+| `%LOCALAPPDATA%\Programs\WordStrip\` | Folder | Install location (per-user, no UAC) |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WordStrip` | Registry | Autostart entry |
-| `WORDSTRIP_FRAMELOG` | Env var (optional) | `1` enables frame-time diagnostics |
+| `%TEMP%\wordstrip_crash.log` | File | Always on |
+| `%TEMP%\wordstrip_injection.log`, `wordstrip_frames.log` | File | Opt-in only |
 
-- **Ports / URLs / external services:** none. **[fact]**
-- **Secrets:** none required. **[fact]**
+**The only outbound URL in the whole product**, and only when the user presses Download:
+`https://huggingface.co/onnx-community/distilgpt2-ONNX/resolve/main/` — three files: `onnx/model_int8.onnx`
+(236,714,483 bytes, saved locally as `model.onnx`), `vocab.json` (798,156), `merges.txt` (456,318). Sizes
+verified against the publisher, not estimated. **[fact]**
 
-`settings.json` shape (all optional; missing values fall back to defaults):
+`settings.json` shape — this is the **actual current content on the dev machine** **[fact]**, which is also
+a useful record of how the owner runs it:
 
 ```json
 {
-  "Theme": 0,               // BarTheme enum 0..6
-  "SuggestionCount": 4,     // 3..7
-  "GlassTint": 0.62,        // 0.15..0.95
-  "BarScale": 1.0,          // 0.7..1.4
-  "MotionSpeed": 1.0,       // 0.5..2.5
-  "BackdropBlur": 3,        // Auto=3 (see §12 — this setting is currently inert)
-  "BarPosition": 0,         // 0 bottom, 1 follow caret, 2 top
+  "SuggestionCount": 7,          // 3..7
+  "GlassTint": 0.95,             // 0.15..0.95
+  "BarScale": 1.4,               // 0.7..1.4
+  "MotionSpeed": 2.5,            // 0.5..2.5; the maximum means animation OFF entirely
+  "Theme": 5,                    // BarTheme enum 0..6
+  "BackdropBlur": 3,             // Auto=3 — this setting is INERT, see §12 item 12
+  "BarPosition": 2,              // 0 bottom, 1 follow caret, 2 top
   "AutocorrectEnabled": true,
-  "PersistentBar": true,          // strip stays on screen between words
-  "PersonalLearningEnabled": false, // Phase 4 — deliberately off until asked for
-  "StartWithWindows": false
+  "PersistentBar": true,
+  "PersonalLearningEnabled": true,   // default is FALSE; the owner opted in
+  "EmojiSuggestionsEnabled": true,
+  "PhraseSuggestionsEnabled": true,
+  "NeuralRerankingEnabled": true,    // default is FALSE; the owner opted in
+  "StartWithWindows": true
 }
 ```
 
-An older `settings.json` with no `PersistentBar` key simply gets the default (`true`) — the upgrade needs
-no migration. **[fact — verified on the 0.3.0 → 0.4.0 in-place upgrade]**
+Missing keys fall back to defaults, so an older `settings.json` needs no migration. **[fact — verified on
+the 0.3.0 → 0.4.0 in-place upgrade]**
 
-⚠️ The installer's `[UninstallDelete]` removes `%LOCALAPPDATA%\WordStrip` entirely, so an
-**uninstall/reinstall cycle destroys the user's settings** while an in-place upgrade preserves them. Back
-that file up before any install testing. **[fact]**
+⚠️ The installer's `[UninstallDelete]` removes `%LOCALAPPDATA%\WordStrip` **entirely**, so an
+uninstall/reinstall cycle destroys settings, personal vocabulary, learned data **and the 227 MB model**,
+while an in-place upgrade preserves them. Back the folder up before any install testing. **[fact]**
 
 ## 10. Important Files
 
@@ -403,86 +491,84 @@ Inspect these first, roughly in this order:
 
 | File | Why it matters |
 |---|---|
-| `README.md` | Engineering rationale: why decisions were made, including several hard-won bug post-mortems |
+| `src/WordStrip.Core/Input/Win32TextInjector.cs` | The most hard-won file in the project. Four wrong fixes preceded the current one; its comments record why deletions are backspaces and why the encoding branches on RichEdit. **Read before touching anything about insertion.** |
 | `src/WordStrip.App/App.xaml.cs` | Composition root. Hook subscription order here is load-bearing |
-| `src/WordStrip.Core/Suggestions/SuggestionController.cs` | The seam between input, prediction and UI; owns the persistent-bar state machine |
+| `src/WordStrip.Core/Suggestions/SuggestionController.cs` | The seam between input, prediction and UI; owns the persistent-bar state machine. **Phase 7's context abstraction lands here** |
 | `src/WordStrip.App/Coordination/BarInputRouter.cs` | Decides when the bar may claim keys — read alongside `SuggestionUpdate.IsIdle` |
-| `tests/regression/Verify-PersistentBar.ps1` | How input behaviour is actually verified; its comments record several dead ends |
+| `src/WordStrip.Core/Automation/FocusedControlInspector.cs` | How the app decides a surface is typeable. **This is exactly what TSF would replace** |
 | `src/WordStrip.Core/Prediction/PredictionEngine.cs` | Orchestrates both modes: `GetLiveSuggestions` and `GetNextWords` |
+| `src/WordStrip.Core/Prediction/Neural/NeuralRerankCoordinator.cs` | The async/cancellation/staleness pattern to copy if Phase 7 needs another async stage |
+| `tests/regression/Verify-PersistentBar.ps1` | How input behaviour is actually verified; its comments record several dead ends |
 | `src/WordStrip.Core/Prediction/NGram/NGramLanguageModel.cs` | The contextual model, backoff, and the `ContextLookup` fast path |
-| `src/WordStrip.Core/Prediction/ContextualRanker.cs` | How context is weighed against frequency, and why it's capped |
-| `src/WordStrip.Core/Prediction/FrequencyRanker.cs` | Phase 1's banded scoring; Phase 3 should wrap it, not edit it |
+| `src/WordStrip.Core/Prediction/ContextualRanker.cs` | How context is weighed against frequency, and why it is capped |
+| `src/WordStrip.Core/Prediction/FrequencyRanker.cs` | Phase 1's banded scoring; wrap it, never edit it |
 | `src/WordStrip.App/UI/Theming/ThemeCatalog.cs` | All seven themes; the only place visual differences live |
-| `src/WordStrip.App/UI/SuggestionBarWindow.xaml.cs` | Bar lifecycle, motion, placement, adaptivity |
 | `src/WordStrip.Core/Input/TypingSession.cs` | Word-buffer rules and why keys are skipped |
 | `tests/WordStrip.Core.Tests/PerformanceTests.cs` | Current performance baseline |
+| `README.md` | Engineering rationale and bug post-mortems — **but stale at 0.8.0** |
 
 ## 11. Recent Work
 
-**Most recent session (Tab fix + Phases 3 and 4, 0.6.0):**
+**Current session (Phase 7 Stage 0): the input-mechanism abstraction.** **[fact]**
 
 | File | Change | Reason |
 |---|---|---|
-| `Coordination/BarInputRouter.cs` | Single `_isBarActive`; Esc suppressed only with a selection | Reported: Tab did nothing on the predictions that appear after inserting a word |
-| `Personal/PersonalVocabularyStore.cs` | **New.** JSON store, atomic writes, normalized key + display casing | Phase 3; the casing split is what keeps "GitHub" from becoming "github" |
-| `Personal/PersonalWord.cs` | **New.** Entry record | Date-only recency, so the file can't become a timeline of someone's day |
-| `Personal/PersonalLanguageModel.cs` | **New.** Learned uni/bi/trigram counts, bounded and decaying | Phase 4 |
-| `Prediction/PredictionEngine.cs` | Personal completions merged in; `IsCorrectlySpelled` consults them | Personal words must be suggestable and must not be autocorrected away |
-| `Prediction/ContextualRanker.cs` | `PersonalBonus` (≤30) and `LearnedBonus` (≤15) | Bounded so neither can cross a band |
-| `Settings/AppSettings.cs` | `PersonalLearningEnabled`, default **off** | It changes what is recorded about the user, not how the app looks |
-| `Input/WordCommittedEventArgs.cs` | Added `PrecedingWords`, snapshotted pre-update | The history is mutated differently per boundary char; learning needs the exact pair |
-| `Suggestions/SuggestionController.cs` | Learning behind the existing focus check; learns the corrected word | Never learn from a field we could not identify, or teach back a typo we just fixed |
-| `App.xaml.cs` | Loads both stores; 30 s save timer; final flush on exit | Batched so disk I/O stays off the typing path |
-| `UI/SettingsWindow.xaml(.cs)`, `SettingsViewModel.cs` | "Your words" and "Learning" cards | Without a UI the vocabulary is unreachable and learning is unauditable |
-| `tests/Personal*Tests.cs` | **New**, 64 tests | Real files in a temp dir — persistence is most of what these classes do |
-| `tests/PerformanceTests.cs` | Storage-growth measurement | Phase 4 requires measured growth |
+| `Text/TextContext.cs` | **New.** `TextContext` snapshot + `TextContextSource` enum | The value the prediction layer consumes, with no Windows types in it beyond a four-integer caret rect. Deliberately has **no "surrounding text" member** so a future TSF provider cannot quietly fill it with a screenful of someone's document |
+| `Text/ITextContextProvider.cs` | **New.** The seam | What a TSF provider will implement *alongside* the hook, not instead of it. `IsAvailable` is what lets a provider drop out per-application and hand back to the fallback |
+| `Text/KeyboardHookTextContextProvider.cs` | **New.** The existing path as a provider | Pure adapter, contributes no logic of its own — the fallback had to keep behaving identically, so nothing was rewritten |
+| `Suggestions/SuggestionController.cs` | Consumes `ITextContextProvider` instead of `TypingSession` + `IFocusedControlProvider` | Acceptance criteria 2 and 4: the controller can no longer tell which input mechanism it has. The old constructor is kept as an overload that builds the hook provider, so the composition root and all 18 existing tests were untouched |
+| `tests/TextContextTests.cs` | **New**, 34 tests (271 → 305) | Covers the value type, the adapter, and **controller paths that were previously untestable** — `SuggestionControllerTests` carried a comment saying so, because `TypingSession` raises events from a hook callback that cannot be synthesised. A fake provider reaches them |
 
-**Session before that (Phase 2 — contextual prediction, 0.5.0):**
+All 271 pre-existing tests passed unchanged, which is the evidence that the refactor altered no behaviour.
+Solution builds clean with 0 warnings; the app was launched and ran without a crash-log entry.
+
+**Previous session (0.9.0 → 0.10.1): the insertion fix, Phase 6, and a crash.** **[fact]**
 
 | File | Change | Reason |
 |---|---|---|
-| `Prediction/NGram/NGramLanguageModel.cs` | **New.** Tables, stupid backoff, `ContextLookup` | The contextual signal Phase 2 exists to add |
-| `Prediction/NGram/NGramTokenizer.cs` | **New.** Shared by builder and app | Drift between the two silently kills every lookup |
-| `Prediction/NGram/NGramFormat.cs` | **New.** On-disk contract | Same reason — a mismatch would not fail to compile |
-| `Prediction/PredictionContext.cs` | **New.** Partial word, preceding words, sentence-start | Passed in from above; Phase 7 replaces how it's filled, not what it is |
-| `Prediction/ContextualRanker.cs` | **New.** Wraps `FrequencyRanker`, adds a capped bonus | "Add a ranker, don't edit the engine" |
-| `Prediction/ICandidateRanker.cs` | `RankingContext` gained `PredictionContext` **with a default** | Additive, so no call site changed |
-| `Prediction/PredictionEngine.cs` | `GetNextWords`, contextual `GetLiveSuggestions` overload | The two modes the phase brief separates |
-| `Input/TypingSession.cs` | Last-two-words history, `NoteWordInserted`, `ReplaceLastWord` | The model needs context, and it must expire exactly when the buffer does |
-| `Suggestions/SuggestionController.cs` | Builds the context; accept and autocorrect keep history honest | Predict from what is on screen, not from what was typed |
-| `tools/ngram/`, `tools/WordStrip.NGramBuilder/` | **New** | The model has to be reproducible, not a mystery binary |
-| `assets/ngram/*.txt` | **New**, committed, 7.25 MB | Generated output; the corpus itself stays out of the repo |
-| `tests/*` | 4 new files, 47 new tests | Backoff, boundaries, ranking contract, history expiry |
+| `Input/Win32TextInjector.cs` | Post `WM_CHAR`/`WM_KEYDOWN` directly to the focused control; `SendInput` kept as fallback | The real fix for partial insertion. 233 ms → 5.9 ms for 51 characters |
+| `Input/InjectionLog.cs` | **New.** Opt-in log of every replacement | Three fixes had failed on reasoning alone; this produced the evidence |
+| `Automation/FocusedControlInfo.cs` | Added `Handle` and `IsRichEdit` | Message-based insertion needs the target handle and must encode deletions differently per control class |
+| `Prediction/Neural/*` | **New**, 5 files in Core | Phase 6 seam, cascade, catalog and download — all dependency-free |
+| `src/WordStrip.Neural/` | **New project** | ONNX kept out of Core so Core stays dependency-free |
+| `Neural/OnnxNeuralReranker.cs` | **New.** Graph discovery incl. `position_ids`, one forward pass scores the whole list | DistilGPT2 needs `position_ids`; scoring per candidate would cost 5× |
+| `Settings/AppSettings.cs` | `NeuralRerankingEnabled`, default off | Separate from the download so it can be switched off without discarding 227 MB |
+| `UI/SettingsWindow.xaml` | "Smarter suggestions (optional)" card | Licence, size and publisher shown **before** anything is fetched |
+| `UI/SettingsWindow.xaml` | `ProgressBar Value` → `Mode=OneWay` | **Shipped a crash in 0.10.0.** `ProgressBar.Value` binds two-way by default and `NeuralProgress` is read-only; WPF throws and the tray app vanishes |
+| `App.xaml.cs` | Crash logging; `LoadNeuralModelAsync` before `StartSuggestionEngine` | Without the log the crash left only `0xe0434352` |
+| `UI/SuggestionBarWindow.xaml.cs` | Apple-style bounce on entrance and exit | Owner request |
+| `tests/NeuralRerankTests.cs`, `OnnxRerankerTests.cs` | **New**, 15 + skippable | Cascade and staleness are testable without a model; the model tests skip by default |
 
-**Session before those (persistent bar, 0.4.0):**
+**Session before that (Phase 5 + emoji, 0.7.0–0.8.0):** `PhraseGenerator` (bounded beam search, mean log
+probability per word), `EmojiSuggester` + ~300-entry table, animation-off at the far end of the speed
+slider, the first (wrong) single-`SendInput`-batch insertion fix, and `WORDSTRIP_DATA_DIR`.
 
-| File | Change | Reason |
-|---|---|---|
-| `Suggestions/SuggestionController.cs` | `PublishIdle`, sticky `Dismiss`, `PollFocus`; `AcceptSuggestion` no longer bails on an empty buffer | The strip vanishing on every committed word read as flicker |
-| `Suggestions/SuggestionUpdate.cs` | Added `IsIdle` **with a default** | Separates "the bar is visible" from "the bar owns the keyboard" — see §12 item 12 |
-| `Automation/IFocusedControlProvider.cs` | **New.** Seam + `Win32FocusedControlProvider` | The focus check was a static reading live Win32 state, so nothing depending on it was testable |
-| `Settings/AppSettings.cs` | `PersistentBar` (default `true`) | Owner asked for a switch back to per-word behaviour |
-| `Coordination/BarInputRouter.cs` | Split `_isBarActive` into `_isCompleting` / `_isIdleVisible` | A persistent bar keyed on visibility swallowed Tab and Esc system-wide |
-| `App.xaml.cs` | Mouse dismissal wired **before** `Attach()`; 1 s `DispatcherTimer` → `PollFocus` | Ordering stops a one-frame flash; nothing reports Alt+Tab |
-| `UI/SettingsViewModel.cs`, `SettingsWindow.xaml` | Persistent-bar checkbox + hint | — |
-| `tests/.../SuggestionControllerTests.cs` | **New**, 18 tests | Covers the idle content, dismissal rules and empty-buffer insert |
-| `tests/regression/*` | **New** | The unit tests cannot reach hook-driven behaviour; this is how the Tab regression was caught |
-| `installer/READ-ME-FIRST.txt`, `README.md` | Rewritten for 0.4.0 | Also dropped a stale blur setting mention and a wrong `BitmapCache` claim |
+**Session before that (Tab fix + Phases 3 and 4, 0.6.0):** `BarInputRouter` reduced to a single
+`_isBarActive` so Tab works on idle predictions; `PersonalVocabularyStore`, `PersonalWord`,
+`PersonalLanguageModel`; personal completions merged into `PredictionEngine` and protected from autocorrect;
+bounded personal and learned ranking bonuses; "Your words" and "Learning" settings cards; 64 new tests.
 
-**Immediately prior session (Phase 1 — prediction hardening):**
+**Session before that (Phase 2, 0.5.0):** `NGramLanguageModel` with stupid backoff, `NGramTokenizer` and
+`NGramFormat` shared with the builder, `PredictionContext`, `ContextualRanker` wrapping `FrequencyRanker`,
+`PredictionEngine.GetNextWords`, typing history in `TypingSession`, `tools\ngram\` and
+`tools\WordStrip.NGramBuilder`, 47 new tests.
 
-| File | Change | Reason |
-|---|---|---|
-| `Prediction/PrefixIndex.cs` | **New.** Ordinal-sorted array + binary-search prefix range; cached top-32 frequent words | `GetLiveSuggestions` scanned all 60,000 entries per keystroke |
-| `Prediction/ICandidateRanker.cs` | **New.** `RankingContext` + ranker interface | Phase 2 must be able to add contextual probability without rewriting the engine |
-| `Prediction/FrequencyRanker.cs` | **New.** Banded deterministic scoring | Raw frequency spans 9 orders of magnitude and swamped every other signal |
-| `Prediction/Suggestion.cs` | Added `Source` and `Score` **with defaults** | Additive so existing 3-argument construction still compiles |
-| `Prediction/PredictionEngine.cs` | Delegates ordering to the ranker; added `GetFrequentWords` | Separates candidate *generation* from *ordering* |
-| `tests/WordStrip.Core.Tests/*` | **New project**, 61 tests | Phase 1 requires test coverage of the prediction primitives |
+**Earlier:** persistent bar + `IFocusedControlProvider` + regression harness (0.4.0); Phase 1 prediction
+hardening (`PrefixIndex`, `ICandidateRanker`, `FrequencyRanker`); the 7-theme token system.
 
-**Earlier sessions:** Phase 1 engine hardening (see §14), and before that the theme system — replaced the
-single hard-coded palette with a 7-theme token
-system, added the position indicator, and switched the bar to `AllowsTransparency="True"`.
+**Commit history** (`master`, 15 commits, tags v0.4.0 … v0.10.1) **[fact]**:
+
+```
+9f24130 Fix a crash opening Settings, and record crashes when they happen
+afa1d93 Phase 6: optional local neural reranking, and a real fix for insertion
+012978a Insert text by message instead of by pretending to be a keyboard
+c32856c Phase 6 foundation: neural reranking seam, cascade and concurrency
+b5b8ffe Injection diagnostics, chunked batches, and a proper entrance animation
+e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
+3d454eb Send deletions and replacement text as one SendInput batch
+78d134a Phases 3 and 4: personal vocabulary and privacy-first learning
+558788d Tab now cycles whenever the bar is showing suggestions
+```
 
 ## 12. Known Problems
 
@@ -490,348 +576,303 @@ system, added the position indicator, and switched the bar to `AllowsTransparenc
 
 1. **Works only in classic Win32 `Edit`/`RichEdit` controls.** Notepad and most desktop dialogs work.
    **Chrome, Edge, all browsers, Electron apps (Slack, VS Code, Discord) and Microsoft Office do not.**
-   This is the single biggest gap. Fixing it properly means implementing a Windows Text Services Framework
-   text service. `ITextInjector` exists as the seam for that. **[fact]**
+   This is the single biggest gap and **is precisely what Phase 7 exists to address.** **[fact]**
 2. **English only** — one bundled dictionary.
-3. **No semantic understanding.** Since Phase 2 there is contextual prediction, but it is three words of
-   statistics, not meaning: no phrase prediction, no learning from your writing, no idea what a sentence is
-   about. Phases 3–6 address this.
-4. **Tab belongs to the bar whenever the bar is visible.** Since 0.6.0, at the owner's request. The cost is
+3. **Tab belongs to the bar whenever the bar is visible.** Since 0.6.0, at the owner's request. The cost is
    that Tab will not indent or move between dialog fields while the strip is up — which, with the persistent
    bar on, is most of the time you are in a text field. Esc releases it until the next keystroke. **[fact]**
-   *[recommendation: this reversed the opposite decision made in 0.4.0, on one report and before the new
-   behaviour had been lived with. Watch it. If it grates, a modifier chord is the fallback and
-   `BarInputRouter` is the only file involved.]*
-5. **The corpus skews literary.** Mostly 19th- and early-20th-century novels, so ordinary English sentences
-   are well covered and modern, technical or workplace phrasing is not. The model has never seen "pull
-   request" — though Phase 4's learning will pick that up from the user if they switch it on. **[fact]**
-   *[recommendation: a modern conversational corpus would help more than any amount of further tuning.]*
-6. **Autocorrect cannot correct *into* a personal word.** Personal words are protected from correction and
+   *[recommendation: this reversed the opposite decision made in 0.4.0, on one report. If it grates, a
+   modifier chord is the fallback and `BarInputRouter` is the only file involved.]*
+4. **The corpus skews literary.** Mostly 19th- and early-20th-century novels, so ordinary English is well
+   covered and modern, technical or workplace phrasing is not. The model has never seen "pull request".
+   Phrases inherit the same register — "thank you" can suggest "sir said the". Grammatical, just dated.
+   Personal learning is the practical mitigation. **[fact]**
+   *[recommendation: a modern conversational corpus would help more than any further tuning.]*
+5. **Autocorrect cannot correct *into* a personal word.** Personal words are protected from correction and
    offered as completions, but `SymSpellIndex` is built from the general dictionary at startup and never
-   rebuilt, so "githb" will not become "GitHub". **[fact]** *[recommendation: rebuild the fuzzy index when
-   the personal vocabulary changes — deliberately out of scope for Phase 3.]*
-7. **The word buffer can miss a keystroke if the UI thread is briefly busy.** A low-level keyboard hook is
+   rebuilt, so "githb" will not become "GitHub". **[fact]**
+6. **Neural reranking only activates at startup.** `LoadNeuralModelAsync` runs once in `OnStartup`, so
+   downloading the model or ticking the checkbox does nothing until WordStrip is restarted. The settings
+   window says so ("Downloaded. Restart WordStrip to start using it."), so this is disclosed rather than
+   hidden. **[fact — confirmed on the running process: the model is downloaded and the setting is on, but
+   `onnxruntime.dll` is not loaded into the 21-minute-old process.]**
+7. **The neural signal is coarse.** First-token scoring on an 82M model quantised to int8 reliably rejects
+   nonsense and clearly reads context (it scores "you" ~7.5 nats higher after "thank" than after "looking"),
+   but does **not** reliably make finer calls — after "i am really looking" it narrowly prefers "you" to
+   "forward". The tests assert what it can actually do, not what would be nice. **[fact]**
+
+### Open bugs and technical debt
+
+8. **The word buffer can miss a keystroke if the UI thread is briefly busy.** A low-level keyboard hook is
    only called if the thread that installed it is free to service it; if not, Windows times the hook out and
    the app never sees that key, while the target application still receives it. The buffer is then one
-   character short, so a replacement lands with the first typed letter surviving in front of it
+   character short and a replacement lands with the first typed letter surviving in front of it
    ("aAlexandra Fairbourne Reed"). **[fact — reproduced in the harness roughly one run in six]**
-   *[Mitigated rather than fixed: message-based insertion cut the busy window from 80–233 ms to 1–2 ms, and
-   it now only reproduces when typing resumes within a few hundred milliseconds of an insertion, which the
-   harness did and people do not. A real fix would verify the text before the caret against the buffer
-   before replacing, and correct the deletion count when they disagree.]*
-8. ⚠️ **Multi-word personal entries reportedly insert only partly — RESOLVED, see §14.** Left here as the
-   record of a bug that took three rounds to find. The owner reported
-   entries like "Alexandra Fairbourne Reed" arriving truncated, with blank gaps. A real ordering hazard was
-   found and fixed (two `SendInput` calls; see §13), but **it did not reproduce in testing** — not against a
-   plain `EDIT`, and not against a `RICHEDIT50W` at 25 ms per keystroke. So the fix removes a genuine hazard
-   without being confirmed as the cause. **[fact]**
-   *[assumption: the likelier culprit is the pre-0.6.0 Tab behaviour. Tab on an idle bar fell through to the
-   document as a literal tab character AND hit `IsContextInvalidatingKey`, wiping the word buffer — which
-   matches both the truncation and the blank gaps in the report. That was fixed separately. If the owner
-   reports it again on 0.7.0, get the exact keystrokes; do not assume this is closed.]*
-9. **Phrases inherit the corpus's register.** Multi-word suggestions come from Victorian novels, so "thank
-   you" is as likely to suggest "sir said the" as anything from a modern email. Grammatical, just dated.
-   Personal learning is the practical mitigation. **[fact]**
+   *[**Mitigated, not fixed.** Message-based insertion cut the busy window from 80–233 ms to 1–2 ms, so it
+   now only reproduces when typing resumes within a few hundred milliseconds of an insertion, which the
+   harness does and people mostly do not. The real fix is to verify the text before the caret against the
+   buffer before replacing, and correct the deletion count when they disagree. **Phase 7's TSF context would
+   make this bug structurally impossible where TSF is available**, since the surrounding text would be read
+   from the document rather than reconstructed.]*
+9. **Memory: ~524 MB private with no neural model, and ~1104 MB private with it.** Both measured on the
+   running 0.10.1 process on 2026-08-12. **[fact]** The n-gram model accounts for only 26.3 MB of the
+   baseline. *[assumption: the bulk of the baseline is the SymSpell edit-distance-2 index, which has existed
+   since Phase 1 and has never been profiled. Unverified.]*
+   **The model's ~580 MB delta is broadly consistent with the "about 400 MB" the settings card advertises,
+   but the card states a delta while a user will read a total — and the total is over a gigabyte.** That is a
+   lot for a keyboard utility and should be understood, and probably reworded, before this goes to anyone
+   beyond the owner's testers.
+10. **`PerformanceTests.MeasureLanguageModelPerformance` is load-sensitive and can fail spuriously.**
+    Observed **[fact]**: on a busy machine the same phrase-generation call measured 548.6 µs at one call site
+    and 2612.4 µs at the assertion 18 lines later, tripping the 2000 µs threshold. Re-run on an idle machine:
+    passes. **A failure here is not automatically a regression — re-run before investigating.**
+    *[recommendation: take the best of three runs rather than one, or the test will cry wolf again.]*
+11. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
+    DWM Mica/Acrylic impossible, because they cannot apply to a layered window. The UI control was removed
+    but the enum and `AppSettings.BackdropBlur` remain and are read nowhere meaningful. **[fact]**
+12. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5–3.4 s** (n-gram load), plus **3.0–4.4 s** if
+    the neural model is enabled. All on background threads so the tray icon appears immediately, but first
+    run feels slow. **[fact]**
+13. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
+    `HKCU\...\Run` value directly, while the settings window writes both the registry and
+    `AppSettings.StartWithWindows`. They can drift, and the checkbox then shows the wrong state. **[fact]**
+    *[recommendation: have `AppSettings` read the registry as the source of truth rather than caching it.]*
+14. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
+15. **`README.md` and `installer/READ-ME-FIRST.txt` are stale at 0.8.0.** See §3. **[fact]**
+16. **The portable output is no longer exactly one file.** `publish/portable/` now also contains
+    `onnxruntime.lib` (2,124 bytes) and `onnxruntime_providers_shared.lib` (2,314 bytes), leaked out of the
+    ONNX Runtime package. `build-release.ps1` warns about this but does not fail. They are import libraries,
+    irrelevant at runtime, so copying `WordStrip.exe` alone still works — but the invariant the check exists
+    to protect is now technically violated. **[fact]** *[recommendation: exclude `*.lib` from the check or
+    from the publish output, rather than letting the warning become background noise.]*
 
-### Technical debt / known issues
+### Testing gotchas discovered the hard way — read before writing UI or input tests
 
-10. **`BackdropBlur` setting is inert.** Switching to per-pixel alpha (`AllowsTransparency=True`) made real
-   DWM Mica/Acrylic impossible, because they cannot apply to a layered window. The UI control was removed
-   but the enum and the `AppSettings.BackdropBlur` property remain and are read nowhere meaningful.
-   **[fact]** *[recommendation: delete the property and enum, or reintroduce blur via
-   `SetWindowCompositionAttribute`, which does work on layered windows but paints a square-cornered
-   region.]*
-11. **Startup index build takes ~6.2 s** (SymSpell) **plus ~1.5 s** (n-gram model load), measured. Both run
-   on a background thread so the tray icon appears immediately, but first-run feels slow. **[fact]**
-12. **`FrameProbe` and `BackgroundProbe`** are diagnostic/heuristic helpers; `BackgroundProbe` samples screen
-   pixels just outside the bar, which is a heuristic and can mis-read over unusual backgrounds.
-13. **Unsigned binaries** — SmartScreen warns on first run for testers. Documented in `READ-ME-FIRST.txt`.
-14. **Autostart has two sources of truth that can disagree.** The installer's `startupicon` task writes the
-   `HKCU\...\Run` value directly, while the settings window writes both the registry and
-   `AppSettings.StartWithWindows`. On the dev machine the Run key is set while `StartWithWindows` is
-   `false`, so the settings checkbox shows the wrong state. **[fact — observed 2026-08-09]**
-   *[recommendation: have `AppSettings` read the registry as the source of truth rather than caching it.]*
-
-### Testing gotchas discovered the hard way — read before writing UI tests
-
-15. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
+17. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
     translucency from a `PrintWindow` grab is meaningless. **[fact]**
-16. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered
-    into undersized bitmaps and silently cropped. The dev display is at 150%. **[fact]**
-17. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
+18. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered into
+    undersized bitmaps and silently cropped. The dev display is at 150%. **[fact]**
+19. **`SetForegroundWindow` is silently refused** from a background process. Use the `AttachThreadInput`
     technique, and always verify the foreground window class before sending keystrokes — otherwise test
     input lands in whatever the user is actually using. **[fact]**
-18. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
-    packaged single-instance app: `notepad.exe` exits immediately and `MainWindowHandle` is empty. A
-    WinForms `TextBox` reports class `WindowsForms10.EDIT.app.0.<hash>`, which does **not** start with
-    `Edit`, so `FocusedControlInspector` ignores it and no bar ever appears. `TestTarget.ps1` creates a
-    real `EDIT` control with `CreateWindowEx` instead. **[fact — both tried and discarded]**
-19. **`SendKeys` types faster than any keyboard and corrupts the result.** It delivers a whole string in
-    microseconds; replacements are deferred onto the message loop, so the burst is still draining into the
-    target when the replacement fires and the two interleave — `helo ` came out as `healo`. Send one key at
-    a time. This is the harness outrunning hardware, **not** a product defect. **[fact]**
-20. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
-    path and can land after the check that reads the text back, which looks like a half-applied correction.
-    The self-contained single-file build is worse, since it also self-extracts. **[fact]**
-21. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help`
-    *and* from `hello`, so the tie falls to frequency and `help` wins — correct behaviour, useless
-    assertion. `teh` → `the` is unambiguous. **[fact]**
-22. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no
-    byte-order mark, and Windows PowerShell decodes such a file as Windows-1252 — where an em dash's third
-    byte becomes a smart closing quote that the parser honours as a string delimiter. It reports as
-    "missing terminator" at the *bottom* of the file, hundreds of lines from the dash. Harmless in comments,
-    fatal inside a string. **[fact — cost a debugging cycle]**
-23. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
-    deliberately doesn't run (its pump omits `IsDialogMessage` so Tab reaches the control as a character).
-    Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
+20. **Neither Notepad nor WinForms works as an automated typing target.** Windows 11 ships Notepad as a
+    packaged single-instance app: `notepad.exe` exits immediately and `MainWindowHandle` is empty. A WinForms
+    `TextBox` reports class `WindowsForms10.EDIT.app.0.<hash>`, which does **not** start with `Edit`, so
+    `FocusedControlInspector` ignores it and no bar ever appears. `TestTarget.ps1` creates a real `EDIT`
+    control with `CreateWindowEx` instead. **[fact — both tried and discarded]**
+21. **`SendKeys` types faster than any keyboard and corrupts the result.** Send one key at a time. This is
+    the harness outrunning hardware, **not** a product defect. **[fact]**
+22. **Cold starts need a warm-up word.** The first replacement after launch pays JIT on the whole injection
+    path. The self-contained single-file build is worse, since it also self-extracts. **[fact]**
+23. **Choose test misspellings with exactly one plausible correction.** `helo` is one edit from `help` *and*
+    `hello`, so the tie falls to frequency and `help` wins — correct behaviour, useless assertion. `teh` →
+    `the` is unambiguous. **[fact]**
+24. **Keep non-ASCII out of string literals in the PowerShell scripts.** They are saved as UTF-8 with no BOM,
+    and Windows PowerShell decodes such a file as Windows-1252 — where an em dash's third byte becomes a
+    smart closing quote the parser honours as a string delimiter. It reports as "missing terminator" at the
+    *bottom* of the file, hundreds of lines away. Harmless in comments, fatal inside a string. **[fact]**
+25. **A bare `EDIT` control has no Ctrl+A.** Select-all comes from the dialog manager, which the test target
+    deliberately does not run. Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
+26. **`Start-Process -ArgumentList` does not quote for you.** `D:\Claude Code` has a space in it and breaks
+    `-File` unless quoted explicitly. **[fact]**
 
 ## 13. Development Instructions
+
+### Standing instructions from the owner
+
+1. Read this file first; treat it as primary context but **verify against the actual files**.
+2. Confirm the working directory. The project root is `D:\Claude Code\WordStrip`, not the session's `cwd`.
+3. Summarise your understanding, identify the current task and the expected next step.
+4. **Inspect relevant files before changing anything.**
+5. **Propose a plan before acting.**
+6. Do not repeat questions already answered here.
+7. Ask only necessary clarification questions.
+8. **Do not modify unrelated files.**
+9. **Update this file after major changes, decisions, or task-status changes.**
 
 ### Architecture rules
 
 - **`WordStrip.Core` must never reference WPF or contain UI logic.** The prediction layer especially.
+- **`WordStrip.Core` must stay free of NuGet dependencies.** ONNX lives in `WordStrip.Neural` behind
+  `INeuralReranker`. Any future runtime gets the same treatment.
+- **Do not expose Windows-specific types to `WordStrip.Core.Prediction`.** Phase 7 restates this; it has been
+  true since Phase 1.
 - **Theme differences live only in `ThemeCatalog`.** Seven presets over one component, one geometry system,
   one interaction model, one motion system — never seven implementations.
-- **Add a ranker; don't edit the engine.** Phase 2 did exactly this: `ContextualRanker` wraps
-  `FrequencyRanker.Score` and leaves it untouched. Phase 3's personal vocabulary should arrive the same way.
-- **Grow the context types additively.** `RankingContext` gained `PredictionContext` with a default, so
-  every existing call site still compiles and still means what it did. Same pattern as `Suggestion.Source`.
+- **Add a ranker; don't edit the engine.** `ContextualRanker` wraps `FrequencyRanker.Score` and leaves it
+  untouched. Every later signal has arrived the same way.
+- **Grow the context types additively.** `RankingContext` gained `PredictionContext` with a default, so every
+  existing call site still compiles and still means what it did. Same for `Suggestion.Source`.
 
 ### Load-bearing details that look innocuous
 
-- **Hook subscription order — on both hooks.** `BarInputRouter` must subscribe to the keyboard hook
-  *before* `TypingSession.Attach()` is called. Handlers run in subscription order and the contract is:
-  whatever the router suppresses, `TypingSession` skips. Reverse it and Tab resets the word buffer mid-cycle.
-  The mouse hook is the same: the controller's `Dismiss()` must subscribe before `Attach()`, or
-  `TypingSession`'s buffer reset republishes the idle list and the bar flashes back on for one frame on
-  every outside click.
-- **"Visible" and "owns the keyboard" are different conditions.** They were identical until the bar started
-  persisting. `SuggestionUpdate.IsIdle` keeps them apart, and `BarInputRouter` routes on
-  `_isCompleting`, never on visibility. Collapse them again and a bar that is now up almost continuously
-  will swallow Tab and Esc in every text field on the system.
-- **`Dismiss()` is sticky on purpose.** It sets a flag that survives until the user types again. Once the
-  bar repopulates itself between words, merely hiding the window doesn't stick — the next buffer reset puts
-  it straight back. This is why Esc goes through the controller and not `SuggestionBarWindow.HideBar()`.
+- **Hook subscription order — on both hooks.** `BarInputRouter` must subscribe to the keyboard hook *before*
+  `TypingSession.Attach()`. Handlers run in subscription order and the contract is: whatever the router
+  suppresses, `TypingSession` skips. Reverse it and Tab resets the word buffer mid-cycle. The mouse hook is
+  the same: the controller's `Dismiss()` must subscribe before `Attach()`, or the buffer reset republishes
+  the idle list and the bar flashes back on for one frame on every outside click.
+- **"Visible" and "owns the keyboard" are different conditions.** `SuggestionUpdate.IsIdle` keeps them apart.
+- **`Dismiss()` is sticky on purpose.** It sets a flag that survives until the user types again.
 - **Never call `SendInput` from inside the hook callback.** Always via `postToMessageLoop`.
-- **One `SendInput` call per replacement — deletions and text together.** Windows guarantees events inside
-  a single call are not interleaved with other input, and guarantees nothing between two calls. Splitting
-  them lets the target start on the backspaces while the text is arriving, and they eat its front. This
-  shipped once; see §12 item 7.
-- **Every ranking bonus stays under the 100-point band gap, and they accumulate.** Context ≤40, personal
-  word ≤30, learned usage ≤15. Phrases and emoji sit in the between-words band and are listed explicitly in
-  `FrequencyRanker`'s switch — the default is the fuzzy band at zero, which would silently bury them.
+- **Deletions are sent as backspaces, not as a selection — this is a correctness requirement.** Selecting the
+  range with `EM_SETSEL` fails intermittently because a *sent* message jumps ahead of *queued* input, so
+  autocorrect reads a stale caret and `"teh "` becomes `"he  "` about one time in three. **[fact — measured]**
+- **The backspace encoding must branch on `IsRichEdit`.** `WM_CHAR` 0x08 works on `EDIT` and is ignored by
+  RichEdit; `WM_KEYDOWN VK_BACK` works on RichEdit and loses characters on `EDIT`, because `TranslateMessage`
+  generates a second `WM_CHAR` 0x08 that lands *after* the text. Both were shipped and both were wrong.
+- **One `SendInput` call per replacement** on the fallback path — deletions and text together. Windows
+  guarantees events inside a single call are not interleaved, and guarantees nothing between two calls.
+- **Every ranking bonus stays under the 100-point band gap, and they accumulate.** Context ≤40, personal word
+  ≤30, learned usage ≤15, neural ≤25. Add another signal without checking the total and a suggestion could
+  outrank a word the user has finished typing.
+- **Phrases and emoji are listed explicitly in `FrequencyRanker`'s switch.** The default is the fuzzy band at
+  zero, which would silently bury them.
 - **`INPUT` struct must include the `MOUSEINPUT` union member** even though it is unused — it sets
   `sizeof(INPUT)` to the 40 bytes x64 requires. Without it, `SendInput` silently rejects everything.
-- **Injected-key detection uses a private `dwExtraInfo` marker**, not `LLKHF_INJECTED` (which is set for
-  *any* process's SendInput, so relying on it would ignore dictation software and automation tools).
-- **`GlassPlate` and `SelectionLens` report zero desired size deliberately** so they cannot force the
-  window to stay wide. Consequently **do not put a `BitmapCache` on them** — a cache sized from a
-  zero-size element renders nothing.
-- **A reappearing bar must clear its selection.** Otherwise the next `Space` replaces a word the user
-  never chose.
-- **The tokenizer is shared between the offline builder and the running app, and must stay that way.** The
-  corpus is tokenised once at build time and typed context on every keystroke. If the two ever disagree
-  about what a token is — a curly apostrophe, a trailing comma, a capital — every lookup misses. There is
-  no error and no crash, just a bar that silently stops predicting.
-- **Typing history must be dropped whenever the word buffer is.** Clicks, arrow keys, Ctrl combos,
-  backspacing into untracked text, and full stops all clear it. Stale context is worse than none: it
-  produces confident, specific predictions from words that are no longer behind the caret.
-- **Resolve the n-gram context once per candidate list, not per candidate.** `ContextualRanker` scores up to
-  64 completions against the same two preceding words; asking the model per candidate re-derives the
-  context and re-probes both tables every time. Measured: 161 µs → 484 µs per keystroke.
-- **Don't add raw word frequency on top of a conditional probability.** `P(word | context)` already
-  accounts for how common the word is. Double-counting it promotes function words and buries the useful
-  predictions — this is why `ProbabilityWeight` is 8 and not 2.
-- **Every ranking bonus must stay under the 100-point band gap, and they are cumulative.** Context ≤40,
-  personal word ≤30, learned usage ≤15 — 85 in the worst case, plus ~10 of frequency. Add another signal
-  without checking the total and a suggestion could outrank a word the user has finished typing.
-- **Learning is gated on the same focus check as suggesting.** `SuggestionController.Learn` is the only
-  call site, and it sits after `IsSuggestible`. A field the app cannot positively identify must never be
-  learned from — "we're not sure" has to mean "don't record it", not "probably fine".
-- **`WordCommittedEventArgs.PrecedingWords` is snapshotted before the history updates.** The two branches of
-  `CommitIfNonEmpty` leave the history in incompatible states — an ordinary space appends the word, a full
-  stop clears it — so reconstructing the context afterwards is wrong in a different way in each case.
-- **Both personal stores write via a temp file and `File.Replace`.** The learning model saves on a timer,
-  which makes an interrupted write a question of when, not if. A corrupt file loads as empty and is left on
-  disk for recovery rather than overwritten.
+- **Injected-key detection uses a private `dwExtraInfo` marker**, not `LLKHF_INJECTED` (which is set for *any*
+  process's SendInput, so relying on it would ignore dictation software and automation tools).
+- **`GlassPlate` and `SelectionLens` report zero desired size deliberately.** Consequently **do not put a
+  `BitmapCache` on them** — a cache sized from a zero-size element renders nothing.
+- **A reappearing bar must clear its selection.** Otherwise the next `Space` replaces a word never chosen.
+- **The tokenizer is shared between the offline builder and the running app, and must stay that way.** If the
+  two ever disagree about what a token is — a curly apostrophe, a trailing comma, a capital — every lookup
+  misses. No error, no crash, just a bar that silently stops predicting.
+- **Typing history must be dropped whenever the word buffer is.** Stale context is worse than none: it
+  produces confident, specific predictions from words no longer behind the caret.
+- **Resolve the n-gram context once per candidate list, not per candidate.** Measured: 161 µs → 484 µs.
+- **Don't add raw word frequency on top of a conditional probability.** `P(word | context)` already accounts
+  for how common the word is. This is why `ProbabilityWeight` is 8 and not 2.
+- **Learning is gated on the same focus check as suggesting.** A field the app cannot positively identify
+  must never be learned from — "we're not sure" has to mean "don't record it".
+- **`WordCommittedEventArgs.PrecedingWords` is snapshotted before the history updates.**
+- **Both personal stores write via a temp file and `File.Replace`.** A corrupt file loads as empty and is
+  left on disk for recovery rather than overwritten.
+- **Neural results are discarded by sequence number, not by timestamp.** A result for a context the user has
+  already typed past must never be applied.
+- **XAML bindings resolve at layout, not at compile time.** 271 passing tests did not catch a two-way binding
+  against a read-only property; only opening the window did. **Open every window you touch.**
 
 ### UI/UX rules
 
 - The bar must **never take keyboard focus** (`WS_EX_NOACTIVATE`).
-- Suggestions and autocorrect are **always disabled in password fields**.
-- Respect Windows accessibility: transparency-off / High Contrast → solid surfaces; animations-off →
-  instant transitions.
+- Suggestions, autocorrect and learning are **always disabled in password fields**.
+- Respect Windows accessibility: transparency-off / High Contrast → solid surfaces; animations-off → instant
+  transitions.
 - Motion is spring-based; animations omit `From` so re-triggering continues from the current position.
+- Anything that costs the user something — disk space, a download, a record of their typing — states the cost
+  before it happens and defaults to off.
 
 ### Testing expectations
 
 - Prediction primitives are unit-tested; keep them that way.
-- UI and input behaviour is verified end-to-end with `tests\regression\Verify-PersistentBar.ps1`, which
-  drives a real Win32 `Edit` control and reads text back with `WM_GETTEXT` (**not** screenshots — §12).
-  Add a check there for anything a unit test cannot reach; §12 items 17–22 are the traps that cost the most
-  time, so read them before extending it. It can drive a plain `EDIT` or a `RICHEDIT50W`
-  (`-ControlClass RichEdit`) at any typing rate (`-PerKeyMs`) — a plain `EDIT` processes input too
-  synchronously to expose ordering races, which is worth knowing before concluding one is fixed.
-- When behaviour in `Core` can't be tested because it reads live Win32 state through a static, add a seam
-  for it — `ITextInjector` and `IFocusedControlProvider` are both precedents.
+- UI and input behaviour is verified end-to-end with `tests\regression\Verify-PersistentBar.ps1`, which drives
+  a real Win32 `Edit` or `RICHEDIT50W` control and reads text back with `WM_GETTEXT` (**not** screenshots).
+  Add a check there for anything a unit test cannot reach; §12 items 17–26 are the traps that cost the most
+  time.
+- When behaviour in `Core` can't be tested because it reads live Win32 state through a static, **add a seam**
+  — `ITextInjector` and `IFocusedControlProvider` are both precedents, and both are what Phase 7 will build on.
 - Performance is measured, not assumed.
+- Tests that need a 227 MB model skip themselves by default and opt in via `WORDSTRIP_TEST_MODEL_DIR`.
 
 ## 14. Current Task
 
-**None — Phase 5 is closed out and built as 0.7.0.** The next move belongs to the owner, who is retesting.
-Do **not** start Phase 6 without being asked; the phase documents say so explicitly.
+**Phase 7 — move toward the Windows Text Services Framework.** Requested by the owner on 2026-08-12 with the
+brief at `C:\Users\wordstrip-dev\Downloads\Worstripe\PHASE_7_Windows_TSF_Migration.md`.
 
-The 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` (outside the project) as
-`PHASE_1..7_*.md`. Phase 5 explicitly **excluded** neural models, LLMs, cloud APIs, TSF and free-form
-generative text.
+**Stage 0 is done: the abstraction exists and the existing path runs through it.** See §11 for the files.
+This satisfies acceptance criteria 2 (prediction engine remains Windows-agnostic) and 4 (candidate UI remains
+independent), and it is the part of the phase with no platform risk. **[fact]**
 
-**Delivered in the most recent session (0.7.0) [fact]:**
+**Stage 1 — the text service itself — has not been started, and is blocked on tooling.** This machine has no
+C++ toolchain of any kind. The owner has approved adding one; it still needs installing. **[fact]**
 
-- **Text injection fix.** Deletions and replacement text now go in one `SendInput` call. Windows only
-  guarantees ordering *within* a call, so sending them separately let the still-draining backspaces eat the
-  front of the text. **Reported symptom not reproduced** — see §12 item 7 before assuming it is fixed.
-- **Phase 5.** `PhraseGenerator` — bounded beam search producing up to 3-word candidates, scored on mean
-  log probability per word so length never wins by itself; extensions require trigram evidence; unigram-tier
-  seeds are never extended; deduplication keeps one form per opening.
-- **Emoji.** `EmojiSuggester` + a curated table of ~300 keywords. At most one, always last, only on an
-  unambiguous match, placed by policy rather than scored against words.
-- **Animation off.** The far end of the speed slider now disables motion outright instead of setting 80 ms.
-- **Harness.** The regression can drive a `RICHEDIT50W` and type at any rate; `WORDSTRIP_DATA_DIR` relocates
-  all user data so a run can seed a known vocabulary without touching the real one.
-- 57 new unit tests (248 total); regression green on both target control types.
+The full 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` as `PHASE_1..7_*.md`, outside
+the project directory.
 
-**Measured results, Phase 5 [fact]:**
+### What Phase 7 asks for
 
-| Metric | Value |
-|---|---|
-| Phrase generation | 349 µs/call against the shipped model |
-| Unseen context | 13 µs/call (no expansion attempted) |
-| Beam | width 6, branching 4, max 3 words |
-| Quality floor | mean log probability ≥ −1.4 per word |
-| Emoji table | ~300 keywords, at most one suggestion, min prefix 3 |
+**Critical rule, stated first in the brief: do NOT destroy the existing working input path.** The target is
+`existing input path + TSF → shared prediction engine`, incrementally, with TSF eventually becoming primary
+*where supported*.
 
-**Example phrases from the shipped model [fact]:** `i am` → *not going to · very glad to · sure you will* ·
-`let me` → *have a good · see the · go to the* · `looking forward` → *to* (single word wins) ·
-`how are` → *you* (single word wins).
+- **Abstraction:** an `ITextContextProvider` covering surrounding text, cursor position, selection, current
+  word, previous words, commit/replacement, and field context where available. No Windows-specific objects
+  may reach `WordStrip.Core.Prediction`.
+- **Stage 1:** a TSF proof of concept that registers the text service, receives text/context, and exposes
+  basic candidate information. Do **not** replace the current injector yet.
+- **Stage 2:** feed real surrounding text to the prediction engine instead of reconstructing it from
+  keystrokes, where TSF provides it.
+- **Stage 3:** commit candidates through the appropriate TSF mechanism.
+- **Stage 4:** keep fallback for applications where TSF is unavailable.
+- **Threading:** follow the Windows API contract precisely. Never block a TSF callback with model loading,
+  disk I/O or neural inference.
+- **Privacy:** pass the minimum context necessary. Do not store documents, upload text, or log keystrokes.
+- **UI:** the bar keeps receiving `PredictionCandidate[]`, never TSF objects, so the seven themes stay reusable.
+- **Testing matrix required:** Notepad, Windows text controls, Win32, WPF, WinUI/XAML, Chromium/Electron,
+  Office if available, elevated apps. Each must be recorded as `works` / `partial` / `unsupported` /
+  `fallback`.
+- **Measure:** TSF startup, context retrieval, prediction, candidate display, commit latency, memory.
+- **Non-goals:** no algorithm redesign, no UI replacement, no cloud, no telemetry, no removing the fallback.
+- **Explicit instruction in the brief:** *"Do not claim WordStrip is a full Windows input method until the
+  implementation and compatibility testing genuinely justify that claim."*
 
-**Delivered in the session before that (Tab fix + Phases 3 and 4) [fact]:**
+### What a future session must understand before starting
 
-- **Tab fix.** Reported from use: after inserting a word the predictions appear immediately but Tab did
-  nothing, because the router only claimed keys while a word was in progress. The bar now owns Tab whenever
-  it is showing anything. Two guards keep typing intact — Space/Enter only claimed with a selection, Esc
-  only swallowed with a selection to cancel.
-- **Phase 3.** `PersonalVocabularyStore` (JSON, atomic writes, corruption-tolerant), casing preserved
-  separately from the lookup key, personal words folded into completion and protected from autocorrect, a
-  bounded personal ranking bonus, and a settings card with add/remove/import/export.
-- **Phase 4.** `PersonalLanguageModel` — personal uni/bi/trigram counts learned only from committed words in
-  suggestible controls, with count saturation, periodic decay, table pruning, a cold-start confidence ramp,
-  and settings for on/off plus clear-everything.
-- 65 new unit tests (191 total), storage growth measured, and the regression updated to test next-word
-  insertion end to end now that Tab reaches the idle bar.
+*[assumption — not yet verified against a working prototype, flagged because it shapes the whole approach]*
+A TSF text service is an **in-process COM server** that Windows loads into every application that accepts
+text. That has consequences worth confirming early rather than discovering late:
 
-**Measured results, Phases 3 and 4 [fact]:**
+- It is conventionally a native DLL. Whether a managed .NET 8 DLL can be registered as a TIP and loaded
+  reliably into arbitrary host processes — including native, elevated and sandboxed ones — is **Unknown** and
+  is the first thing to establish. A C++/WinRT or C++ shim is the likely answer.
+- Registration touches `CLSID` and the TSF category registry. Whether the per-user scope WordStrip currently
+  installs under is sufficient, or whether this forces an admin/UAC installer, is **Unknown** and directly
+  contradicts the brief's "do not require administrator rights unless absolutely unavoidable" if it turns out
+  to need elevation. **Establish this before writing the service**, because it changes the installer story.
+- A TIP appears in the user's language bar and input-method list. That is a visible, system-wide change to
+  the machine, unlike everything WordStrip has done so far.
+- Chromium and Electron support TSF but not uniformly; "Chrome works" will need to be demonstrated, not
+  assumed. The brief says exactly this.
 
-| Metric | Value |
-|---|---|
-| Personal model growth | 45 KB @ 1k words · 164 KB @ 5k · 193 KB @ 20k · **394 KB @ 100k** |
-| Bounds | 20,000 entries per order, counts capped at 1,000 |
-| Decay | ×0.9 every 20,000 learned words |
-| Cold start | linear ramp to full weight at 2,000 learned words |
-| Personal vocabulary cap | 5,000 words, least-used evicted |
-| Ranking bonuses | personal word ≤30, learned usage ≤15, context ≤40 — all under the 100-point band gap |
-| Installer | 66.1 MB, unchanged from 0.5.0 |
-
-**Delivered in the session before that (Phase 2) [fact]:**
-
-- `NGramLanguageModel` — trigram/bigram tables with stupid-backoff scoring through to a unigram tier
-- `PredictionContext` and `NGramTokenizer`, shared by the offline builder and the running app
-- `ContextualRanker` wrapping `FrequencyRanker`; `RankingContext` extended additively
-- `PredictionEngine.GetNextWords`, and a context-aware overload of `GetLiveSuggestions`
-- Typing history in `TypingSession` (last two words), with autocorrect and accept both keeping it honest
-- `tools\ngram\Fetch-Corpus.ps1` and `tools\WordStrip.NGramBuilder` — the model is reproducible
-- 47 new unit tests (126 total, all passing); end-to-end regression unchanged and passing
-- 0.5.0 built (installer +2.0 MB over 0.4.0)
-
-**Measured results, Phase 2 [fact]:**
-
-| Metric | Value |
-|---|---|
-| Model on disk | 7.25 MB (2.42 bigram + 4.83 trigram) |
-| Installer delta | **+2.0 MB** (64.1 → 66.1 MB; the single-file build compresses it ~3:1) |
-| Entries | 120,082 bigrams / 227,213 trigrams over 23,352 + 87,319 contexts |
-| Corpus | 7,935,098 tokens from 61 Gutenberg books, plus 242,342 SymSpell bigrams |
-| Model load | 1476 ms (background thread, startup only) |
-| Resident memory | 26.3 MB |
-| Next-word lookup | 1.6–2.1 µs |
-| Next word, end-to-end | 30.9 µs/call |
-| Completion **with** context | 158.2 µs/call |
-| Completion without context | 147.3 µs/call (so context costs ~11 µs) |
-
-**Phase 1 baseline, unchanged [fact]:** prefix lookups 4.6–14.7 µs (600–700× faster than the original
-scan), autocorrection 274.5 µs, dictionary load 185 ms, SymSpell index build 6187 ms.
-
-**Sample predictions from the shipped model [fact]:**
-
-| Context | Predictions |
-|---|---|
-| `how are` | you, we, they, all |
-| `let me` | see, go, have, know |
-| `i am` | not, sure, a, very |
-| `thank you` | for, sir, said, i |
-
-**Design decisions taken during implementation, worth knowing about:**
-
-1. **The bar claims Tab whenever it is visible.** *Reversed in 0.6.0.* It originally claimed nothing between
-   words, to keep Tab indenting and moving between dialog fields. Phase 2 changed the calculus — the idle
-   bar now holds real predictions, and mouse-only put them out of reach on the path where they matter most.
-   Esc is the release valve, and Esc itself is only swallowed when there is a selection to cancel.
-2. **Personal learning is off by default, and everything else about it is opt-in-shaped.** It is the only
-   setting that changes what the app records about its user rather than how it looks or behaves. Clearing
-   deletes the file rather than blanking it; the export carries words but no frequencies or dates; learning
-   is gated on the same focus check as suggesting, so an unidentifiable field is never learned from.
-3. **Personal signals are bounded and cannot cross bands.** A personal word gets at most +30 and learned
-   usage at most +15, against a 100-point gap between ranking bands. A word the user has finished typing
-   always wins, however much personal evidence argues otherwise.
-4. **Accepting with an empty buffer inserts rather than replaces.** Between words there is nothing to
-   replace, so the chosen word is simply typed with a trailing space. The guard moved from buffer length to
-   focus, so an accept can never inject into a surface we would not have suggested for.
-5. **The model stores probabilities, not counts.** Two sources whose raw counts differ by six orders of
-   magnitude cannot be summed — Google Books would erase Gutenberg. Each is reduced to a conditional
-   distribution and mixed. Where only one source knows a context it is the whole distribution, not half.
-6. **Context is weighted above frequency, deliberately.** A conditional probability already accounts for
-   how common a word is; adding `log10(frequency)` on top double-counts it. At the original weight, "i am"
-   predicted *the* and *to* — real continuations, useless suggestions — and buried *sure*.
-7. **The sentence-start marker is a context but never a suggestion.** It was briefly the most probable
-   continuation of "thank you", which would have rendered a blank chip.
+**Recommended next action: a Stage 1 spike scoped to answering the three Unknowns above**, before any
+production code. Do not design the service around an assumption about which of them resolves how.
 
 ## 15. Recommended Next Steps
 
-1. **Confirm the insertion bug is actually gone** (§12 item 7). This is the only genuinely open question.
-   The fix was not reproducible in testing, so the owner retesting their real phrases is the evidence. If it
-   recurs, get the exact keystrokes and the exact output before changing anything else. **[recommendation]**
-2. **Watch the Tab decision.** Reversed on one report, before the new behaviour had been lived with; the
-   cost — Tab not indenting or moving between fields while the bar is up — lands on every text field.
-   `BarInputRouter` is the only file that would change if a modifier chord turns out to be better.
-3. **Judge the phrases and emoji by use.** Phrases inherit a Victorian register (§12 item 8) and emoji take
-   a slot from a word. Both are switchable, and whether the defaults are right is a question about taste
-   that no amount of testing here can answer.
-4. **Fix the autostart split-brain** (§12 item 13) — the settings checkbox can disagree with the registry.
-5. **Resolve the inert `BackdropBlur` setting** — remove it or reimplement blur.
-6. **Consider letting autocorrect correct *into* personal words** (§12 item 6). Rebuilding `SymSpellIndex`
-   when the vocabulary changes is the obvious approach and was out of scope.
-7. **Only then** consider Phase 6 (neural reranking). Do **not** start it without being asked. The
-   integration point is ready: `ICandidateRanker` takes the whole `PredictionContext`, and `Suggestion` now
-   carries `Confidence`, so a reranker slots in beside `ContextualRanker` rather than replacing anything.
+Ordered.
+
+1. ~~Introduce `ITextContextProvider`~~ — **done this session.** See §11 and §14.
+2. **Install a C++ toolchain.** Visual Studio Build Tools with the "Desktop development with C++" workload
+   and a Windows 10/11 SDK. This is a multi-gigabyte download and needs administrator rights, so it is the
+   owner's action, not something to run unattended. Nothing in Stage 1 can start without it. **[fact that it
+   is missing; recommendation as to which workload]**
+3. **Spike TSF registration and hosting to answer the three Unknowns in §14** — managed vs native, per-user
+   vs admin registration, and language-bar visibility — *before* committing to an implementation shape. A day
+   spent here is worth more than a week of code built on a wrong assumption. **[recommendation]**
+4. **Then Stage 1 proper:** a registerable text service that receives context, with the existing path
+   untouched and still primary.
+5. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
+   and explicitly forbids claiming universal support. Record `works`/`partial`/`unsupported`/`fallback` per
+   app in this file as each is tested.
+6. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
+   Small, and it is the owner-facing documentation.
+7. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
+   should quote a total rather than a delta now that the loaded figure is over a gigabyte.
+8. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
+   something.
+9. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
 
 **Release checklist, for whenever the next build ships:**
 
 - Stop the running app first (it locks its own exe).
 - Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
-- `dotnet test` (248), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- `dotnet test` (305), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
 - Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
   single-file build is a different code path (embedded dictionary) and starts more slowly.
+- **Open every settings card** before shipping. §13 records why.
 - Back up **the whole of** `%LOCALAPPDATA%\WordStrip` before touching the installer (§9). It now holds the
-  user's personal vocabulary and learned data as well as settings, and uninstall deletes the lot.
+  personal vocabulary, learned data **and a 227 MB model**, and uninstall deletes the lot.
+- Commit and tag.
 
 ## 16. Fresh-Chat Startup Prompt
 
@@ -839,25 +880,38 @@ scan), autocorrection 274.5 µs, dictionary load 185 ms, SymSpell index build 61
 Read D:\Claude Code\WordStrip\CLAUDE_PROJECT_CONTEXT.md first, before doing anything else.
 
 Then:
-1. Confirm your actual current working directory, and note that the project root is
-   D:\Claude Code\WordStrip (the working directory may be its parent).
+
+1. Confirm your actual current working directory. Note that the project root is
+   D:\Claude Code\WordStrip — the working directory is usually its parent, D:\Claude Code,
+   which is not a git repository. Use absolute paths.
+
 2. Inspect the files listed in section 10 of that document before changing anything.
+   Treat the context file as primary context, but verify it against the actual files —
+   it can go stale.
+
 3. Summarise your understanding of the project back to me in a few sentences.
-4. State what you plan to do next, based on section 14 (Current Task) and section 15
-   (Recommended Next Steps).
+
+4. State what you plan to do, based on section 14 (Current Task) and section 15
+   (Recommended Next Steps). Propose a plan before acting.
+
 5. Ask questions only if something is genuinely ambiguous or unsafe. Do not ask about
    anything already answered in the context file.
-6. Note that section 14 currently says there is no active task: Phases 3 and 4 are
-   built as 0.6.0 but not installed, and 0.5.0 was never trialled either. Ask what they
-   want next rather than assuming, and do NOT start Phase 5 unprompted. The thing worth
-   raising is that three versions of work are now unvalidated by use — installing and
-   living with 0.6.0 is more valuable than any further feature.
-7. Respect the "load-bearing details" in section 13 — several of them look like harmless
-   code but will silently break text insertion, the layout, or Tab and Esc system-wide
-   if changed.
+
+6. Continue from the documented current task: Phase 7, the TSF migration. The brief is at
+   C:\Users\wordstrip-dev\Downloads\Worstripe\PHASE_7_Windows_TSF_Migration.md — read it.
+   Its first rule is that the existing keyboard-hook input path must keep working; TSF is
+   added alongside it, never in place of it. Section 14 lists three genuinely unresolved
+   questions about TSF registration and hosting; establish those before building on
+   assumptions.
+
+7. Do not modify unrelated files. Respect the "load-bearing details" in section 13 —
+   several of them look like harmless code but will silently break text insertion, the
+   layout, or Tab and Esc system-wide if changed. The text injector in particular took
+   four wrong fixes to get right; read its comments before touching it.
+
 8. Whenever a major decision, feature or task status changes, update
    CLAUDE_PROJECT_CONTEXT.md so it stays accurate.
 
-The project is now under git (local only, branch `master`), so there is an undo. Commit
-before substantial changes.
+The project is under git (local only, branch master, no remote, so there is no off-machine
+backup). Commit before substantial changes.
 ```
