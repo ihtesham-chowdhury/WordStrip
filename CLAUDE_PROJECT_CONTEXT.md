@@ -63,9 +63,10 @@ files the user can read and delete. **[fact]**
 ## 3. Current Status
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
-  **Phase 7 (TSF migration) is the active task. Stages 0 and 4 — the provider abstraction and the fallback
-  machinery — are done, built and tested (327 tests). The TSF service itself has not been started and is
-  blocked on a missing C++ toolchain.** See §14. **[fact]**
+  **Phase 7 (TSF migration) is the active task. Stages 0 and 4 (the provider abstraction and the fallback
+  machinery) are done and tested — 327 tests. Stage 1's text service is written, built and statically
+  verified, but not yet registered, so nothing is yet known about which applications load it.** See §14.
+  **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -89,27 +90,35 @@ files the user can read and delete. **[fact]**
   - **Phase 7 Stage 4: `CompositeTextContextProvider` — per-call provider selection, demotion of providers
     that throw, and a guarantee that no provider failure can stop typing. In the shipping path.** 327 unit
     tests. **[fact]**
-- **In progress:** **Phase 7 — TSF migration.** Stages 0 and 4 complete; Stages 1–3 (the text service
-  itself) not started. **[fact]**
-- **Blocked:** **The TSF service is blocked on tooling.** This machine has **no C++ toolchain at all** — no
-  Visual Studio, no Build Tools, no Windows SDK, no cmake, no msbuild; only the .NET 8 SDK. A TSF text
-  service is conventionally a native COM DLL, so this must be resolved before Stage 1.
-  **Verified absent twice on 2026-08-12**, after the owner reported installing it both times. No `vswhere`,
-  no VS package cache, no Windows SDK, and no `cl` / `clang` / `clang-cl` / `gcc` / `cmake` / `msbuild` /
-  `ninja` on `PATH`. The uninstall registry holds only VC++ *redistributables* — those ship with countless
-  applications and contain no compiler, so they are the obvious false positive to watch for. **[fact]**
+- **In progress:** **Phase 7 — TSF migration.** Stages 0 and 4 complete. Stage 1 built and statically
+  verified, **awaiting first registration**. Stages 2–3 not started. **[fact]**
+- **Blocked:** Nothing is blocked. Registration needs administrator rights, so it is the owner's action
+  rather than something this session can perform.
+- **Next priority:** Register the service, then find out which applications actually load it — the entire
+  point of Stage 1 (§14, §15).
 
-  **Cause found: Windows has a restart pending, and the Visual Studio Installer refuses to run until it is
-  cleared.** All three markers are set — `Component Based Servicing\RebootPending`,
-  `WindowsUpdate\Auto Update\RebootRequired`, and 10 `PendingFileRenameOperations` entries. KB5121003,
-  KB5123304 and KB5120708 all installed on 2026-08-12 while the machine had been up since 2026-08-09
-  without rebooting. The bootstrapper bails before writing anything, which is exactly why two attempts left
-  no package cache, no installer directory and no log to read. **[fact]**
+### Getting the C++ toolchain installed took three attempts — what actually went wrong **[fact]**
 
-  Permissions are **not** the problem, which is worth recording so nobody chases it: the account is in the
-  local Administrators group and UAC sits at the normal prompt level (`EnableLUA=1`,
-  `ConsentPromptBehaviorAdmin=5`), with no Windows Installer restriction policy set. **[fact]**
-- **Next priority:** Restart Windows, install the toolchain, verify it, then the Stage 1 spike (§14, §15).
+Recorded because the failure mode was silent every time, and because two of the three checks people
+naturally reach for give false positives.
+
+1. **Attempts one and two left no trace at all** — no package cache, no installer directory, no winget log
+   entry. Cause: **Windows had a restart pending** (all three markers set; KB5121003, KB5123304 and
+   KB5120708 installed while the machine had been up for 3 days). The Visual Studio Installer checks for
+   this and exits before writing anything.
+2. **Attempt three installed Build Tools with no workload selected** — `isComplete: True`, 102 MB on disk,
+   no `VC` directory, no SDK. It reported success because it completed exactly what was asked of it.
+3. **Attempt four**, a Modify adding `Microsoft.VisualStudio.Workload.VCTools`, worked: 3.4 GB, MSVC
+   14.44.35207, SDK 10.0.26100.0.
+
+**Two false positives to avoid when checking:** `winget list` showing "Microsoft Visual C++ 2015-2022
+Redistributable" is a *runtime*, present on almost every Windows machine, and contains no compiler.
+"Visual Studio Build Tools is installed" is not the same as "the C++ workload is installed". Check for
+`VC\Tools\MSVC\<version>` and a Windows Kits include folder, or just run
+`src/WordStrip.Tip/verify-binary.bat`.
+
+Permissions were never the problem: the account is in the local Administrators group, UAC is at the normal
+prompt level, and no Windows Installer restriction policy exists.
 
 ### Documentation debt carried into this session **[fact]**
 
@@ -209,6 +218,19 @@ D:\Claude Code\WordStrip\
 │   │   └── UserDataLocation.cs       One place decides where user data lives; WORDSTRIP_DATA_DIR
 │   └── Platform/AutostartManager.cs  HKCU Run key
 │
+├── src/WordStrip.Tip/                ← PHASE 7 STAGE 1. Native C++ TSF text service, x64 only.
+│   │                                 Built by build.bat, NOT by the .sln — it is not a dotnet project
+│   ├── Guids.h                       CLSID + profile GUID. Generated once; never regenerate (see file)
+│   ├── TextService.h/.cpp            ITfTextInputProcessorEx. Deliberately inert: loads and logs, nothing more
+│   ├── DllMain.cpp                   COM plumbing + TSF registration (CLSID, profile, keyboard category)
+│   ├── LoadLog.h/.cpp                Writes %LOCALAPPDATA%\WordStrip\tip-load.log. The Stage 1 proof
+│   ├── WordStripTip.def              Undecorated exports; regsvr32 looks them up by name
+│   ├── build.bat                     x64 build. /MT static CRT — load-bearing, see the comment inside
+│   ├── verify-binary.bat             Architecture, exports and dependency checks before registering
+│   ├── register.bat                  Developer registration. Needs admin
+│   ├── unregister.bat                ESCAPE HATCH. Run as admin if text input breaks anywhere
+│   └── Check-Loaded.ps1              Which hosts actually loaded it — the compatibility-matrix tool
+│
 ├── src/WordStrip.Neural/             ONNX isolated here so Core stays dependency-free
 │   ├── WordStrip.Neural.csproj       Microsoft.ML.OnnxRuntime 1.20.1, Microsoft.ML.Tokenizers 1.0.1
 │   └── OnnxNeuralReranker.cs         TryLoad never throws; discovers input_ids, attention_mask,
@@ -267,6 +289,7 @@ D:\Claude Code\WordStrip\
 | Secondary UI | WinForms — **only** for the tray `NotifyIcon` | **[fact]** |
 | Neural runtime | `Microsoft.ML.OnnxRuntime` 1.20.1, `Microsoft.ML.Tokenizers` 1.0.1 | **[fact]** |
 | Tests | xUnit 2.5.3, Microsoft.NET.Test.Sdk 17.8.0, coverlet.collector 6.0.0 | **[fact]** |
+| Native toolchain | **Visual Studio Build Tools 2022 17.14.37531.7**, MSVC **14.44.35207**, Windows SDK **10.0.26100.0**. Installed 2026-08-12, at `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`. Phase 7 only — nothing else in the project needs it | **[fact]** |
 | Installer | Inno Setup 6 (`ISCC.exe` at `%LOCALAPPDATA%\Programs\Inno Setup 6`) | **[fact]** |
 | OS (dev machine) | Windows 11 Pro, build 10.0.26200 | **[fact]** |
 | Display (dev machine) | 1920×1080 at **150% scaling** — matters for capture/testing | **[fact]** |
@@ -720,6 +743,18 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
     deliberately does not run. Clear it with `EM_SETSEL` + `WM_CLEAR`. **[fact]**
 26. **`Start-Process -ArgumentList` does not quote for you.** `D:\Claude Code` has a space in it and breaks
     `-File` unless quoted explicitly. **[fact]**
+27. **`vcvarsall.bat` changes the working directory.** Any `cd` to the source folder must come *after* the
+    `call`, not before, or the compiler is run somewhere else entirely and cannot see files that are plainly
+    there. `build.bat` has a comment saying so at the exact line. **[fact — cost a cycle]**
+28. **PowerShell's `cd` / `Push-Location` does not change the process working directory**, only PowerShell's
+    own notion of it. A child process launched afterwards — `cmd`, or anything reached through the .NET
+    APIs — still starts in the original directory. Pass absolute paths, or `cd` inside the batch file
+    itself. **[fact — cost two cycles on this machine, where the process starts in `D:\Claude Code` while
+    the project root is `D:\Claude Code\WordStrip`]**
+29. **A native DLL loaded into other processes must link the CRT statically (`/MT`).** With `/MD` it carries
+    a dependency on one specific VC++ redistributable into every application on the machine, and hosts
+    without that exact version fail to load it — silently, with no error anywhere. Verify with
+    `verify-binary.bat`: the dependency list must contain only system DLLs. **[fact]**
 
 ## 13. Development Instructions
 
@@ -829,13 +864,29 @@ Between them they satisfy acceptance criteria 2 (prediction engine remains Windo
 remains independent), 5 (existing fallback remains functional) and 6 (normal typing never depends
 exclusively on prediction). **[fact]**
 
-**Stages 1–3 — the text service itself — have not been started, and are blocked on tooling.** This machine
-has no C++ toolchain. The owner has approved adding one and reported installing it; verification on
-2026-08-12 found it still absent, with no install attempt in the winget logs. See §3 for exactly what was
-checked. **[fact]**
+**Stage 1 is built and statically verified; it has not yet been registered.** **[fact, 2026-08-12]**
 
-Do not attempt to work around this by writing the TIP in managed code without first running the spike below.
-"Try it in C# and see" is how a week disappears into CLR-in-arbitrary-host loader problems.
+`src/WordStrip.Tip/` compiles to a 150 KB x64 DLL. Deliberately inert — it registers, loads, records that it
+loaded, and does nothing else. No text store, no key sink, no UI. The point of the stage is to find out
+whether a TIP written here is actually loaded by Chrome, Word and WinUI applications, and that question is
+answered far more cleanly by something that cannot itself be the reason a host misbehaves.
+
+Verified before registration, by `verify-binary.bat`:
+
+| Check | Result |
+|---|---|
+| Machine type | `8664 machine (x64)` |
+| Exports | four, undecorated: `DllCanUnloadNow`, `DllGetClassObject`, `DllRegisterServer`, `DllUnregisterServer` |
+| Dependencies | `ole32`, `ADVAPI32`, `SHELL32`, `KERNEL32` — **system DLLs only, no VCRUNTIME/MSVCP** |
+| Size | 153,600 bytes |
+
+**Not yet done:** registration (needs administrator rights, so it is the owner's action), and therefore no
+evidence yet about which hosts load it. That is the whole remaining point of Stage 1.
+
+**Before registering for the first time, know how to undo it.** A TIP is loaded into every application that
+accepts text, so a broken one can break typing system-wide, including in whatever would normally be used to
+fix it. `src/WordStrip.Tip/unregister.bat`, run as administrator, is the escape hatch; text services are not
+loaded in Safe Mode, so that is the fallback if things are bad enough that it cannot be run normally.
 
 The full 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` as `PHASE_1..7_*.md`, outside
 the project directory.
@@ -939,46 +990,33 @@ context in practice. The brief says not to assume this, and nothing in the regis
 
 Ordered.
 
-1. ~~Introduce `ITextContextProvider`~~ and ~~the fallback machinery~~ — **both done.** See §11 and §14.
-2. **Restart Windows first.** A pending restart is what blocked two install attempts — see §3. The Visual
-   Studio Installer checks for this and exits before doing anything, so retrying without rebooting will fail
-   the same silent way a third time. **[fact]**
-3. **Then install the C++ toolchain — and verify it afterwards rather than assuming.** Visual Studio Build
-   Tools with the "Desktop development with C++" workload and a Windows 10/11 SDK. Multi-gigabyte, needs
-   administrator rights, so it is the owner's action rather than something to run unattended. Nothing in
-   Stages 1–3 can start without it. **[recommendation as to which workload]**
-
-   Confirm with this — all three must answer, and a bare `winget list` is not sufficient because VC++
-   *redistributables* look superficially like a hit and contain no compiler:
-
-   ```powershell
-   & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -property installationPath
-   Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
-   Test-Path "$env:ProgramData\Microsoft\VisualStudio\Packages"
-   ```
-4. ~~Spike TSF registration and hosting~~ — **done, from the registry, without a compiler.** All three
-   questions answered plus a fourth found; see §14. **[fact]**
-5. ~~Decide elevation and 32-bit~~ — **both decided by the owner on 2026-08-12.** Opt-in registration inside
-   Settings; x64 only. See §14, and do not re-open them. **[fact]**
-6. **Then Stage 1 proper**, in this order — a registerable text service that receives context, with the
-   existing path untouched and still primary:
-   1. A minimal native x64 TIP that registers, loads into a host, and does nothing else. Prove it loads
-      before it is asked to be useful.
-   2. `TsfTextContextProvider` on the C# side, implementing `ITextContextProvider`, placed **in front of**
-      the hook provider in the existing `CompositeTextContextProvider`. The fallback machinery is already
-      built and tested (§11), so this is the step it was written for.
-   3. The Settings opt-in: register / unregister, with elevation requested only for that step.
-   4. The compatibility matrix, filled in as each application is tried rather than at the end.
-7. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
+1. ~~`ITextContextProvider`~~, ~~the fallback machinery~~, ~~the C++ toolchain~~, ~~the TSF spike~~, ~~the
+   elevation and 32-bit decisions~~, ~~a built and statically verified text service~~ — **all done.** See
+   §11 and §14. **[fact]**
+2. **Register the service and find out what actually loads it.** Administrator rights required, so this is
+   the owner's action. **Read the escape-hatch paragraph in §14 before the first registration.**
+   1. `src/WordStrip.Tip/register.bat`, run as administrator.
+   2. Select WordStrip as an input method — Win+Space, or Settings → Time & Language → Typing → Advanced
+      keyboard settings. **Registration alone loads it into nothing**: the spike found the Japanese IME
+      sitting registered with `Enable = 0`.
+   3. Type in Notepad, then Chrome, Edge, a WinUI app, an Electron app, Word.
+   4. `src/WordStrip.Tip/Check-Loaded.ps1` — reports which hosts have it loaded now and which loaded it at
+      any point. This is the compatibility matrix's raw data.
+3. **Then Stage 2:** `TsfTextContextProvider` on the C# side, implementing `ITextContextProvider`, placed
+   **in front of** the hook provider in the existing `CompositeTextContextProvider`. The fallback machinery
+   is already built and tested (§11) — this is the step it was written for.
+4. **Then Stage 3:** the Settings opt-in — register / unregister, elevating only for that step and never the
+   tray process (§14).
+5. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
    and explicitly forbids claiming universal support. Record `works`/`partial`/`unsupported`/`fallback` per
-   app in this file as each is tested.
-8. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
+   app in this file as each is tested. 32-bit hosts are `fallback` by decision, not by accident (§14).
+6. **Fix the documentation debt** (§12 item 15) — `README.md` and `READ-ME-FIRST.txt` are two versions behind.
    Small, and it is the owner-facing documentation.
-9. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
+7. **Measure where the memory is going** (§12 item 9) — the baseline ~524 MB, and whether the settings card
    should quote a total rather than a delta now that the loaded figure is over a gigabyte.
-10. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
-    something.
-11. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
+8. **Make the flaky performance assertion take the best of three** (§12 item 10), so a red suite means
+   something.
+9. **Fix the autostart split-brain** (§12 item 13) and **resolve the inert `BackdropBlur` setting** (item 11).
 
 **Release checklist, for whenever the next build ships:**
 

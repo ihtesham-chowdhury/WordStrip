@@ -1,0 +1,13 @@
+; Exports for the WordStrip text service.
+;
+; A .def file rather than __declspec(dllexport) so the names are exactly these, undecorated. regsvr32 and
+; COM look them up by name, and a decorated DllRegisterServer is a registration that fails with a message
+; blaming the DLL rather than the export.
+
+LIBRARY WordStripTip
+
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE
+    DllRegisterServer   PRIVATE
+    DllUnregisterServer PRIVATE
