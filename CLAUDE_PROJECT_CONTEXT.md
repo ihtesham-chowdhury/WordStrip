@@ -63,10 +63,10 @@ files the user can read and delete. **[fact]**
 ## 3. Current Status
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
-  **Phase 7 (TSF migration) is the active task. Stages 0 and 4 (the provider abstraction and the fallback
-  machinery) are done and tested — 327 tests. Stage 1's text service is written, built and statically
-  verified, but not yet registered, so nothing is yet known about which applications load it.** See §14.
-  **[fact]**
+  **Phase 7 (TSF migration) is the active task. Stages 0, 1 and 4 are done. The text service is registered
+  and confirmed loading and activating inside Chrome, Edge, Brave, Claude (Electron), Word, Notepad and
+  Explorer — the applications WordStrip has never been able to reach. Stage 2, putting real text context
+  through it, is next.** See §14. **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -880,8 +880,37 @@ Verified before registration, by `verify-binary.bat`:
 | Dependencies | `ole32`, `ADVAPI32`, `SHELL32`, `KERNEL32` — **system DLLs only, no VCRUNTIME/MSVCP** |
 | Size | 153,600 bytes |
 
-**Not yet done:** registration (needs administrator rights, so it is the owner's action), and therefore no
-evidence yet about which hosts load it. That is the whole remaining point of Stage 1.
+### Stage 1 result: it loads everywhere that mattered **[fact, 2026-08-13]**
+
+Registered on 2026-08-13 and exercised by hand. **The riskiest question in the whole phase — whether a text
+service written here would actually be loaded by Chromium and Office — is answered, and the answer is yes.**
+
+Loading matrix, from `Check-Loaded.ps1` cross-checking live process module lists against the load log:
+
+| Host | DLL loaded | `ACTIVATE` received |
+|---|---|---|
+| `chrome.exe` | yes | yes |
+| `msedge.exe` | yes | yes |
+| `brave.exe` | yes | yes |
+| `Claude.exe` (Electron) | yes | yes |
+| `WINWORD.EXE` | yes | yes |
+| `Notepad.exe` | yes | yes |
+| `Explorer.EXE` | yes | yes |
+| `WordStrip.exe` (its own tray app) | yes | yes |
+
+33 log entries, 13 `CREATE`, 20 `ACTIVATE`, **zero `CREATE` without a matching `ACTIVATE`** — TSF never
+instantiated the service and then rejected it.
+
+**This is a loading matrix, not a compatibility matrix.** Nothing here says WordStrip *works* in these
+applications; the Stage 1 service is inert by design and cannot produce a suggestion. What it establishes is
+that the delivery mechanism reaches them, which is the thing that could have failed and would have sunk the
+approach. The brief's `works`/`partial`/`unsupported`/`fallback` matrix cannot be filled in until Stage 2
+puts real context through it.
+
+**Reporting note for future sessions:** the owner initially read this as a failure, because no suggestions
+appeared in Chrome. That was the predicted and correct outcome, but "you will see nothing, and that is
+success" is a hard thing to hold onto while testing. Say plainly what the observable signal *is* — here, a
+log file and a module list — rather than only what it is not.
 
 **Before registering for the first time, know how to undo it.** A TIP is loaded into every application that
 accepts text, so a broken one can break typing system-wide, including in whatever would normally be used to
@@ -983,8 +1012,9 @@ This must be recorded honestly in the compatibility matrix as `fallback` for 32-
 `unsupported` (WordStrip still works there) and never quietly omitted. **[fact — a decision, with a stated
 cost, not an oversight]**
 
-**Still unknown, and needs the compiler:** whether Chromium/Electron and Office actually deliver usable
-context in practice. The brief says not to assume this, and nothing in the registry answers it.
+**~~Still unknown, and needs the compiler:~~ answered on 2026-08-13** — Chromium, Electron and Word all load
+and activate the service. Whether they deliver usable *context* through it is the Stage 2 question and is
+still open.
 
 ## 15. Recommended Next Steps
 
