@@ -42,9 +42,9 @@
     <AssemblyTitle>WordStrip</AssemblyTitle>
     <Description>Word suggestions and autocorrect for the Windows physical keyboard.</Description>
     <Company>WordStrip</Company>
-    <Version>0.11.0</Version>
-    <FileVersion>0.11.0.0</FileVersion>
-    <AssemblyVersion>0.11.0.0</AssemblyVersion>
+    <Version>0.11.1</Version>
+    <FileVersion>0.11.1.0</FileVersion>
+    <AssemblyVersion>0.11.1.0</AssemblyVersion>
 
     <!-- Per-monitor DPI awareness: without it Windows bitmap-stretches the bar on scaled displays and the
          glass edges and text go soft. -->
