@@ -893,16 +893,44 @@ CLSID's `InprocServer32` under `HKLM\SOFTWARE\Classes\CLSID` and `...\WOW6432Nod
 
 **What this changes about the plan:**
 
-1. **The installer story breaks.** `installer/WordStrip.iss` is deliberately `PrivilegesRequired=lowest` —
-   per-user, no UAC, chosen so testers doing a favour are not asked to elevate (§9). Registering a TIP
-   cannot be done that way. Either the installer gains an elevated component, or TIP registration becomes a
-   separate opt-in step inside Settings that requests elevation when the user asks for it.
-   *[recommendation: the second. It keeps the default install exactly as it is, and it matches the pattern
-   already used for the neural model — a capability the user turns on deliberately, having been told the
-   cost.]*
-2. **Native C++ is confirmed**, not assumed. The `ITextContextProvider` seam is what keeps this contained:
+1. **Native C++ is confirmed**, not assumed. The `ITextContextProvider` seam is what keeps this contained:
    the DLL only has to gather context and hand it over.
-3. **Decide on 32-bit before writing any build script.**
+2. **The installer story had to change** — `installer/WordStrip.iss` is deliberately
+   `PrivilegesRequired=lowest`, chosen so testers doing a favour are never asked to elevate (§9), and a TIP
+   cannot be registered that way. **Decided, see below.**
+3. **32-bit had to be decided before any build script existed.** **Decided, see below.**
+
+### Decisions taken by the owner, 2026-08-12 — do not re-open these **[fact]**
+
+**1. TIP registration is an opt-in step inside Settings, not part of installation.**
+
+The ordinary install stays exactly as it is: per-user, no UAC, no prompt. Registering the text service is a
+separate action the user takes deliberately from the Settings window, which elevates at that moment and only
+for that. This is the same shape as the neural model download — a capability with a stated cost that the user
+switches on, rather than something an installer does to their machine on their behalf.
+
+Consequences to honour when building it:
+
+- Nothing about the default install may change. If a tester never opens that setting, WordStrip behaves
+  today exactly as it does now.
+- The elevation must be requested for a small, separate registration step — not by relaunching the whole
+  tray application elevated. **A keyboard hook installed by an elevated process cannot see input going to
+  non-elevated windows** (this is already recorded as the reason the installer is per-user in the first
+  place, `WordStrip.iss` line comment), so an elevated WordStrip would silently stop working in every
+  ordinary application.
+- Registration must be reversible from the same place, and the uninstaller has to cope with a TIP that was
+  registered after installation.
+
+**2. x64 only. No 32-bit TIP will be shipped.**
+
+Every TIP on this machine ships both architectures, and a 32-bit host process loads the 32-bit server. Not
+building one means **32-bit applications will never load the WordStrip text service**. That is accepted:
+they fall back to the keyboard hook, which is what serves them today, so nothing regresses — they simply do
+not improve.
+
+This must be recorded honestly in the compatibility matrix as `fallback` for 32-bit hosts, never as
+`unsupported` (WordStrip still works there) and never quietly omitted. **[fact — a decision, with a stated
+cost, not an oversight]**
 
 **Still unknown, and needs the compiler:** whether Chromium/Electron and Office actually deliver usable
 context in practice. The brief says not to assume this, and nothing in the registry answers it.
@@ -930,13 +958,17 @@ Ordered.
    ```
 4. ~~Spike TSF registration and hosting~~ — **done, from the registry, without a compiler.** All three
    questions answered plus a fourth found; see §14. **[fact]**
-5. **Decide the two things the spike surfaced, before writing any C++:**
-   **(a)** how TIP registration gets its administrator rights without turning the ordinary install into a
-   UAC prompt — a separate opt-in step in Settings is the recommendation; **(b)** whether to ship a 32-bit
-   TIP alongside the x64 one, or to declare 32-bit host applications unsupported. Both change the build and
-   the installer, so they are cheaper to settle now than after the x64 DLL works. **[recommendation]**
-6. **Then Stage 1 proper:** a registerable text service that receives context, with the existing path
-   untouched and still primary.
+5. ~~Decide elevation and 32-bit~~ — **both decided by the owner on 2026-08-12.** Opt-in registration inside
+   Settings; x64 only. See §14, and do not re-open them. **[fact]**
+6. **Then Stage 1 proper**, in this order — a registerable text service that receives context, with the
+   existing path untouched and still primary:
+   1. A minimal native x64 TIP that registers, loads into a host, and does nothing else. Prove it loads
+      before it is asked to be useful.
+   2. `TsfTextContextProvider` on the C# side, implementing `ITextContextProvider`, placed **in front of**
+      the hook provider in the existing `CompositeTextContextProvider`. The fallback machinery is already
+      built and tested (§11), so this is the step it was written for.
+   3. The Settings opt-in: register / unregister, with elevation requested only for that step.
+   4. The compatibility matrix, filled in as each application is tried rather than at the end.
 7. **Build the compatibility matrix as you go, not at the end.** The brief requires per-application results
    and explicitly forbids claiming universal support. Record `works`/`partial`/`unsupported`/`fallback` per
    app in this file as each is tested.
