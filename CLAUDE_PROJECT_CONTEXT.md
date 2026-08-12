@@ -63,10 +63,11 @@ files the user can read and delete. **[fact]**
 ## 3. Current Status
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
-  **Phase 7 (TSF migration) is the active task. Stages 0, 1 and 4 are done. The text service is registered
-  and confirmed loading and activating inside Chrome, Edge, Brave, Claude (Electron), Word, Notepad and
-  Explorer — the applications WordStrip has never been able to reach. Stage 2, putting real text context
-  through it, is next.** See §14. **[fact]**
+  **Phase 7 (TSF migration) is the active task. Stages 0, 1 and 4 are done; the service is registered and
+  confirmed loading inside Chrome, Edge, Brave, Claude, Word, Notepad and Explorer. Stage 2's managed half —
+  wire format, pipe channel, provider, all wired into the composite — is done and tested (357 tests). What
+  remains is the native half: the service does not yet read any document text or send anything, so the TSF
+  provider is never available and everything still runs on the keyboard hook.** See §14. **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -88,8 +89,11 @@ files the user can read and delete. **[fact]**
   - **Phase 7 Stage 0: the `ITextContextProvider` abstraction, the keyboard-hook adapter behind it, and
     `SuggestionController` rewired to consume it.** **[fact]**
   - **Phase 7 Stage 4: `CompositeTextContextProvider` — per-call provider selection, demotion of providers
-    that throw, and a guarantee that no provider failure can stop typing. In the shipping path.** 327 unit
-    tests. **[fact]**
+    that throw, and a guarantee that no provider failure can stop typing. In the shipping path.** **[fact]**
+  - **Phase 7 Stage 2, managed half: the wire format, the named-pipe channel, `TsfTextContextProvider`, and
+    the provider wired into the composite ahead of the hook.** 357 unit tests. The native half — the service
+    actually reading document text and sending it — is not written, so the TSF provider is never available
+    yet. **[fact]**
 - **In progress:** **Phase 7 — TSF migration.** Stages 0 and 4 complete. Stage 1 built and statically
   verified, **awaiting first registration**. Stages 2–3 not started. **[fact]**
 - **Blocked:** Nothing is blocked. Registration needs administrator rights, so it is the owner's action
@@ -204,6 +208,10 @@ D:\Claude Code\WordStrip\
 │   │       ├── UnavailableNeuralReranker.cs Null object
 │   │       ├── NeuralModelCatalog.cs Verified descriptor: name, publisher, licence, sizes, URLs
 │   │       └── NeuralModelStore.cs   The ONLY code in WordStrip that touches the network
+│   ├── Text/Tsf/                     ← PHASE 7 STAGE 2. The managed half of the TSF path
+│   │   ├── TsfContextMessage.cs      The wire format. Raw text crosses, never parsed words — see the file
+│   │   ├── TsfContextChannel.cs      Named-pipe server, one per logon session, ACL'd to the current user
+│   │   └── TsfTextContextProvider.cs Document context as an ITextContextProvider. Never raises WordCommitted
 │   ├── Text/                         ← PHASE 7. The input-mechanism abstraction
 │   │   ├── TextContext.cs            The snapshot the prediction layer consumes, + TextContextSource enum
 │   │   ├── ITextContextProvider.cs   The seam a TSF provider will implement alongside the hook
@@ -257,7 +265,7 @@ D:\Claude Code\WordStrip\
 │   ├── Tray/TrayIconController.cs          WinForms NotifyIcon (the only WinForms use)
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-├── tests/WordStrip.Core.Tests/       xUnit, 327 tests
+├── tests/WordStrip.Core.Tests/       xUnit, 357 tests
 │   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
 │   ├── TestLanguageModel.cs          Hand-written n-gram fixture
 │   ├── PrefixCompletionTests.cs / FuzzyMatchingTests.cs / AutocorrectionTests.cs
@@ -406,7 +414,7 @@ Open the settings window directly (also what the Start Menu shortcut does):
 "D:/Claude Code/WordStrip/src/WordStrip.App/bin/Release/net8.0-windows/WordStrip.exe" --settings
 ```
 
-Run all unit tests (327):
+Run all unit tests (357):
 
 ```bash
 dotnet test "D:/Claude Code/WordStrip/tests/WordStrip.Core.Tests/WordStrip.Core.Tests.csproj"
@@ -549,6 +557,31 @@ Inspect these first, roughly in this order:
 | `README.md` | Engineering rationale and bug post-mortems — **but stale at 0.8.0** |
 
 ## 11. Recent Work
+
+**Phase 7 Stage 2, managed half: document context over a pipe.** **[fact]**
+
+| File | Change | Reason |
+|---|---|---|
+| `Text/Tsf/TsfContextMessage.cs` | **New.** Versioned binary wire format, text capped at 128 chars | The service runs inside Chrome and Word; the prediction engine cannot. **Raw text crosses, not parsed words** — a third tokenizer in another language is exactly the mistake §13's shared-tokenizer rule exists to prevent. The cap is a privacy requirement from the brief, enforced by the format having nowhere to put more |
+| `Text/Tsf/TsfContextChannel.cs` | **New.** Message-mode named pipe, one per logon session, ACL'd to the current user | Several hosts hold connections at once; only the focused one sends, so Windows has already done the arbitration. Per-session naming because fast user switching would otherwise collide |
+| `Text/Tsf/TsfTextContextProvider.cs` | **New.** Snapshots → `TextContext`, events derived by comparing them | Correct after a click, correct in text typed before WordStrip started, and structurally incapable of the dropped-keystroke drift in §12 item 8 |
+| `App.xaml.cs` | TSF provider placed **first** in the composite, channel started, both disposed | Ordering is the whole configuration |
+| `tests/TsfContextTests.cs` | **New**, 30 tests (327 → 357) | Includes real named-pipe round-trips, multi-client, disconnect, and malformed-message handling |
+
+Two decisions worth not re-opening:
+
+- **`IsAvailable` requires a connected service *and* an editable surface.** Reporting available whenever a
+  service happens to be connected would mean focusing a classic Win32 dialog — where the service is not
+  loaded, so its last word is "not editable" — still wins the composite, and the hook that could have served
+  that dialog never gets a turn.
+- **`WordCommitted` is deliberately never raised.** It drives autocorrect and learning, both of which end in
+  rewriting text in the focused application, and committing through TSF is Stage 3. Firing it now would ask
+  the injector to rewrite text in Chrome on the strength of a mechanism nobody has verified. **Autocorrect
+  and learning therefore do not work on the TSF path yet.** A real limitation of Stage 2, not an oversight.
+
+Verified: 357 tests; solution builds with 0 warnings; the app starts and the pipe accepts a connection; and
+the end-to-end regression passes all 9 checks **with the TSF provider sitting first in the composite and
+unavailable** — the fallback doing its job in production with a real second provider in front of it.
 
 **Current session, second half (Phase 7 Stage 4): the fallback machinery.** **[fact]**
 
@@ -1052,7 +1085,7 @@ Ordered.
 
 - Stop the running app first (it locks its own exe).
 - Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
-- `dotnet test` (327), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- `dotnet test` (357), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
 - Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
   single-file build is a different code path (embedded dictionary) and starts more slowly.
 - **Open every settings card** before shipping. §13 records why.

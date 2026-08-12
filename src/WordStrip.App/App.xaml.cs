@@ -28,6 +28,8 @@ public partial class App : System.Windows.Application
     private LowLevelMouseHook? _mouseHook;
     private TypingSession? _typingSession;
     private KeyboardHookTextContextProvider? _hookContextProvider;
+    private WordStrip.Core.Text.Tsf.TsfTextContextProvider? _tsfContextProvider;
+    private WordStrip.Core.Text.Tsf.TsfContextChannel? _tsfChannel;
     private CompositeTextContextProvider? _contextProvider;
     private SuggestionController? _suggestionController;
     private SingleInstance? _singleInstance;
@@ -181,13 +183,21 @@ public partial class App : System.Windows.Application
         var postToMessageLoop = new Action<Action>(action =>
             _barWindow.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, action));
 
-        // Phase 7: the controller is fed through a provider rather than the hook directly, and through the
-        // composite even though there is currently only one provider to choose between. That is deliberate —
-        // the fallback path is exercised in every build from now on, rather than being a wrapper added in a
-        // hurry once a second provider exists and turns out to be unreliable. A TSF provider goes in front of
-        // the hook here, and nothing else in this method changes when it does.
+        // Phase 7: the controller is fed through providers rather than the hook directly. The TSF provider
+        // goes first because it reads the document instead of inferring it, but it only wins while a text
+        // service is connected and reporting an editable surface — everywhere else the hook takes over with
+        // nothing above noticing. Ordering is the whole configuration; the composite does the rest.
         _hookContextProvider = new KeyboardHookTextContextProvider(_typingSession);
-        _contextProvider = new CompositeTextContextProvider(_hookContextProvider);
+
+        // Context arrives on a pipe thread. Everything downstream has always been driven from the UI thread
+        // by a hook callback, so events are marshalled the same way replacements are.
+        _tsfContextProvider = new WordStrip.Core.Text.Tsf.TsfTextContextProvider(post: postToMessageLoop);
+        _tsfChannel = new WordStrip.Core.Text.Tsf.TsfContextChannel(
+            _tsfContextProvider,
+            onError: ex => RecordCrash("tsf-channel", ex));
+        _tsfChannel.Start();
+
+        _contextProvider = new CompositeTextContextProvider(_tsfContextProvider, _hookContextProvider);
 
         _suggestionController = new SuggestionController(
             _contextProvider, predictionEngine, textInjector, _settings, postToMessageLoop,
@@ -315,6 +325,8 @@ public partial class App : System.Windows.Application
         // Disposed here rather than by the controller: neither the composite nor the providers it wraps are
         // owned by their consumer, so the composition root that created them takes them down.
         _contextProvider?.Dispose();
+        _tsfChannel?.Dispose();
+        _tsfContextProvider?.Dispose();
         _hookContextProvider?.Dispose();
         _trayIcon?.Dispose();
         _singleInstance?.Dispose();
