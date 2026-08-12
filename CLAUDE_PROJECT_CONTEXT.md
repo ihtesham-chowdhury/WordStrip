@@ -63,9 +63,9 @@ files the user can read and delete. **[fact]**
 ## 3. Current Status
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
-  **Phase 7 (TSF migration) is the active task. Stage 0 — the provider abstraction — is done, built and
-  tested (305 tests). The TSF service itself has not been started and is blocked on a missing C++
-  toolchain.** See §14. **[fact]**
+  **Phase 7 (TSF migration) is the active task. Stages 0 and 4 — the provider abstraction and the fallback
+  machinery — are done, built and tested (327 tests). The TSF service itself has not been started and is
+  blocked on a missing C++ toolchain.** See §14. **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -85,15 +85,21 @@ files the user can read and delete. **[fact]**
   - Phase 6: optional ONNX neural reranking with cascade, async execution, cancellation, stale suppression
   - Crash logging to `%TEMP%\wordstrip_crash.log`
   - **Phase 7 Stage 0: the `ITextContextProvider` abstraction, the keyboard-hook adapter behind it, and
-    `SuggestionController` rewired to consume it.** 305 unit tests. **[fact]**
-- **In progress:** **Phase 7 — TSF migration.** Stage 0 complete; Stage 1 (the text service itself) not
-  started. **[fact]**
+    `SuggestionController` rewired to consume it.** **[fact]**
+  - **Phase 7 Stage 4: `CompositeTextContextProvider` — per-call provider selection, demotion of providers
+    that throw, and a guarantee that no provider failure can stop typing. In the shipping path.** 327 unit
+    tests. **[fact]**
+- **In progress:** **Phase 7 — TSF migration.** Stages 0 and 4 complete; Stages 1–3 (the text service
+  itself) not started. **[fact]**
 - **Blocked:** **The TSF service is blocked on tooling.** This machine has **no C++ toolchain at all** — no
-  Visual Studio, no Build Tools, no Windows SDK, no cmake, no msbuild; only the .NET 8 SDK. Verified with
-  `vswhere`, the SDK registry key and `Get-Command`. A TSF text service is conventionally a native COM DLL,
-  so this must be resolved before Stage 1. The owner has approved adding a C++ toolchain; it is not yet
-  installed. **[fact]**
-- **Next priority:** Install the C++ toolchain, then the Stage 1 spike (see §14 and §15).
+  Visual Studio, no Build Tools, no Windows SDK, no cmake, no msbuild; only the .NET 8 SDK. A TSF text
+  service is conventionally a native COM DLL, so this must be resolved before Stage 1.
+  **Re-verified 2026-08-12 after the owner reported having installed it: still absent.** `winget list` finds
+  no Build Tools package, the uninstall registry has only VC++ *redistributables* (which ship with countless
+  apps and contain no compiler), `%ProgramData%\Microsoft\VisualStudio\Packages` does not exist, and no
+  `vcvarsall.bat` exists within six directory levels of `C:\` or `D:\`. The winget logs record no install
+  attempt at all — only the `list` and `search` calls made while checking. **[fact]**
+- **Next priority:** Get the C++ toolchain actually installed, then the Stage 1 spike (see §14 and §15).
 
 ### Documentation debt carried into this session **[fact]**
 
@@ -182,7 +188,9 @@ D:\Claude Code\WordStrip\
 │   ├── Text/                         ← PHASE 7. The input-mechanism abstraction
 │   │   ├── TextContext.cs            The snapshot the prediction layer consumes, + TextContextSource enum
 │   │   ├── ITextContextProvider.cs   The seam a TSF provider will implement alongside the hook
-│   │   └── KeyboardHookTextContextProvider.cs  The existing path as a provider. Pure adapter, no logic
+│   │   ├── KeyboardHookTextContextProvider.cs  The existing path as a provider. Pure adapter, no logic
+│   │   └── CompositeTextContextProvider.cs     Stage 4: picks a provider per call, demotes broken ones,
+│   │                                 never lets a provider failure stop typing. In use with one provider
 │   ├── Suggestions/
 │   │   ├── SuggestionController.cs   The only class the UI talks to; persistent-bar state machine.
 │   │   │                             Consumes ITextContextProvider — knows nothing about hooks
@@ -217,7 +225,7 @@ D:\Claude Code\WordStrip\
 │   ├── Tray/TrayIconController.cs          WinForms NotifyIcon (the only WinForms use)
 │   └── app.manifest                        PerMonitorV2 DPI awareness
 │
-├── tests/WordStrip.Core.Tests/       xUnit, 305 tests
+├── tests/WordStrip.Core.Tests/       xUnit, 327 tests
 │   ├── TestVocabulary.cs             Small hand-written vocabulary + fixture
 │   ├── TestLanguageModel.cs          Hand-written n-gram fixture
 │   ├── PrefixCompletionTests.cs / FuzzyMatchingTests.cs / AutocorrectionTests.cs
@@ -365,7 +373,7 @@ Open the settings window directly (also what the Start Menu shortcut does):
 "D:/Claude Code/WordStrip/src/WordStrip.App/bin/Release/net8.0-windows/WordStrip.exe" --settings
 ```
 
-Run all unit tests (305):
+Run all unit tests (327):
 
 ```bash
 dotnet test "D:/Claude Code/WordStrip/tests/WordStrip.Core.Tests/WordStrip.Core.Tests.csproj"
@@ -509,7 +517,26 @@ Inspect these first, roughly in this order:
 
 ## 11. Recent Work
 
-**Current session (Phase 7 Stage 0): the input-mechanism abstraction.** **[fact]**
+**Current session, second half (Phase 7 Stage 4): the fallback machinery.** **[fact]**
+
+| File | Change | Reason |
+|---|---|---|
+| `Text/CompositeTextContextProvider.cs` | **New.** Per-call provider selection, permanent demotion of any provider that throws, event filtering so only the active provider publishes | The brief states this requirement in three separate sections. Built **before** the provider it protects against, because a fallback added afterwards around something already known to be flaky is a fallback nobody trusts |
+| `App.xaml.cs` | Composes `KeyboardHookTextContextProvider` → `CompositeTextContextProvider` → controller, and disposes both | The composite is in the shipping path **with only one provider**, so the fallback code is exercised in every build rather than first meeting reality on the day TSF lands |
+| `tests/CompositeTextContextTests.cs` | **New**, 22 tests (305 → 327) | Includes two end-to-end ones: suggestions keep working when the preferred provider dies mid-sentence, and an accepted word still reaches the document when it is broken from the start |
+
+Design points worth not re-litigating:
+
+- **Selection is per call, not per session.** TSF availability follows the focused application and alt-tabbing
+  raises no event, so caching the decision would strand the user on the fallback for the rest of the session.
+- **`NoteTextInserted` goes to every provider, not just the active one.** The hook filters injected keystrokes
+  out of its shadow buffer, so a word accepted while another provider was driving would be invisible to it,
+  and switching back mid-sentence would lose that word.
+- **Demotion is permanent for the process.** Retrying a throwing provider would pay for the same exception
+  dozens of times a second while someone types. A cooldown is the change to make if a transient failure ever
+  matters — not removing the demotion.
+
+**Current session, first half (Phase 7 Stage 0): the input-mechanism abstraction.** **[fact]**
 
 | File | Change | Reason |
 |---|---|---|
@@ -614,6 +641,14 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
    buffer before replacing, and correct the deletion count when they disagree. **Phase 7's TSF context would
    make this bug structurally impossible where TSF is available**, since the surrounding text would be read
    from the document rather than reconstructed.]*
+
+   **Measured 2026-08-12, both sides of the Phase 7 refactor** — 4 harness runs each, plain `EDIT` at the
+   default 90 ms pace. Post-refactor build: 1 failure in 4 (`how are` → `how are  you`, a doubled space).
+   Pre-refactor 0.10.1: 1 failure in 4 (personal entry inserted incomplete). **Same rate, different check
+   each time, which is the signature of this timing bug rather than of a regression.** **[fact]** Which
+   check fails carries no information — it depends on whichever keystroke happens to be dropped.
+   *[recommendation: four runs each is a small sample. If this rate ever needs to be a real number rather
+   than a reassurance, the harness needs a repeat flag and a tally.]*
 9. **Memory: ~524 MB private with no neural model, and ~1104 MB private with it.** Both measured on the
    running 0.10.1 process on 2026-08-12. **[fact]** The n-gram model accounts for only 26.3 MB of the
    baseline. *[assumption: the bulk of the baseline is the SymSpell edit-distance-2 index, which has existed
@@ -779,12 +814,18 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
 **Phase 7 — move toward the Windows Text Services Framework.** Requested by the owner on 2026-08-12 with the
 brief at `C:\Users\wordstrip-dev\Downloads\Worstripe\PHASE_7_Windows_TSF_Migration.md`.
 
-**Stage 0 is done: the abstraction exists and the existing path runs through it.** See §11 for the files.
-This satisfies acceptance criteria 2 (prediction engine remains Windows-agnostic) and 4 (candidate UI remains
-independent), and it is the part of the phase with no platform risk. **[fact]**
+**Stages 0 and 4 are done — everything in the phase that does not need a compiler.** See §11 for the files.
+Between them they satisfy acceptance criteria 2 (prediction engine remains Windows-agnostic), 4 (candidate UI
+remains independent), 5 (existing fallback remains functional) and 6 (normal typing never depends
+exclusively on prediction). **[fact]**
 
-**Stage 1 — the text service itself — has not been started, and is blocked on tooling.** This machine has no
-C++ toolchain of any kind. The owner has approved adding one; it still needs installing. **[fact]**
+**Stages 1–3 — the text service itself — have not been started, and are blocked on tooling.** This machine
+has no C++ toolchain. The owner has approved adding one and reported installing it; verification on
+2026-08-12 found it still absent, with no install attempt in the winget logs. See §3 for exactly what was
+checked. **[fact]**
+
+Do not attempt to work around this by writing the TIP in managed code without first running the spike below.
+"Try it in C# and see" is how a week disappears into CLR-in-arbitrary-host loader problems.
 
 The full 7-phase plan lives in `C:\Users\wordstrip-dev\Downloads\Worstripe\` as `PHASE_1..7_*.md`, outside
 the project directory.
@@ -841,11 +882,20 @@ production code. Do not design the service around an assumption about which of t
 
 Ordered.
 
-1. ~~Introduce `ITextContextProvider`~~ — **done this session.** See §11 and §14.
-2. **Install a C++ toolchain.** Visual Studio Build Tools with the "Desktop development with C++" workload
-   and a Windows 10/11 SDK. This is a multi-gigabyte download and needs administrator rights, so it is the
-   owner's action, not something to run unattended. Nothing in Stage 1 can start without it. **[fact that it
-   is missing; recommendation as to which workload]**
+1. ~~Introduce `ITextContextProvider`~~ and ~~the fallback machinery~~ — **both done.** See §11 and §14.
+2. **Install a C++ toolchain — and verify it afterwards rather than assuming.** Visual Studio Build Tools
+   with the "Desktop development with C++" workload and a Windows 10/11 SDK. Multi-gigabyte, needs
+   administrator rights, so it is the owner's action rather than something to run unattended. Nothing in
+   Stages 1–3 can start without it. **[fact that it is missing; recommendation as to which workload]**
+
+   Confirm with this — all three must answer, and a bare `winget list` is not sufficient because VC++
+   *redistributables* look superficially like a hit and contain no compiler:
+
+   ```powershell
+   & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -property installationPath
+   Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
+   Test-Path "$env:ProgramData\Microsoft\VisualStudio\Packages"
+   ```
 3. **Spike TSF registration and hosting to answer the three Unknowns in §14** — managed vs native, per-user
    vs admin registration, and language-bar visibility — *before* committing to an implementation shape. A day
    spent here is worth more than a week of code built on a wrong assumption. **[recommendation]**
@@ -866,7 +916,7 @@ Ordered.
 
 - Stop the running app first (it locks its own exe).
 - Bump the version in **both** `installer/WordStrip.iss` and `src/WordStrip.App/WordStrip.App.csproj`.
-- `dotnet test` (305), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
+- `dotnet test` (327), then `Verify-PersistentBar.ps1`, then `build-release.ps1`.
 - Re-run `Verify-PersistentBar.ps1 -ExePath ...\publish\portable\WordStrip.exe` — the self-contained
   single-file build is a different code path (embedded dictionary) and starts more slowly.
 - **Open every settings card** before shipping. §13 records why.

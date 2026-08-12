@@ -8,6 +8,7 @@ using WordStrip.Core.Prediction;
 using WordStrip.Core.Prediction.Neural;
 using WordStrip.Core.Settings;
 using WordStrip.Core.Suggestions;
+using WordStrip.Core.Text;
 
 namespace WordStrip.App;
 
@@ -26,6 +27,8 @@ public partial class App : System.Windows.Application
     private LowLevelKeyboardHook? _keyboardHook;
     private LowLevelMouseHook? _mouseHook;
     private TypingSession? _typingSession;
+    private KeyboardHookTextContextProvider? _hookContextProvider;
+    private CompositeTextContextProvider? _contextProvider;
     private SuggestionController? _suggestionController;
     private SingleInstance? _singleInstance;
     private System.Windows.Threading.DispatcherTimer? _focusWatchdog;
@@ -178,8 +181,16 @@ public partial class App : System.Windows.Application
         var postToMessageLoop = new Action<Action>(action =>
             _barWindow.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, action));
 
+        // Phase 7: the controller is fed through a provider rather than the hook directly, and through the
+        // composite even though there is currently only one provider to choose between. That is deliberate —
+        // the fallback path is exercised in every build from now on, rather than being a wrapper added in a
+        // hurry once a second provider exists and turns out to be unreliable. A TSF provider goes in front of
+        // the hook here, and nothing else in this method changes when it does.
+        _hookContextProvider = new KeyboardHookTextContextProvider(_typingSession);
+        _contextProvider = new CompositeTextContextProvider(_hookContextProvider);
+
         _suggestionController = new SuggestionController(
-            _typingSession, predictionEngine, textInjector, _settings, postToMessageLoop,
+            _contextProvider, predictionEngine, textInjector, _settings, postToMessageLoop,
             personalLearning: _personalLearning,
             neuralReranking: _neuralCoordinator)
         {
@@ -300,6 +311,11 @@ public partial class App : System.Windows.Application
         _mouseHook?.Dispose();
         _typingSession?.Dispose();
         _suggestionController?.Dispose();
+
+        // Disposed here rather than by the controller: neither the composite nor the providers it wraps are
+        // owned by their consumer, so the composition root that created them takes them down.
+        _contextProvider?.Dispose();
+        _hookContextProvider?.Dispose();
         _trayIcon?.Dispose();
         _singleInstance?.Dispose();
         base.OnExit(e);
