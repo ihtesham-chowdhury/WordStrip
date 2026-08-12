@@ -63,11 +63,12 @@ files the user can read and delete. **[fact]**
 ## 3. Current Status
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
-  **Phase 7 (TSF migration) is the active task. Stages 0, 1 and 4 are done; the service is registered and
-  confirmed loading inside Chrome, Edge, Brave, Claude, Word, Notepad and Explorer. Stage 2's managed half —
-  wire format, pipe channel, provider, all wired into the composite — is done and tested (357 tests). What
-  remains is the native half: the service does not yet read any document text or send anything, so the TSF
-  provider is never available and everything still runs on the keyboard hook.** See §14. **[fact]**
+  **Phase 7 (TSF migration) is the active task. Stages 0, 1, 2 and 4 are done. The service is registered,
+  loads in Chrome, Edge, Brave, Claude, Word, Notepad and Explorer, and now reads the text before the caret
+  and sends it to WordStrip over a named pipe — verified end to end in Notepad (`PIPE-OK` in the load log).
+  357 tests. Not yet confirmed by hand in Chrome or Word; that and the password-field check are the next
+  things to establish. Stage 3, committing through TSF, is not started, so autocorrect and personal
+  learning still do not work on the TSF path.** See §14. **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -229,7 +230,10 @@ D:\Claude Code\WordStrip\
 ├── src/WordStrip.Tip/                ← PHASE 7 STAGE 1. Native C++ TSF text service, x64 only.
 │   │                                 Built by build.bat, NOT by the .sln — it is not a dotnet project
 │   ├── Guids.h                       CLSID + profile GUID. Generated once; never regenerate (see file)
-│   ├── TextService.h/.cpp            ITfTextInputProcessorEx. Deliberately inert: loads and logs, nothing more
+│   ├── TextService.h/.cpp            ITfTextInputProcessorEx + ThreadMgrEventSink + TextEditSink.
+│   │                                 Reads text before the caret under the OnEndEdit read lock
+│   ├── PipeClient.h/.cpp             Sends snapshots to WordStrip. Overlapped, 20 ms cap — a blocking
+│   │                                 write here is a frozen Chrome
 │   ├── DllMain.cpp                   COM plumbing + TSF registration (CLSID, profile, keyboard category)
 │   ├── LoadLog.h/.cpp                Writes %LOCALAPPDATA%\WordStrip\tip-load.log. The Stage 1 proof
 │   ├── WordStripTip.def              Undecorated exports; regsvr32 looks them up by name
@@ -557,6 +561,28 @@ Inspect these first, roughly in this order:
 | `README.md` | Engineering rationale and bug post-mortems — **but stale at 0.8.0** |
 
 ## 11. Recent Work
+
+**Phase 7 Stage 2, native half: the service reads the document.** **[fact, 2026-08-13]**
+
+| File | Change | Reason |
+|---|---|---|
+| `TextService.h/.cpp` | Now also `ITfThreadMgrEventSink` + `ITfTextEditSink`. Follows focus, reads the text before the caret in `OnEndEdit` under the read cookie TSF already provides | Requesting a separate edit session would be a second lock for a cookie we were handed |
+| `PipeClient.h/.cpp` | **New.** Overlapped write, **20 ms cap**, lazy connect with a 2 s retry floor | Sends happen on the host's UI thread. A blocking write is a frozen Chrome; the update is dropped instead and the next keystroke tries again. The retry floor stops a failed `CreateFile` per keystroke when WordStrip is not running |
+| `build.bat` | Renames a locked previous DLL aside before linking | Once registered, the DLL is live inside Chrome, Word and Explorer, so the linker cannot overwrite it. Windows permits *renaming* a loaded DLL, which clears the path without asking anyone to close their browser |
+
+**Verified end-to-end**: typing in a fresh Notepad produced `PIPE-OK host=Notepad.exe` in the load log —
+document text left the host, crossed the pipe and was accepted by WordStrip. **[fact]**
+
+**No regression:** the harness failed once across five runs of this build with the exact
+`aAlexandra Fairbourne Reed` string that §12 item 8 records as this timing bug's signature, then passed 4 of 4
+on a repeat measurement. Same rate as the two earlier builds. **[fact]**
+
+**Password fields are an open risk on this path.** TSF has no explicit password flag. `IsInputAllowed`
+rejects read-only contexts and anything the host marks with `GUID_COMPARTMENT_KEYBOARD_DISABLED`, which is
+the mechanism applications are supposed to use — but **whether Chrome and Word actually set it on password
+inputs is untested**. Nothing is learned or written on this path, so the exposure is a visible suggestion
+rather than a stored secret. **Test this before the phase is called done**: focus a password field in Chrome
+and confirm the bar stays down. **[fact — an unverified assumption, deliberately recorded as one]**
 
 **Phase 7 Stage 2, managed half: document context over a pipe.** **[fact]**
 

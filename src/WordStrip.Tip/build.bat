@@ -42,12 +42,28 @@ rem one specific VC++ redistributable version into all of them; hosts without it
 rem report nothing at all.
 echo === compiling (%CONFIG%, x64) ===
 cl /nologo /c /EHsc /W4 /WX /std:c++17 /DUNICODE /D_UNICODE %CFLAGS% /Fo"%OBJDIR%\\" ^
-   DllMain.cpp TextService.cpp LoadLog.cpp
+   DllMain.cpp TextService.cpp LoadLog.cpp PipeClient.cpp
 if errorlevel 1 ( echo BUILD FAILED & exit /b 1 )
+
+rem Once the service is registered it is loaded into Chrome, Word, Explorer and everything else that accepts
+rem text, so the output file is locked and the linker cannot overwrite it. Windows does allow a loaded DLL to
+rem be RENAMED, though - running processes keep hold of the file they already opened. Moving the old one
+rem aside gives the linker a clear path without asking anyone to close their browser.
+rem
+rem The leftovers cannot be deleted until every host has unloaded them, so sweep whatever is now free first.
+del /q "%OUTDIR%\WordStripTip.old.*.dll" >nul 2>&1
+if exist "%OUTDIR%\WordStripTip.dll" (
+    ren "%OUTDIR%\WordStripTip.dll" "WordStripTip.old.%RANDOM%.dll" >nul 2>&1
+    if exist "%OUTDIR%\WordStripTip.dll" (
+        echo ERROR: could not move the previous WordStripTip.dll out of the way.
+        echo        Run unregister.bat as administrator, then try again.
+        exit /b 1
+    )
+)
 
 echo === linking ===
 link /nologo /DLL /MACHINE:X64 /DEF:WordStripTip.def /OUT:"%OUTDIR%\WordStripTip.dll" ^
-     "%OBJDIR%\DllMain.obj" "%OBJDIR%\TextService.obj" "%OBJDIR%\LoadLog.obj" ^
+     "%OBJDIR%\DllMain.obj" "%OBJDIR%\TextService.obj" "%OBJDIR%\LoadLog.obj" "%OBJDIR%\PipeClient.obj" ^
      ole32.lib oleaut32.lib uuid.lib advapi32.lib shell32.lib user32.lib
 if errorlevel 1 ( echo LINK FAILED & exit /b 1 )
 
