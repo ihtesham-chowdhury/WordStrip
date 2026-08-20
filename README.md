@@ -5,13 +5,16 @@ showing ranked word candidates as you type, plus offline autocorrect. Built beca
 physical-keyboard suggestions don't work in most apps, and every third-party tool converged on single
 inline ghost text rather than a candidate bar.
 
+Works in **Chrome, Edge, Brave, Electron apps and Microsoft Word** as well as Notepad and classic Win32
+dialogs, via an optional Windows Text Services Framework text service.
+
 Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.7.0. Verified two ways:
+Working preview, 0.11.1. Verified two ways:
 
-- **248 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
+- **364 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
   personal vocabulary and learning, text injection, the suggestion controller and the typing-history rules.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
   `Edit` control and reads the text back with `WM_GETTEXT` — not screenshots, which are meaningless here
@@ -491,7 +494,7 @@ equivalents of those settings (`SystemAppearance`) and degrades honestly rather 
 ## Testing
 
 Prediction primitives, the language model, phrase generation, emoji matching, the personal stores and the
-suggestion controller are unit-tested (`tests\WordStrip.Core.Tests`, 248 tests). Everything that depends on
+suggestion controller are unit-tested (`tests\WordStrip.Core.Tests`, 364 tests). Everything that depends on
 a system-wide hook, live focus inspection or `SendInput` reaching another process is covered by the
 end-to-end regression instead.
 
@@ -550,12 +553,19 @@ Each of these produced a convincing false failure before being fixed:
 
 ## Current limitations
 
-**App coverage is the main one.** v1 detects standard Win32 text controls (`Edit`, `RichEdit`), which
-covers Notepad and most desktop app text boxes and dialogs. It does **not** yet work in:
+**App coverage** used to be the main limitation and is now largely solved. Two input paths run side
+by side: a low-level keyboard hook for classic Win32 controls (`Edit`, `RichEdit`), and an optional
+Windows Text Services Framework text service that reads the document directly.
 
-- Chromium-based apps (Chrome, Edge, Electron) — they report `Chrome_WidgetWin_1` and render text themselves
-- Modern XAML/WinUI surfaces that don't expose a classic edit control
-- Office's own text surfaces
+With the text service registered, prediction has been confirmed working by hand in **Chrome, Brave, Edge,
+Electron apps and Microsoft Word**, as well as Notepad and Win32 dialogs. Password fields are correctly
+suppressed. Without it, the keyboard hook still covers classic controls, so nothing depends on it.
+
+What still does not work through the text service:
+
+- **Autocorrect and personal learning in browsers.** Committing text back through TSF is not implemented,
+  so corrections stay on the keyboard-hook path. Prediction works everywhere; corrections do not.
+- **32-bit applications** never load the text service (it ships x64 only) and fall back to the hook.
 
 Other known gaps:
 
@@ -594,7 +604,7 @@ WordStrip.App/           WPF, net8.0-windows
   Tray/                  NotifyIcon and context menu
 
 tests/
-  WordStrip.Core.Tests/  xUnit, 248 tests
+  WordStrip.Core.Tests/  xUnit, 364 tests
   regression/            end-to-end scripts driving a real Win32 Edit or RichEdit control
 
 tools/                   build-time only, never shipped
@@ -665,3 +675,25 @@ Bigram frequencies from the same project, `frequency_bigramdictionary_en_243_342
 Trigrams, and a second opinion on bigrams, derived from public-domain texts from
 [Project Gutenberg](https://www.gutenberg.org/). Only the derived counts are redistributed here; the book
 IDs used are listed in `tools/ngram/Fetch-Corpus.ps1` and the texts themselves are not committed.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Read the licensing section at the top of it first — contributions
+carry a relicensing grant, and it is better to know that before writing code than after.
+
+Security issues should be reported privately: see [SECURITY.md](SECURITY.md). This project registers a
+component that Windows loads into every application you type in, so that document is worth reading before
+you install it, not just before you report something.
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE) for attribution.
+
+You may use, modify and redistribute WordStrip, including commercially, under those terms. Apache 2.0 also
+carries an explicit patent grant, which matters more than usual in text input and prediction.
+
+Third-party components — the SymSpell dictionary, ONNX Runtime, the optional DistilGPT2 model — are listed
+with their own licences in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+A commercial licence can be negotiated separately if Apache 2.0 does not suit your situation. That is an
+additional option and takes nothing away from the open source grant — see [NOTICE](NOTICE).

@@ -1,0 +1,31 @@
+WordStrip
+Copyright 2026 Ihtesham
+
+This product includes software developed by the WordStrip project.
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full terms.
+
+--------------------------------------------------------------------------------
+COMMERCIAL LICENSING
+--------------------------------------------------------------------------------
+
+WordStrip is released under the Apache License 2.0, and that is a genuine open
+source release: you may use, modify and redistribute it, including commercially,
+under those terms.
+
+Separately, the copyright holder retains the right to license this software to
+others under different terms. If the Apache License 2.0 does not suit your
+situation -- for example if you need to distribute WordStrip inside a closed
+product without carrying the notices Apache 2.0 requires, or you want warranty
+or indemnity terms the Apache License explicitly disclaims -- a commercial
+licence can be negotiated separately.
+
+Nothing here restricts what the Apache License 2.0 already grants you. It is an
+additional option, not a limitation on the open source one.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------------
+
+This product bundles or depends on third-party components under their own
+licences. See THIRD-PARTY-NOTICES.md for the full list and terms.
