@@ -50,8 +50,8 @@ public sealed class PersonalLearningTests : IDisposable
 
         Teach(model, "northfield data systems");
 
-        Assert.Equal(1, model.GetUnigramCount("british"));
         Assert.Equal(1, model.GetUnigramCount("northfield"));
+        Assert.Equal(1, model.GetUnigramCount("systems"));
     }
 
     [Fact]
@@ -61,8 +61,8 @@ public sealed class PersonalLearningTests : IDisposable
 
         Teach(model, "northfield data systems", times: 3);
 
-        Assert.Equal(3, model.GetBigramCount("british", "council"));
-        Assert.Equal(3, model.GetBigramCount("council", "northfield"));
+        Assert.Equal(3, model.GetBigramCount("northfield", "data"));
+        Assert.Equal(3, model.GetBigramCount("data", "systems"));
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class PersonalLearningTests : IDisposable
 
         Teach(model, "northfield data systems", times: 2);
 
-        Assert.Equal(2, model.GetTrigramCount("british", "council", "northfield"));
+        Assert.Equal(2, model.GetTrigramCount("northfield", "data", "systems"));
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public sealed class PersonalLearningTests : IDisposable
         var model = NewModel();
         Teach(model, "northfield data systems", times: 50);
 
-        Assert.Equal(0, model.GetPersonalScore("aardvark", new[] { "british", "council" }));
+        Assert.Equal(0, model.GetPersonalScore("aardvark", new[] { "northfield", "data" }));
     }
 
     [Fact]
@@ -142,15 +142,15 @@ public sealed class PersonalLearningTests : IDisposable
     {
         var model = NewModel();
 
-        // "council northfield" always follows "british"; "council london" never does.
+        // "data systems" always follows "northfield"; "data centre" never does.
         Teach(model, "northfield data systems", times: 100);
-        Teach(model, "the council london", times: 100);
+        Teach(model, "the data centre", times: 100);
 
-        var afterBritishCouncil = model.GetPersonalScore("northfield", new[] { "british", "council" });
-        var afterTheCouncil = model.GetPersonalScore("northfield", new[] { "the", "council" });
+        var afterNorthfieldData = model.GetPersonalScore("systems", new[] { "northfield", "data" });
+        var afterTheData = model.GetPersonalScore("systems", new[] { "the", "data" });
 
-        Assert.True(afterBritishCouncil > afterTheCouncil,
-            $"trigram context {afterBritishCouncil} should beat a context that never precedes it {afterTheCouncil}");
+        Assert.True(afterNorthfieldData > afterTheData,
+            $"trigram context {afterNorthfieldData} should beat a context that never precedes it {afterTheData}");
     }
 
     // --- Cold start -----------------------------------------------------------------------------------
@@ -261,7 +261,7 @@ public sealed class PersonalLearningTests : IDisposable
         var second = NewModel();
         second.Load();
 
-        Assert.Equal(5, second.GetBigramCount("british", "council"));
+        Assert.Equal(5, second.GetBigramCount("northfield", "data"));
         Assert.Equal(first.WordsLearned, second.WordsLearned);
     }
 
@@ -295,8 +295,8 @@ public sealed class PersonalLearningTests : IDisposable
         model.Clear();
 
         Assert.Equal(0, model.WordsLearned);
-        Assert.Equal(0, model.GetBigramCount("british", "council"));
-        Assert.Equal(0, model.GetPersonalScore("northfield", new[] { "british", "council" }));
+        Assert.Equal(0, model.GetBigramCount("northfield", "data"));
+        Assert.Equal(0, model.GetPersonalScore("systems", new[] { "northfield", "data" }));
     }
 
     [Fact]

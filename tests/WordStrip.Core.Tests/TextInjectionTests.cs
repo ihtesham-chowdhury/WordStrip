@@ -8,7 +8,7 @@ namespace WordStrip.Core.Tests;
 /// <para>These exist because of a bug that shipped. Deletions and replacement text were sent as two separate
 /// <c>SendInput</c> calls, and Windows only promises that events <em>within a single call</em> reach the
 /// target without other input interleaving. In practice the still-draining backspaces ate the front of the
-/// text: a personal-vocabulary entry of "Alexandra Fairbourne Reed", accepted after typing "iht", arrived as
+/// text: a personal-vocabulary entry of "Alexandra Fairbourne Reed", accepted after typing "ale", arrived as
 /// "exandra Fairbourne Reed".</para>
 ///
 /// <para>It hid for a long time because the common case has nothing to delete — completing "wor" to "world"

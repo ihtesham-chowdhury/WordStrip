@@ -231,16 +231,16 @@ Start-Sleep -Milliseconds 500
     everywhere else.
 
     The seeded entry is chosen to reproduce the bug it guards: capitalised, so the shared prefix with the
-    typed "iht" is zero and backspaces are unavoidable, and multi-word, so a truncation is obvious.
+    typed "ale" is zero and backspaces are unavoidable, and multi-word, so a truncation is obvious.
 #>
 $personalWord = 'Alexandra Fairbourne Reed'
-$personalPrefix = 'iht'
+$personalPrefix = 'ale'
 
 # A deliberately long entry, taken from a real report. Length is the variable that matters: every character
 # becomes two SendInput events, so a 51-character address is a 102-event batch against a 24-character name's
 # 48. Testing only the short one is what let a length-dependent failure through.
 $longWord = 'Flat 12, 46 Elmwood Crescent, Northfield, Halsted'
-$longPrefix = 'hou'
+$longPrefix = 'fla'
 
 $dataDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("wordstrip-regression-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null

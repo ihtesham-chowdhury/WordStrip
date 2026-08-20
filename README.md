@@ -648,7 +648,7 @@ already arriving, and the still-draining deletions eat the front of it.
 That bug shipped, and it hid for a long time because the common case has nothing to delete — a shared
 prefix means zero backspaces and only one call. It took a personal-vocabulary entry whose capitalisation
 differs from what was typed, which shares no prefix at all, to expose it: "Alexandra Fairbourne Reed"
-accepted after typing "iht" arrived as "exandra Fairbourne Reed".
+accepted after typing "ale" arrived as "exandra Fairbourne Reed".
 
 **`INPUT` must include the `MOUSEINPUT` union member.** It's never used, but it sets `sizeof(INPUT)` to
 the 40 bytes x64 expects. With only `KEYBDINPUT` declared the struct is 32 bytes, and `SendInput` rejects

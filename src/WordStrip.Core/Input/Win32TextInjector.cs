@@ -17,7 +17,7 @@ namespace WordStrip.Core.Input;
 ///
 /// <para>That bug shipped, and it was invisible for exactly as long as the common case had nothing to
 /// delete: completing "wor" to "world" shares a prefix, so there were no backspaces and only one call.
-/// A personal-vocabulary entry like "Alexandra Fairbourne Reed" shares no prefix with the typed "iht" — the
+/// A personal-vocabulary entry like "Alexandra Fairbourne Reed" shares no prefix with the typed "ale" — the
 /// capital I does not match — so three backspaces were sent, and the user got "exandra Fairbourne Reed".</para>
 ///
 /// Callers must not invoke this from inside the keyboard hook callback while suppressing the triggering
