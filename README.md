@@ -8,6 +8,12 @@ inline ghost text rather than a candidate bar.
 Works in **Chrome, Edge, Brave, Electron apps and Microsoft Word** as well as Notepad and classic Win32
 dialogs, via an optional Windows Text Services Framework text service.
 
+<!--
+  Screenshot slot. Drop an image at docs/screenshots/ and point this at it, e.g.:
+  ![The suggestion bar in Chrome](docs/screenshots/chrome-suggestions.png)
+  See docs/screenshots/README.md for what is worth capturing and what to avoid showing.
+-->
+
 Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
