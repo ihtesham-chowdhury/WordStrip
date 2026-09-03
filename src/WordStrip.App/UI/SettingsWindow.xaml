@@ -339,6 +339,37 @@
             </StackPanel>
         </Border>
 
+        <TextBlock Text="BROWSER AND OFFICE SUPPORT (OPTIONAL)" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                           Text="Notepad and classic Windows text boxes always work. Reaching Chrome, Edge, Brave, Electron apps and Word needs one small system component registered, which needs your permission once. Suggestions only, for now — autocorrect and personal learning stay on the Notepad-style path until a later update." />
+
+                <Border Background="#F3F5F9" CornerRadius="8" Padding="10,8" Margin="0,0,0,10"
+                        Visibility="{Binding TipDllMissing, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{StaticResource Hint}" Foreground="#4A5060"
+                               Text="This build does not include the component (WordStripTip.dll is missing from the install folder), so this option is unavailable here." />
+                </Border>
+
+                <DockPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                        <Button Content="Enable" Padding="12,4" Margin="0,0,8,0"
+                                IsEnabled="{Binding CanRegisterTip}" Click="OnEnableTipClick" />
+                        <Button Content="Disable" Padding="12,4"
+                                IsEnabled="{Binding CanUnregisterTip}" Click="OnDisableTipClick" />
+                    </StackPanel>
+                    <!-- Mode=OneWay stated explicitly on both, the same reason as NeuralProgress above: Run.Text
+                         binds two-way by default, which throws on a read-only source and takes the whole
+                         window down as it opens. Confirmed the hard way — see the commit this landed in. -->
+                    <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Center" TextWrapping="Wrap">
+                        <Run Text="{Binding TipRegisteredLabel, Mode=OneWay}" FontWeight="SemiBold" />
+                        <LineBreak />
+                        <Run Text="{Binding TipStatus, Mode=OneWay}" />
+                    </TextBlock>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
         <TextBlock Text="STARTUP" Style="{StaticResource SectionTitle}" />
         <Border Style="{StaticResource Card}">
             <CheckBox Content="Start WordStrip when Windows starts" IsChecked="{Binding StartWithWindows}" />
@@ -348,7 +379,7 @@
             <TextBlock Style="{StaticResource Hint}" Foreground="#4A5060">
                 <Run Text="Press" /><Run Text=" Tab " FontWeight="Bold" /><Run Text="to highlight a word, then" /><Run Text=" Space " FontWeight="Bold" /><Run Text="to insert it. Esc dismisses the bar." />
                 <LineBreak />
-                <Run Text="Suggestions are always disabled in password fields. This preview build works in standard Windows text boxes such as Notepad; browser support is not available yet." />
+                <Run Text="Suggestions are always disabled in password fields. Standard Windows text boxes such as Notepad always work; see Browser and Office Support above to reach Chrome, Edge and Word too." />
             </TextBlock>
         </Border>
 

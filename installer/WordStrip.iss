@@ -3,7 +3,7 @@
 ; Expects the self-contained publish output in publish\portable\.
 
 #define AppName        "WordStrip"
-#define AppVersion     "0.11.1"
+#define AppVersion     "0.11.2"
 #define AppPublisher   "WordStrip"
 #define AppExeName     "WordStrip.exe"
 
@@ -46,9 +46,16 @@ Name: "startupicon"; Description: "Start {#AppName} automatically when Windows s
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts"; Flags: unchecked
 
 [Files]
-; One file: the dictionary is embedded in the executable.
+; The dictionary and n-gram model are embedded in the executable, so this alone is a complete install.
 Source: "..\publish\portable\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
+
+; The native Text Services Framework component that reaches Chrome, Edge and Word - see src\WordStrip.Tip.
+; skipifsourcedoesntexist because it needs a C++ toolchain the managed build does not: building without one
+; still produces a complete, working installer, just without browser/Office suggestions. WordStrip falls
+; back to the keyboard-hook path automatically either way, and the Settings window's "Browser and Office
+; Support" card says plainly when the component did not ship.
+Source: "..\publish\portable\WordStripTip.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -68,6 +75,15 @@ Filename: "{app}\{#AppExeName}"; Description: "Start {#AppName} now"; Flags: now
 [UninstallRun]
 ; Stop the running copy before removing files, otherwise the exe is locked and left behind.
 Filename: "{cmd}"; Parameters: "/C taskkill /IM {#AppExeName} /F"; Flags: runhidden; RunOnceId: "StopWordStrip"
+
+; Cleans up the text service registration, if the user ever turned it on. This install stays per-user with
+; no UAC prompt (PrivilegesRequired=lowest, above) precisely so testers are never asked to elevate - and
+; that constraint applies here too. Rather than have the uninstaller itself request admin rights, WordStrip.exe
+; --unregister-tip runs unelevated and elevates only a short-lived regsvr32 child, and only when something is
+; actually registered - most uninstalls never saw browser support turned on, and a UAC prompt on every one of
+; them would be a worse experience than the harmless orphaned registry entry it prevents. waituntilterminated
+; because this exe is about to be deleted and must fully release its own file lock first.
+Filename: "{app}\{#AppExeName}"; Parameters: "--unregister-tip"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterTip"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\WordStrip"

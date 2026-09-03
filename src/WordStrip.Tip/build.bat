@@ -19,7 +19,12 @@ if not exist "%VCVARS%" (
     exit /b 1
 )
 
-call "%VCVARS%" x64 >nul
+rem vcvarsall.bat itself internally probes for vswhere.exe and prints "'vswhere.exe' is not recognized" to
+rem stderr when it is not on PATH - cosmetic, vcvarsall still sets up the environment correctly regardless.
+rem Redirecting stderr too (not just stdout) keeps that noise from reaching a caller that treats any stderr
+rem output as a failure - which a PowerShell script with $ErrorActionPreference = "Stop" piping this through
+rem 2^>^&1 genuinely does, since PowerShell wraps native stderr lines as terminating ErrorRecords.
+call "%VCVARS%" x64 >nul 2>&1
 if errorlevel 1 ( echo ERROR: vcvarsall failed & exit /b 1 )
 
 rem vcvarsall changes the working directory, so this must come AFTER the call. Putting it before is a

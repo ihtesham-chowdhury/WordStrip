@@ -14,6 +14,7 @@ $project    = Join-Path $root "src\WordStrip.App\WordStrip.App.csproj"
 $publishDir = Join-Path $root "publish"
 $portable   = Join-Path $publishDir "portable"
 $issScript  = Join-Path $root "installer\WordStrip.iss"
+$tipDir     = Join-Path $root "src\WordStrip.Tip"
 
 Write-Host "==> Cleaning previous output" -ForegroundColor Cyan
 if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
@@ -39,9 +40,46 @@ if (-not (Test-Path $exe)) { throw "Expected published exe at $exe" }
 $exeSizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host "    portable exe: $exe ($exeSizeMb MB)" -ForegroundColor Green
 
-# The dictionary is embedded in the assembly, so the portable output must be exactly one file. Anything
-# else here means content leaked out of the bundle and testers could break the app by copying only the exe.
-$loose = Get-ChildItem $portable -Recurse -File | Where-Object { $_.Name -ne "WordStrip.exe" }
+# The native Text Services Framework component (Chrome/Edge/Word support) needs a C++ toolchain the managed
+# build does not - so this is a soft skip, not a failure, exactly like Inno Setup being optional below.
+# Anyone without Visual Studio Build Tools still gets a complete, working build; it just falls back to the
+# keyboard-hook path everywhere, same as today.
+Write-Host "==> Building the native text service (optional)" -ForegroundColor Cyan
+$tipBuildBat = Join-Path $tipDir "build.bat"
+
+# Piping a native command's stderr through PowerShell (2>&1) wraps each line as a terminating ErrorRecord
+# under $ErrorActionPreference = "Stop" above - regardless of the process's actual exit code. cmd.exe's own
+# redirection avoids that entirely: it never enters PowerShell's error stream, so cosmetic stderr noise from
+# a successful build can never be mistaken for a failure of this script.
+$tipLog = Join-Path $env:TEMP "wordstrip-tip-build.log"
+cmd.exe /c "`"$tipBuildBat`" Release > `"$tipLog`" 2>&1"
+$tipBuildExit = $LASTEXITCODE
+if (Test-Path $tipLog) { Get-Content $tipLog | ForEach-Object { Write-Host "    $_" } }
+
+$tipDll = Join-Path $tipDir "bin\x64\Release\WordStripTip.dll"
+if ($tipBuildExit -ne 0) {
+    Write-Warning "Native text service build exited with code $tipBuildExit (see log above)."
+}
+
+if (Test-Path $tipDll) {
+    Copy-Item $tipDll $portable -Force
+    $tipSizeKb = [math]::Round((Get-Item $tipDll).Length / 1KB, 0)
+    Write-Host "    WordStripTip.dll: $tipSizeKb KB (browser and Office support included)" -ForegroundColor Green
+} else {
+    Write-Warning "WordStripTip.dll was not built (no C++ toolchain?) - continuing without browser/Office support."
+}
+
+# The ONNX Runtime NuGet package leaks its native import libraries (.lib) into every publish output that
+# references it, even though nothing at runtime ever needs them - they exist only for a C++ project linking
+# against onnxruntime directly, which this is not. Harmless to ship and pointless to keep; removed rather
+# than merely warned about, since the check below exists precisely to catch content nobody meant to be here.
+Get-ChildItem $portable -Filter "*.lib" -ErrorAction SilentlyContinue | Remove-Item -Force
+
+# Everything the dictionary and n-gram model need is embedded in the exe, so the portable output should hold
+# only that exe plus, when the native build succeeded, the one text-service DLL beside it. Anything else here
+# means content leaked out of the bundle and testers could break the app by copying only part of it.
+$expected = @("WordStrip.exe", "WordStripTip.dll")
+$loose = Get-ChildItem $portable -Recurse -File | Where-Object { $expected -notcontains $_.Name }
 if ($loose) {
     Write-Warning "Unexpected extra files in the portable output:"
     $loose | ForEach-Object { Write-Warning "    $($_.FullName)" }

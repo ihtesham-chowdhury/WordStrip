@@ -558,6 +558,114 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    // --- Browser and Office support (TSF text service) ----------------------------------------------
+
+    private string _tipStatus = string.Empty;
+    private bool _tipBusy;
+
+    /// <summary>
+    /// Called once at startup so the card can show a real status immediately rather than defaulting to
+    /// "not enabled" for a frame before the first check runs.
+    /// </summary>
+    public void RefreshTipStatus()
+    {
+        OnPropertyChanged(nameof(TipRegistered));
+        OnPropertyChanged(nameof(TipRegisteredLabel));
+    }
+
+    /// <summary>
+    /// Read from the registry every time, never cached. Caching this is exactly the mistake already made
+    /// once with the autostart checkbox (§12 item 13) — a value that can silently drift from what the
+    /// system actually has recorded, and here the cost of drifting is a user believing browser support is on
+    /// when it is not.
+    /// </summary>
+    public bool TipRegistered => TipRegistrationManager.IsRegisteredForThisInstall();
+
+    public bool TipDllPresent => TipRegistrationManager.DllPresent;
+
+    /// <summary>Inverse of <see cref="TipDllPresent"/>, so the XAML can bind a Visibility without a value converter — nothing in this codebase uses one.</summary>
+    public bool TipDllMissing => !TipDllPresent;
+
+    public string TipRegisteredLabel => TipRegistered ? "Enabled" : "Not enabled";
+
+    public string TipStatus
+    {
+        get => _tipStatus;
+        private set { _tipStatus = value; OnPropertyChanged(); }
+    }
+
+    public bool TipBusy
+    {
+        get => _tipBusy;
+        private set
+        {
+            _tipBusy = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanRegisterTip));
+            OnPropertyChanged(nameof(CanUnregisterTip));
+        }
+    }
+
+    public bool CanRegisterTip => !_tipBusy && TipDllPresent && !TipRegistered;
+
+    public bool CanUnregisterTip => !_tipBusy && TipRegistered;
+
+    /// <summary>
+    /// Runs <c>regsvr32</c> elevated and reports what happened. Synchronous rather than async: the whole
+    /// operation is a single short-lived child process, and there is nothing else useful for the window to
+    /// do while a UAC prompt is on screen waiting for the user.
+    /// </summary>
+    public void RegisterTip()
+    {
+        if (_tipBusy) return;
+
+        TipBusy = true;
+        try
+        {
+            var result = TipRegistrationManager.Register();
+            TipStatus = result switch
+            {
+                TipRegistrationResult.Success =>
+                    "Enabled. Restart the applications you want suggestions in (or just Chrome/Edge/Word) to pick it up.",
+                TipRegistrationResult.Cancelled => "Cancelled — nothing was changed.",
+                _ => "Could not enable it. The Notepad/Win32 path is unaffected either way.",
+            };
+        }
+        finally
+        {
+            TipBusy = false;
+            OnPropertyChanged(nameof(TipRegistered));
+            OnPropertyChanged(nameof(TipRegisteredLabel));
+            OnPropertyChanged(nameof(CanRegisterTip));
+            OnPropertyChanged(nameof(CanUnregisterTip));
+        }
+    }
+
+    public void UnregisterTip()
+    {
+        if (_tipBusy) return;
+
+        TipBusy = true;
+        try
+        {
+            var result = TipRegistrationManager.Unregister();
+            TipStatus = result switch
+            {
+                TipRegistrationResult.Success => "Disabled. Browser and Office suggestions will stop after those applications restart.",
+                TipRegistrationResult.Cancelled => "Cancelled — nothing was changed.",
+                _ => "Could not disable it cleanly. It should still be safe to leave as is.",
+            };
+        }
+        finally
+        {
+            TipBusy = false;
+            OnPropertyChanged(nameof(TipRegistered));
+            OnPropertyChanged(nameof(TipRegisteredLabel));
+            OnPropertyChanged(nameof(CanRegisterTip));
+            OnPropertyChanged(nameof(CanUnregisterTip));
+        }
+    }
+
     public bool StartWithWindows
     {
         get => _settings.StartWithWindows;

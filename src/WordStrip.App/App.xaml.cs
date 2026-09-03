@@ -76,6 +76,24 @@ public partial class App : System.Windows.Application
             if (args.ExceptionObject is Exception ex) RecordCrash("appdomain", ex);
         };
 
+        // Uninstaller-only entry point. Deliberately checked before anything else starts — no tray icon, no
+        // dictionary load, no single-instance mutex — because the whole point is to run fast and quietly as
+        // part of removing the app, and to work identically whether or not a normal copy is already running.
+        //
+        // Silent unless something is actually registered: unregistering elevates a regsvr32 child process,
+        // and a UAC prompt on every uninstall — including for the overwhelming majority of users who never
+        // turned browser support on — would be a worse experience than the stale registry entry it prevents.
+        // See WordStrip.Core.Platform.TipRegistrationManager's remarks for why this has to be a separate
+        // elevated process at all rather than an in-process registry write.
+        if (e.Args.Contains("--unregister-tip", StringComparer.OrdinalIgnoreCase))
+        {
+            if (WordStrip.Core.Platform.TipRegistrationManager.IsRegisteredForThisInstall())
+                WordStrip.Core.Platform.TipRegistrationManager.Unregister();
+
+            Shutdown();
+            return;
+        }
+
         var openSettingsOnLaunch = e.Args.Contains("--settings", StringComparer.OrdinalIgnoreCase);
 
         _singleInstance = new SingleInstance();

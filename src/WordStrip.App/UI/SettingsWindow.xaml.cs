@@ -33,6 +33,12 @@ public partial class SettingsWindow : Window
 
         viewModel.PropertyChanged += (_, _) => RebuildPreview();
         RebuildPreview();
+
+        // TipRegistered reads the registry directly rather than a cached field, so the only thing needed to
+        // keep the card honest is asking WPF to re-read it — which happens whenever the window regains
+        // focus, covering "registered from a different session" and "the elevated regsvr32 child process
+        // just finished" alike.
+        Activated += (_, _) => viewModel.RefreshTipStatus();
     }
 
     /// <summary>
@@ -246,6 +252,33 @@ public partial class SettingsWindow : Window
         if (confirmed != MessageBoxResult.Yes) return;
 
         ViewModel.DeleteNeuralModel();
+    }
+
+    private void OnEnableTipClick(object sender, RoutedEventArgs e)
+    {
+        // Confirmed because a UAC prompt is about to appear and it should not come as a surprise, and
+        // because it is worth being explicit that the tray app itself is not what is being elevated.
+        var confirmed = System.Windows.MessageBox.Show(
+            this,
+            "Enable suggestions in Chrome, Edge and Word?\n\n" +
+            "Windows will ask you to approve a permission request for a single small helper step " +
+            "(regsvr32) that registers the component — WordStrip itself keeps running exactly as it does " +
+            "now, and never runs elevated.\n\n" +
+            "Autocorrect and personal learning do not use this path yet; only suggestions do. " +
+            "Notepad and other classic Windows text boxes are unaffected either way.",
+            "Enable browser and Office support",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question,
+            MessageBoxResult.Cancel);
+
+        if (confirmed != MessageBoxResult.OK) return;
+
+        ViewModel.RegisterTip();
+    }
+
+    private void OnDisableTipClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.UnregisterTip();
     }
 
     private void OnClearLearnedDataClick(object sender, RoutedEventArgs e)
