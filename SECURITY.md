@@ -54,6 +54,20 @@ Stated plainly rather than left to be discovered:
   an individual developer outside the US and Canada is currently impractical, and
   since 2024 an EV certificate no longer bypasses the warning anyway. Verify the
   source and build it yourself if that matters to you.
+
+  An unsigned binary means you're trusting the download, not a certificate chain,
+  so verify what you're actually running: every [release](../../releases) lists a
+  SHA-256 checksum for each file. Check it before running anything, especially the
+  installer, which needs no elevation to run but does install a component that can
+  later be granted it (see "Browser and Office Support" in Settings):
+
+  ```powershell
+  Get-FileHash .\WordStrip-Setup-*.exe -Algorithm SHA256
+  ```
+
+  A mismatch means the file was modified or corrupted in transit — don't run it.
+  This checks integrity, not authorship: it confirms the file matches what this
+  repository's releases actually published, not that a specific person built it.
 - **Password-field suppression relies on the host.** TSF has no explicit
   "password field" flag. WordStrip honours `GUID_COMPARTMENT_KEYBOARD_DISABLED`,
   which is the mechanism applications are meant to use, and this has been tested

@@ -8,6 +8,23 @@ inline ghost text rather than a candidate bar.
 Works in **Chrome, Edge, Brave, Electron apps and Microsoft Word** as well as Notepad and classic Win32
 dialogs, via an optional Windows Text Services Framework text service.
 
+## Download
+
+**[Latest release](../../releases/latest)** — two ways to get it, both from the same page:
+
+- **`WordStrip-Setup-*.exe`** — the installer. Per-user, no admin rights needed, adds a Start Menu entry
+  and an uninstaller. This is the one most people want.
+- **`WordStrip-*-portable.zip`** — no installer, no registry changes to the app itself. Unzip anywhere and
+  run `WordStrip.exe`. Keep `WordStripTip.dll` in the same folder if you want Chrome/Edge/Word support —
+  see "Browser and Office Support" in Settings once it's running.
+
+Both are self-contained: nothing else to install first, not even .NET.
+
+**Windows will likely show a SmartScreen warning ("Windows protected your PC").** The binaries are not
+code-signed — see [SECURITY.md](SECURITY.md) for why, and for what to check before trusting an unsigned
+binary from any source, this one included. Click **More info → Run anyway** if you're satisfied, or build
+it yourself from source instead.
+
 <!--
   Screenshot slot. Drop an image at docs/screenshots/ and point this at it, e.g.:
   ![The suggestion bar in Chrome](docs/screenshots/chrome-suggestions.png)
