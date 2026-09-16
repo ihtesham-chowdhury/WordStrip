@@ -85,6 +85,16 @@ if ($loose) {
     $loose | ForEach-Object { Write-Warning "    $($_.FullName)" }
 }
 
+# One file to carry rather than a folder to keep together. This matters for the machines portable mode
+# exists for - locked-down work laptops, where the app arrives on a USB stick or through a download and the
+# DLL beside the exe is the difference between having browser support and silently not having it.
+Write-Host "==> Packaging portable zip" -ForegroundColor Cyan
+$version = (Get-Item $exe).VersionInfo.FileVersion -replace '\.0$', ''
+$zip = Join-Path $publishDir "WordStrip-$version-portable.zip"
+Compress-Archive -Path (Join-Path $portable "*") -DestinationPath $zip -CompressionLevel Optimal -Force
+$zipMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+Write-Host "    portable zip: $zip ($zipMb MB)" -ForegroundColor Green
+
 Write-Host "==> Building installer" -ForegroundColor Cyan
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
 if (-not $iscc) {

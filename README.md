@@ -35,9 +35,9 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.11.1. Verified two ways:
+Working preview, 0.12.0. Verified two ways:
 
-- **364 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
+- **367 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
   personal vocabulary and learning, text injection, the suggestion controller and the typing-history rules.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
   `Edit` control and reads the text back with `WM_GETTEXT` — not screenshots, which are meaningless here
@@ -46,7 +46,7 @@ Working preview, 0.11.1. Verified two ways:
   words, and Tab still reaching the app while the bar is idle.
 
 ```bash
-powershell -File "D:\Claude Code\WordStrip\tests\regression\Verify-PersistentBar.ps1"
+powershell -File .\tests\regression\Verify-PersistentBar.ps1
 ```
 
 It takes over the keyboard and foreground for about a minute. It types only into a throwaway window it
@@ -524,7 +524,7 @@ end-to-end regression instead.
 The regression can drive either a plain `EDIT` control or a `RICHEDIT50W`, at a configurable typing rate:
 
 ```bash
-powershell -File "D:\Claude Code\WordStrip\tests\regression\Verify-PersistentBar.ps1" -ControlClass RichEdit -PerKeyMs 25
+powershell -File .\tests\regression\Verify-PersistentBar.ps1 -ControlClass RichEdit -PerKeyMs 25
 ```
 
 A plain `EDIT` processes input too synchronously to expose ordering races at all, which is worth knowing
