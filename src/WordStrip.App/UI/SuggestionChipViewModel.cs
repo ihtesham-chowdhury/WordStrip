@@ -14,6 +14,15 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
 
     public required string Word { get; init; }
 
+    /// <summary>
+    /// Whether this chip is an emoji rather than a word. Emoji ask for a narrower slot: they are a single
+    /// glyph, and giving one a full word's column would spend on it the room a word could have used.
+    /// </summary>
+    public bool IsEmoji { get; init; }
+
+    /// <summary>Relative share of the strip this chip asks for. Consumed by <see cref="SlotPanel"/>.</summary>
+    public double SlotWeight => IsEmoji ? 0.45 : 1.0;
+
     /// <summary>Sizing comes from the shared metrics so a thickness change reflows every chip identically.</summary>
     public required GlassMetrics Metrics { get; init; }
 

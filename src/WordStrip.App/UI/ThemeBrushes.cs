@@ -31,6 +31,16 @@ public sealed class ThemeBrushes
     public required Brush Scrim { get; init; }
     public required Brush Sheen { get; init; }
     public required Brush Hairline { get; init; }
+
+    /// <summary>
+    /// The rule drawn between suggestion slots. Derived from the text colour rather than the border colour:
+    /// <see cref="Hairline"/> is a vertical gradient shaped for the plate's rim and fades to almost nothing
+    /// partway down, which is exactly wrong for a vertical line, and a theme's border can sit close enough to
+    /// its surface to vanish. Text contrasts with the surface by definition in every theme, so a low alpha of
+    /// it reads as a quiet divider everywhere without needing seven separate tunings.
+    /// </summary>
+    public required Brush Divider { get; init; }
+
     public required Brush Bezel { get; init; }
     public required Brush Pill { get; init; }
     public required Brush PillRim { get; init; }
@@ -74,6 +84,7 @@ public sealed class ThemeBrushes
                 (0.00, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity),
                 (0.55, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity * 0.45),
                 (1.00, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity * 0.62)),
+            Divider = Solid(v.Text, 0.22),
             Bezel = v.BezelStrength <= 0 || !allowTransparency
                 ? Brushes.Transparent
                 : VerticalGradient(
@@ -103,6 +114,7 @@ public sealed class ThemeBrushes
         Scrim = Solid(Color.FromRgb(0x00, 0x00, 0x00), 1.0),
         Sheen = Brushes.Transparent,
         Hairline = Solid(Color.FromRgb(0xFF, 0xFF, 0xFF), 1.0),
+        Divider = Solid(Color.FromRgb(0xFF, 0xFF, 0xFF), 1.0),
         Bezel = Brushes.Transparent,
         Pill = Solid(Color.FromRgb(0xFF, 0xFF, 0xFF), 1.0),
         PillRim = Solid(Color.FromRgb(0xFF, 0xFF, 0xFF), 1.0),

@@ -63,12 +63,12 @@ files the user can read and delete. **[fact]**
 ## 3. Current Status
 
 - **Overall status:** **Phases 1–6 complete and shipped as 0.10.1, installed and in daily use by the owner.**
-  **Phase 7 (TSF migration) is the active task. Stages 0, 1, 2 and 4 are done. The service is registered,
-  reads the text before the caret and sends it to WordStrip over a named pipe. **Suggestions confirmed
-  working by hand in Chrome, Brave, Edge, Claude desktop, Word and Notepad, with password fields correctly
-  suppressed** — the gap that motivated the whole phase is closed. 362 tests. Stage 3, committing through
-  TSF, is not started, so autocorrect and personal learning still do not work on the TSF path.** See §14.
-  **[fact]**
+  **Phase 7 (TSF migration) Stages 0, 1, 2 and 4 are done. The service is registered, reads the text before
+  the caret and sends it to WordStrip over a named pipe. **Suggestions confirmed working by hand in Chrome,
+  Brave, Edge, Claude desktop, Word and Notepad, with password fields correctly suppressed** — the gap that
+  motivated the whole phase is closed. Stage 3, committing through TSF, is not started, so autocorrect and
+  personal learning still do not work on the TSF path. The project is public on GitHub under Apache 2.0.
+  367 tests.** See §14. **[fact]**
 - **Completed:**
   - Keyboard/mouse hooks, text injection, word-buffer tracking
   - Offline SymSpell + frequency prediction and autocorrect
@@ -95,12 +95,16 @@ files the user can read and delete. **[fact]**
     the provider wired into the composite ahead of the hook.** **[fact]**
   - **Phase 7 Stage 2, native half: the service reads the document and sends it. Prediction works in
     Chrome, Brave, Edge, Electron and Word.** 362 unit tests. **[fact]**
-- **In progress:** **Phase 7 — TSF migration.** Stages 0 and 4 complete. Stage 1 built and statically
-  verified, **awaiting first registration**. Stages 2–3 not started. **[fact]**
-- **Blocked:** Nothing is blocked. Registration needs administrator rights, so it is the owner's action
-  rather than something this session can perform.
-- **Next priority:** Register the service, then find out which applications actually load it — the entire
-  point of Stage 1 (§14, §15).
+  - Memory: `SymSpellIndex` rebuilt on flat arrays, 291 MB → 28.9 MB, and faster
+  - Open-sourced under Apache 2.0 with a CLA, after a full scrub of personal data from the working tree,
+    all 31 commits and their messages
+  - **Suggestion-bar slot layout — the phone-keyboard arrangement, replacing both the over-long fixed bar
+    and the bar that changed shape on every keystroke.** 367 unit tests. **[fact, 2026-09-17]**
+- **In progress:** Nothing. The slot layout is built, verified on screen and committed. **[fact]**
+- **Blocked:** Nothing.
+- **Next priority:** The owner still has to publish the GitHub Release by dragging both binaries into the
+  "Attach binaries" drop zone (not the markdown body). After that, Phase 7 Stage 3 — committing through TSF,
+  which is what autocorrect and personal learning need on the TSF path (§14, §15).
 
 ### Getting the C++ toolchain installed took three attempts — what actually went wrong **[fact]**
 
@@ -562,6 +566,39 @@ Inspect these first, roughly in this order:
 
 ## 11. Recent Work
 
+**The suggestion bar now divides a fixed width into slots, the way a phone keyboard does.**
+**[fact, 2026-09-17]**
+
+The owner reported both existing width modes as unusable *for the same reason*, which is why the fix had to
+be one change rather than two. Fixed width "looks comically long and very distracting on eyes": a handful of
+short words centred in a wide strip left most of it visibly empty. Turning fixed width off was worse —
+"when typing fast it changes shapes so rapidly that it causes eye strains", because a centred, content-sized
+bar moves *both* edges on most keystrokes.
+
+The design was settled by evidence, not preference. The first proposal was a greedy fill — as many words as
+fit — and phone-keyboard slots were explicitly rejected on the grounds that a long personal-dictionary entry
+would not survive a fixed column. The owner sent two Gboard screen recordings showing that it does survive,
+by shortening from the middle, and asked for an unbiased reconsideration. The recordings settled it: Gboard's
+strip has just as much unused space, and the dividers are the entire difference — they make the same pixels
+read as structure rather than emptiness. **The recommendation was reversed, and the reversal was correct.**
+Do not re-litigate this without new evidence of the same kind.
+
+What shipped:
+
+| Piece | Behaviour |
+|---|---|
+| `SlotPanel` | Divides the strip into N columns with a hairline between each. Every slot starts at an equal share; only a word that genuinely overflows causes anything to move, and then only by borrowing spare room from neighbours. One round of borrowing, deliberately — it is what keeps the boundaries still. |
+| `ElidedText` | Shortens from the **middle**, not the end. `TextTrimming` only trims the tail, which is the end that distinguishes one saved address from another. Binary search over surviving characters, so a fifty-character entry costs about six measurements. |
+| Slot weighting | Emoji ask for 0.45 of a word's column — one glyph does not need a word's width. Measured on screen at ~88 px against ~183 px. |
+| Slot count | The word-count slider now sets the *column* count, capped by how many can still be read at the chosen width (`EffectiveSlotCount`). The cap depends only on width and font, never on the words, so it cannot change while someone types. |
+| Dynamic-width smoothing | For the non-fixed mode: the bar grows immediately and gives width back only after 650 ms without a change. Growing and shrinking are not symmetric — a longer suggestion has to be readable on the keystroke that produced it, but nothing is lost by staying wide a moment longer. |
+
+Verified on screen, not merely compiled: four consecutive keystrokes ("c", "co", "com", "comp") produced
+identical strip width and identical divider positions with only the words changing; a narrowed strip rendered
+`inter...onal` / `internal` / `inter...nally`; a long personal entry took a wider column by borrowing rather
+than eliding; Tab cycling still traced a tight pill rather than a full-column block. Three bugs were found
+this way that compiling cleanly did not reveal — see the last three entries under §13's load-bearing details.
+
 **Memory: the SymSpell index rebuilt, 291 MB → 28.9 MB.** **[fact, 2026-08-13]**
 
 The assumption recorded for months — "the bulk is the SymSpell edit-distance-2 index" — was measured and
@@ -957,6 +994,24 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
   already typed past must never be applied.
 - **XAML bindings resolve at layout, not at compile time.** 271 passing tests did not catch a two-way binding
   against a read-only property; only opening the window did. **Open every window you touch.**
+- **A `Panel`'s `OnRender` is not re-run because its children changed.** WPF re-runs it for a dependency
+  property marked `AffectsRender`, and otherwise keeps the cached drawing. `SlotPanel` draws the dividers
+  between slots there, so a new set of words rearranged the chips while the dividers stayed where the
+  *previous* words had put them — boundaries missing or in the wrong place depending on what had been on the
+  strip before. `SlotPanel.SyncDividers` posts an `InvalidateVisual` when the boundaries actually move.
+  **It must stay posted at `DispatcherPriority.Render` rather than called directly**: `InvalidateVisual`
+  also invalidates arrange, so calling it from inside a layout pass restarts that pass and WPF eventually
+  throws a layout cycle. **[fact — both failure modes observed]**
+- **Drawing text through an explicit `Typeface` only falls back within the font family list it is given.**
+  A `TextBlock` reaches the emoji font through the system's font-linking chain; `FormattedText` does not.
+  When `ElidedText` replaced the chip's `TextBlock`, every emoji suggestion rendered as an empty slot —
+  silently, because a blank chip looks like a layout bug rather than a font one. `Segoe UI Emoji` is named
+  explicitly in the family list in `SuggestionBarWindow.xaml` and in `ElidedText`'s default. **[fact]**
+- **`%LOCALAPPDATA%\WordStrip\settings.json` must be written without a BOM.** `System.Text.Json` rejects a
+  leading `U+FEFF` and the app falls back to *defaults* — so the symptom is not an error but a running app
+  quietly ignoring every setting. PowerShell's `Out-File`/`ConvertTo-Json` pipeline adds one. Edit the file
+  with a tool that writes plain UTF-8; this is the same trap as §12's source-file warning, with a worse
+  failure mode because nothing reports it. **[fact — cost an hour of misdiagnosing the layout]**
 
 ### UI/UX rules
 

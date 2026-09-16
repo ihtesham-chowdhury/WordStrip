@@ -9,3 +9,9 @@ publish/
 # tools/ngram/Fetch-Corpus.ps1, and not something to carry in the repo — only the generated
 # model under assets/ngram/ is committed.
 .corpus/
+
+# Backups of the history as it stood BEFORE personal data was scrubbed out of it. These bundles
+# contain the name, address, email, employer and Windows username that were removed from all 31
+# commits — committing one would republish everything the scrub took out, in a public repository.
+# Keep them outside the repository; this rule exists so that a stray `git add -A` cannot undo the scrub.
+*-pre-scrub-history.bundle

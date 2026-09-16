@@ -43,6 +43,9 @@ public partial class SuggestionBarWindow : Window
     private DateTime _lastCycleAt = DateTime.MinValue;
     private GlassAppearance _appearance = GlassAppearance.OverLight;
     private DateTime _lastProbeAt = DateTime.MinValue;
+    private SlotPanel? _slots;
+    private double _heldWidth;
+    private System.Windows.Threading.DispatcherTimer? _relaxTimer;
 
     /// <summary>Raised when a chip is clicked directly with the mouse (bypassing Tab-cycling).</summary>
     public event EventHandler<Suggestion>? SuggestionClicked;
@@ -54,6 +57,12 @@ public partial class SuggestionBarWindow : Window
         DataContext = this;
 
         SizeChanged += (_, _) => Reposition();
+
+        // ApplyAppearance runs below, before the items control has generated its panel, so the slot settings
+        // it tries to push have nowhere to land. Re-applying once the list is loaded is what actually
+        // configures the panel; without this the strip silently runs in its stacked fallback and no dividers
+        // are ever drawn.
+        ChipList.Loaded += (_, _) => ApplySlotLayout();
 
         ApplyAppearance();
     }
@@ -83,6 +92,12 @@ public partial class SuggestionBarWindow : Window
             return;
         }
 
+        // Trimmed here rather than asked for upstream: how many fit is a question about this strip's width
+        // and font, which the prediction engine has no business knowing about.
+        var slots = EffectiveSlotCount();
+        if (suggestions.Count > slots)
+            suggestions = suggestions.Take(slots).ToList();
+
         var sameWords = suggestions.Count == _currentSuggestions.Count;
         if (sameWords)
         {
@@ -105,7 +120,7 @@ public partial class SuggestionBarWindow : Window
         {
             Chips.Clear();
             foreach (var s in suggestions)
-                Chips.Add(CreateChip(s.Word));
+                Chips.Add(CreateChip(s.Word, s.Source == SuggestionSource.Emoji));
         }
 
         // A bar that has just reappeared must start with nothing highlighted, even when it happens to be
@@ -118,7 +133,13 @@ public partial class SuggestionBarWindow : Window
 
         // Only force a synchronous layout pass when the content actually changed. Doing it on every
         // keystroke made the window re-measure and move constantly, which is felt as stutter while typing.
-        if (!sameWords) UpdateLayout();
+        if (!sameWords)
+        {
+            UpdateLayout();
+
+            // Needs the pass above to have run, because it works from what the words actually measured to.
+            if (UpdateDynamicWidth()) UpdateLayout();
+        }
 
         Reposition();
         AdaptToBackground(reappearing);
@@ -183,6 +204,10 @@ public partial class SuggestionBarWindow : Window
         _currentSuggestions = Array.Empty<Suggestion>();
         ClearSelection();
 
+        // A bar that has gone away has no width worth defending; the next one should open at the size its own
+        // words ask for rather than inheriting the last sentence's.
+        ReleaseDynamicWidth();
+
         if (!IsVisible)
         {
             _isRevealed = false;
@@ -192,9 +217,10 @@ public partial class SuggestionBarWindow : Window
         Dismiss();
     }
 
-    private SuggestionChipViewModel CreateChip(string word) => new()
+    private SuggestionChipViewModel CreateChip(string word, bool isEmoji) => new()
     {
         Word = word,
+        IsEmoji = isEmoji,
         Metrics = _metrics,
         HoverBrush = new SolidColorBrush(_brushes.HoverOverlay),
         Foreground = _restingTextBrush,
@@ -276,15 +302,16 @@ public partial class SuggestionBarWindow : Window
 
         ApplyFixedWidth();
         ApplyPalette();
+        ApplySlotLayout();
 
         // Chip sizing lives on the view models, so re-create them to pick up new metrics.
         if (Chips.Count > 0)
         {
-            var words = Chips.Select(c => c.Word).ToList();
+            var previous = Chips.Select(c => (c.Word, c.IsEmoji)).ToList();
             var selected = _selectedIndex;
             Chips.Clear();
-            foreach (var word in words)
-                Chips.Add(CreateChip(word));
+            foreach (var (word, isEmoji) in previous)
+                Chips.Add(CreateChip(word, isEmoji));
 
             _selectedIndex = -1;
             HidePill();
@@ -319,19 +346,148 @@ public partial class SuggestionBarWindow : Window
         if (!_settings.FixedBarWidth)
         {
             RootHost.Width = double.NaN;
+            // Centred, so that while the width is being held above what the words need (see
+            // UpdateDynamicWidth) the spare room is shared between both ends rather than left hanging off
+            // the right.
             // Qualified: UseWindowsForms adds an implicit global using that makes the bare name ambiguous.
-            ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+            ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
             ContentLayer.ClipToBounds = false;
             return;
         }
+
+        ReleaseDynamicWidth();
 
         // Device-independent units, which is what WPF lays out in — the work area is already in those, so no
         // DPI conversion belongs here.
         RootHost.Width = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction);
 
-        // Centred, the way a phone keyboard's row is, rather than left-packed with dead space on the right.
-        ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
+        // Stretched, not centred: the slots divide the full width between them, so there is nothing left to
+        // centre. Centring is what used to leave a cluster of short words adrift in an otherwise empty strip.
+        ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         ContentLayer.ClipToBounds = true;
+    }
+
+    /// <summary>
+    /// How many slots the strip can carry: what the user asked for, capped by how many can still be read.
+    ///
+    /// <para>Seven columns across a narrow strip would leave each one too thin to show a whole short word,
+    /// so every suggestion would arrive pre-shortened and the strip would say nothing. The cap depends only
+    /// on the width setting and the font, never on the words themselves — which is what keeps the column
+    /// count from changing while someone is typing.</para>
+    /// </summary>
+    private int EffectiveSlotCount()
+    {
+        var requested = Math.Clamp(_settings.SuggestionCount,
+            AppSettings.MinSuggestionCount, AppSettings.MaxSuggestionCount);
+
+        if (!_settings.FixedBarWidth) return requested;
+
+        // Roughly seven characters plus the chip's own padding: enough for "through" or "because" to land
+        // without an ellipsis, which is about the shortest a column can be and still earn its place.
+        var minimumSlot = (_metrics.FontSize * 4.2) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2);
+        var usable = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction)
+                     - ((_metrics.Inset + _metrics.RimThickness) * 2);
+
+        var fits = (int)Math.Floor(usable / Math.Max(1, minimumSlot));
+        return Math.Clamp(Math.Min(requested, fits), 1, requested);
+    }
+
+    /// <summary>
+    /// Holds the width the bar reached until typing pauses, for the mode where the bar sizes itself to its
+    /// words.
+    ///
+    /// <para><b>Why hold it.</b> Sized purely to its content, the bar changes width on most keystrokes, and
+    /// because it is centred both edges move in opposite directions each time. At typing speed that reads as
+    /// the strip flickering rather than as it responding, which is the complaint that prompted the fixed-width
+    /// mode in the first place. Growing is different from shrinking: a longer suggestion has to be readable on
+    /// the keystroke that produced it, whereas nothing is lost by staying wide a moment longer than needed. So
+    /// the bar grows immediately and only gives width back once the words have stopped changing.</para>
+    ///
+    /// <para>Returns whether the held width changed, so the caller knows whether the layout it has already
+    /// computed is still good.</para>
+    /// </summary>
+    private bool UpdateDynamicWidth()
+    {
+        if (_settings.FixedBarWidth) return false;
+        if (FindSlotPanel() is not { } slots) return false;
+
+        var natural = slots.DesiredSize.Width + ContentLayer.Margin.Left + ContentLayer.Margin.Right;
+
+        if (natural >= _heldWidth - 0.5)
+        {
+            _relaxTimer?.Stop();
+            if (Math.Abs(natural - _heldWidth) < 0.5) return false;
+
+            _heldWidth = natural;
+            RootHost.MinWidth = natural;
+            return true;
+        }
+
+        // Restarted rather than left running, so the countdown measures the time since the last change —
+        // continuous typing never reaches it, and a pause reaches it exactly once.
+        _relaxTimer ??= CreateRelaxTimer();
+        _relaxTimer.Stop();
+        _relaxTimer.Start();
+        return false;
+    }
+
+    private System.Windows.Threading.DispatcherTimer CreateRelaxTimer()
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            // Long enough that it never fires between keystrokes at speed, short enough that the bar has
+            // settled before anyone looks back at it.
+            Interval = TimeSpan.FromMilliseconds(650),
+        };
+
+        timer.Tick += (_, _) =>
+        {
+            ReleaseDynamicWidth();
+            UpdateLayout();
+            Reposition();
+        };
+
+        return timer;
+    }
+
+    private void ReleaseDynamicWidth()
+    {
+        _relaxTimer?.Stop();
+        _heldWidth = 0;
+        RootHost.MinWidth = 0;
+    }
+
+    /// <summary>Pushes the current metrics, theme and mode into the slot panel once it exists.</summary>
+    private void ApplySlotLayout()
+    {
+        if (FindSlotPanel() is not { } slots) return;
+
+        slots.UseSlots = _settings.FixedBarWidth;
+        slots.DividerBrush = _brushes.Divider;
+        slots.DividerThickness = Math.Max(1, _metrics.RimThickness);
+    }
+
+    /// <summary>
+    /// The panel lives inside an <c>ItemsPanelTemplate</c>, so it has its own name scope and cannot be
+    /// reached as a field. It only exists once the items control has generated its layout, which is why the
+    /// lookup is cached rather than resolved once at construction.
+    /// </summary>
+    private SlotPanel? FindSlotPanel() => _slots ??= FindDescendant<SlotPanel>(ChipList);
+
+    private static T? FindDescendant<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root is null) return null;
+
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+
+            if (FindDescendant<T>(child) is { } nested) return nested;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -521,9 +677,14 @@ public partial class SuggestionBarWindow : Window
             return;
         }
 
-        var origin = container.TranslatePoint(new System.Windows.Point(0, 0), Lens);
-        var targetWidth = container.ActualWidth;
-        var targetHeight = container.ActualHeight;
+        // In slot mode the container is the whole column, which is wider than the chip sitting centred
+        // inside it. Tracing the button keeps the pill the size of the word, the way every theme was drawn,
+        // rather than inflating it into a full-column block.
+        var target = FindDescendant<System.Windows.Controls.Button>(container) ?? container;
+
+        var origin = target.TranslatePoint(new System.Windows.Point(0, 0), Lens);
+        var targetWidth = target.ActualWidth;
+        var targetHeight = target.ActualHeight;
 
         Lens.LensY = origin.Y;
         Lens.LensHeight = targetHeight;

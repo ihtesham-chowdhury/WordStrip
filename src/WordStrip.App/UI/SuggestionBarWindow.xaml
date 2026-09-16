@@ -41,16 +41,29 @@
             <ItemsControl x:Name="ChipList" ItemsSource="{Binding Chips}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" />
+                        <ui:SlotPanel x:Name="Slots" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
+
+                <!-- The weight has to land on the generated container, not on the Button inside the template:
+                     the container is what SlotPanel actually lays out, and an attached property set in the
+                     item template would be read from the wrong element. -->
+                <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter">
+                        <Setter Property="ui:SlotPanel.Weight" Value="{Binding SlotWeight}" />
+                    </Style>
+                </ItemsControl.ItemContainerStyle>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type ui:SuggestionChipViewModel}">
+                        <!-- Centred rather than stretched: the selection pill and the hover tint both trace
+                             this element, and a chip filling its whole slot would turn both into a heavy
+                             full-column block instead of the pill the themes were designed around. -->
                         <Button Click="OnChipClick"
                                 Cursor="Hand"
                                 Focusable="False"
                                 BorderThickness="0"
                                 Background="Transparent"
+                                HorizontalAlignment="Center"
                                 Padding="{Binding Padding}"
                                 MinHeight="{Binding MinHeight}"
                                 Margin="{Binding Margin}">
@@ -94,16 +107,20 @@
                                 </ControlTemplate>
                             </Button.Template>
 
-                            <!-- Trimming matters only in fixed-width mode, where a long phrase would
-                                 otherwise push the strip wider than the width the user asked for. An
-                                 ellipsis is a visible, understandable degradation; a strip that quietly
-                                 stops being the size it promised is not. -->
-                            <TextBlock Text="{Binding Word}"
-                                       FontFamily="Segoe UI Variable Text, Segoe UI"
-                                       FontSize="{Binding FontSize}"
-                                       FontWeight="{Binding FontWeight}"
-                                       Foreground="{Binding Foreground}"
-                                       TextTrimming="CharacterEllipsis" />
+                            <!-- Shortened from the middle, not the end - see ElidedText for why that is the
+                                 difference between a saved address staying recognisable and becoming
+                                 anonymous.
+
+                                 The emoji font has to be named explicitly. A TextBlock reaches it through
+                                 the system's font-linking chain, but ElidedText draws with an explicit
+                                 Typeface, and that path only falls back within this list - leave it out and
+                                 every emoji suggestion renders as an empty slot. -->
+                            <ui:ElidedText Text="{Binding Word}"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI, Segoe UI Emoji"
+                                           FontSize="{Binding FontSize}"
+                                           FontWeight="{Binding FontWeight}"
+                                           Foreground="{Binding Foreground}"
+                                           VerticalAlignment="Center" />
                         </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
