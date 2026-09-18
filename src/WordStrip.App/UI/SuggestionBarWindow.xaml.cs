@@ -330,22 +330,26 @@ public partial class SuggestionBarWindow : Window
     }
 
     /// <summary>
-    /// Pins the strip to one width, or releases it to size itself to its content.
+    /// Gives the strip a compact, constant-width column per slot, or releases it to size itself to its
+    /// content with no per-slot structure at all.
+    ///
+    /// <para><b>The bar width setting is a ceiling, not a literal width.</b> An earlier version of this set
+    /// <c>RootHost.Width</c> to that pixel value directly, which forced every slot to stretch out and fill it
+    /// — three short suggestions ended up exactly as wide as seven, because the columns had nothing to do but
+    /// expand into the leftover room. Setting <see cref="FrameworkElement.MaxWidth"/> instead leaves
+    /// <c>Width</c> on <see cref="double.NaN"/> (auto), so the strip sizes to however many compact columns
+    /// <see cref="SlotPanel"/> actually needs — the setting only stops it from growing past that ceiling when
+    /// a word or two genuinely needs the room.</para>
     ///
     /// <para>The width is set on the root element rather than the window, because the window is
-    /// <c>SizeToContent="WidthAndHeight"</c> and takes its size from what it contains. Setting
-    /// <see cref="double.NaN"/> is how WPF is told to go back to measuring.</para>
-    ///
-    /// <para>Content wider than the fixed width is clipped rather than allowed to push the strip out,
-    /// because "fixed" has to mean fixed — a width that mostly holds is worse than no promise at all. Long
-    /// phrases lose their tail to an ellipsis instead, which is visible and understandable, and the user can
-    /// widen the strip or ask for fewer suggestions.</para>
+    /// <c>SizeToContent="WidthAndHeight"</c> and takes its size from what it contains.</para>
     /// </summary>
     private void ApplyFixedWidth()
     {
         if (!_settings.FixedBarWidth)
         {
             RootHost.Width = double.NaN;
+            RootHost.MaxWidth = double.PositiveInfinity;
             // Centred, so that while the width is being held above what the words need (see
             // UpdateDynamicWidth) the spare room is shared between both ends rather than left hanging off
             // the right.
@@ -357,15 +361,30 @@ public partial class SuggestionBarWindow : Window
 
         ReleaseDynamicWidth();
 
+        RootHost.Width = double.NaN;
+
         // Device-independent units, which is what WPF lays out in — the work area is already in those, so no
         // DPI conversion belongs here.
-        RootHost.Width = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction);
+        RootHost.MaxWidth = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction);
 
-        // Stretched, not centred: the slots divide the full width between them, so there is nothing left to
-        // centre. Centring is what used to leave a cluster of short words adrift in an otherwise empty strip.
+        // Stretch vs Center makes no visible difference once RootHost sizes to its own content rather than to
+        // a fixed pixel width — there is no leftover space for either to distribute. Left as Stretch so
+        // SlotPanel still receives the ceiling as its available width to grow into, rather than infinity.
         ChipList.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         ContentLayer.ClipToBounds = true;
     }
+
+    /// <summary>
+    /// The width one ordinary-weight slot asks for before any borrowing or growth: roughly seven characters
+    /// plus the chip's own padding, which is enough for "through" or "because" to land without shrinking,
+    /// while staying far short of stretching to fill whatever the bar's width ceiling happens to be.
+    ///
+    /// <para>The single source both <see cref="EffectiveSlotCount"/> and <see cref="ApplySlotLayout"/> read
+    /// from, so how many columns are allowed to exist and how wide each one actually renders can never drift
+    /// apart from each other.</para>
+    /// </summary>
+    private double PreferredSlotWidth() =>
+        (_metrics.FontSize * 4.2) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2);
 
     /// <summary>
     /// How many slots the strip can carry: what the user asked for, capped by how many can still be read.
@@ -382,13 +401,10 @@ public partial class SuggestionBarWindow : Window
 
         if (!_settings.FixedBarWidth) return requested;
 
-        // Roughly seven characters plus the chip's own padding: enough for "through" or "because" to land
-        // without an ellipsis, which is about the shortest a column can be and still earn its place.
-        var minimumSlot = (_metrics.FontSize * 4.2) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2);
         var usable = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction)
                      - ((_metrics.Inset + _metrics.RimThickness) * 2);
 
-        var fits = (int)Math.Floor(usable / Math.Max(1, minimumSlot));
+        var fits = (int)Math.Floor(usable / Math.Max(1, PreferredSlotWidth()));
         return Math.Clamp(Math.Min(requested, fits), 1, requested);
     }
 
@@ -463,6 +479,7 @@ public partial class SuggestionBarWindow : Window
         if (FindSlotPanel() is not { } slots) return;
 
         slots.UseSlots = _settings.FixedBarWidth;
+        slots.PreferredSlotWidth = PreferredSlotWidth();
         slots.DividerBrush = _brushes.Divider;
         slots.DividerThickness = Math.Max(1, _metrics.RimThickness);
     }

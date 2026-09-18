@@ -100,7 +100,14 @@ files the user can read and delete. **[fact]**
     all 31 commits and their messages
   - **Suggestion-bar slot layout — the phone-keyboard arrangement, replacing both the over-long fixed bar
     and the bar that changed shape on every keystroke.** 367 unit tests. **[fact, 2026-09-17]**
-- **In progress:** Nothing. The slot layout is built, verified on screen and committed. **[fact]**
+  - **Slot sizing fixed to be content-driven rather than stretched to the bar-width setting** — the bar-width
+    setting is now a ceiling (`RootHost.MaxWidth`), not a literal width, and columns default to a compact
+    constant (`SlotPanel.PreferredSlotWidth`) instead of dividing the whole reserved width evenly. `ElidedText`
+    gained a shrink-the-whole-word-first fallback before its existing middle-ellipsis. See §11 for detail.
+    **[fact, 2026-09-18]**
+  - Published on GitHub as v0.12.0, with a portable zip and an installer, both self-contained
+- **In progress:** Nothing. Both the slot layout and its sizing fix are built, verified on screen and
+  committed. **[fact]**
 - **Blocked:** Nothing.
 - **Next priority:** The owner still has to publish the GitHub Release by dragging both binaries into the
   "Attach binaries" drop zone (not the markdown body). After that, Phase 7 Stage 3 — committing through TSF,
@@ -565,6 +572,34 @@ Inspect these first, roughly in this order:
 | `README.md` | Engineering rationale and bug post-mortems — **but stale at 0.8.0** |
 
 ## 11. Recent Work
+
+**The slot layout from the day before stretched every column to fill the bar's whole reserved width —**
+**fixed, not the columns.** **[fact, 2026-09-18]**
+
+The owner's next complaint was really the same root cause surfacing again: "the length it has been given to
+each word is gigantic and the strip length is too long even when it is only 3 words selected." `SlotPanel`
+had been dividing `availableSize.Width` — the *entire* pixel width the bar-width setting reserved — evenly by
+however many chips actually existed, rather than by a sensible per-word target. Three chips in a bar sized
+for seven meant each of the three got more than double the room it needed. The setting itself was also a
+literal width (`RootHost.Width` set directly from `WorkArea.Width * BarWidthFraction`), so the bar never got
+shorter just because fewer suggestions were on it.
+
+Fixed by changing what "fixed width" means: from a literal width every row must fill, to a **ceiling** a
+compact, content-driven row is merely not allowed to exceed.
+
+| Piece | Behaviour |
+|---|---|
+| `RootHost.MaxWidth` (not `.Width`) | The bar-width setting now clamps the *available* measure space rather than forcing an exact size. `Width` stays `NaN` (auto), so the window sizes to however many compact columns are actually needed and only stops growing at the ceiling. |
+| `SlotPanel.PreferredSlotWidth` | New DP: a constant, compact per-slot target (~85px at default metrics — "roughly seven characters plus padding"), computed once from the same formula `EffectiveSlotCount` already used to cap column *count*, so the two can never disagree. Replaces `availableSize.Width * weight / totalWeight` as the baseline share. |
+| Bounded two-stage overflow | Borrowing between slots (unchanged) handles the common case — one long word, several short ones — with zero effect on total row width. Only when the *whole row* collectively needs more than it has does the row grow past its preferred total, and even then only up to the ceiling. Whatever is still unmet past that is left to `ElidedText`. |
+| `ElidedText` shrink-before-ellipsis | New fallback tier, matching what the owner pointed out Gboard does: try the **whole word at a smaller font** (down to 80% scale, binary search on the continuous scale) before truncating anything. Only when even that minimum size still overflows does it fall back to the existing middle-ellipsis, now measured at that same shrunk size so it keeps more characters, not fewer. |
+
+Net effect, verified on screen at the owner's own settings (`SuggestionCount=3`, `BarWidthFraction=0.4`):
+three ordinary words now render as three snug columns sized to what they actually need, not one column's
+width three times over. A forced 256px ceiling with two 18-20 character words confirmed the shrink path
+fires before ellipsis ever would — both words rendered in full, at a visibly smaller font, no truncation.
+367 unit tests still pass (none of this is covered by them — `SlotPanel`/`ElidedText` are WPF-only; every
+claim above was checked by launching the app and screenshotting it, per the standing rule in §13).
 
 **The suggestion bar now divides a fixed width into slots, the way a phone keyboard does.**
 **[fact, 2026-09-17]**

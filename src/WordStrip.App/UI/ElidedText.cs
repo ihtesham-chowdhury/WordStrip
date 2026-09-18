@@ -92,9 +92,20 @@ public sealed class ElidedText : FrameworkElement
     /// rather than overflow — the shortening then happens at render time against the width actually
     /// granted.</para>
     /// </summary>
+    /// <summary>
+    /// How far the font may shrink before giving up on showing the whole word and turning to the ellipsis.
+    /// Gboard's own move for a word that's close to fitting: a smaller whole word reads better than a
+    /// truncated one at full size, but shrink too far and it stops looking like the same chip as its
+    /// neighbours. 80% is the point past which it starts to look like a rendering glitch rather than a choice.
+    /// </summary>
+    private const double MinFontScale = 0.80;
+
     protected override Size MeasureOverride(Size availableSize)
     {
-        var text = Build(Text);
+        // Measured at full size regardless of how this ends up drawn: what a slot panel needs to know is what
+        // the word actually wants, so it can decide whether to hand over enough room before any shrinking or
+        // eliding becomes necessary at render time.
+        var text = Build(Text, FontSize);
         var width = double.IsInfinity(availableSize.Width)
             ? text.Width
             : Math.Min(text.Width, availableSize.Width);
@@ -106,26 +117,63 @@ public sealed class ElidedText : FrameworkElement
     {
         if (string.IsNullOrEmpty(Text)) return;
 
-        var full = Build(Text);
+        var full = Build(Text, FontSize);
 
         // Half a pixel of tolerance: a string that measured as exactly fitting should not be shortened by a
         // rounding difference between measure and arrange.
-        var formatted = full.Width <= ActualWidth + 0.5 ? full : Build(Elide(ActualWidth));
+        FormattedText formatted;
+        if (full.Width <= ActualWidth + 0.5)
+        {
+            formatted = full;
+        }
+        else
+        {
+            // First choice: shrink the font just enough to show the whole word. Only when even the smallest
+            // readable size still overflows does this fall back to a middle ellipsis — measured at that same
+            // shrunk size, since a smaller ellipsis keeps more of both ends than a full-size one would.
+            var scale = FindFittingScale(ActualWidth);
+            var shrunk = Build(Text, FontSize * scale);
+
+            formatted = shrunk.Width <= ActualWidth + 0.5
+                ? shrunk
+                : Build(Elide(ActualWidth, FontSize * MinFontScale), FontSize * MinFontScale);
+        }
 
         drawingContext.DrawText(formatted, new Point(0, (ActualHeight - formatted.Height) / 2));
+    }
+
+    /// <summary>
+    /// The largest scale in <c>[MinFontScale, 1.0]</c> at which the whole word fits, or <see cref="MinFontScale"/>
+    /// itself if even that isn't enough. Binary search on the continuous scale rather than the string, since
+    /// what's varying here is the font size, not which characters survive.
+    /// </summary>
+    private double FindFittingScale(double maxWidth)
+    {
+        if (Build(Text, FontSize * MinFontScale).Width > maxWidth) return MinFontScale;
+
+        var low = MinFontScale;
+        var high = 1.0;
+
+        for (var i = 0; i < 8; i++)
+        {
+            var mid = (low + high) / 2;
+            if (Build(Text, FontSize * mid).Width <= maxWidth) low = mid; else high = mid;
+        }
+
+        return low;
     }
 
     /// <summary>
     /// The longest head+tail combination that fits. Binary search over how many characters survive, so a
     /// fifty-character entry costs about six measurements rather than fifty.
     /// </summary>
-    private string Elide(double maxWidth)
+    private string Elide(double maxWidth, double fontSize)
     {
         var text = Text;
 
         // Not even the ellipsis fits. Drawing a partial ".." would read as a rendering fault; nothing is
         // clearer, and the slot is too narrow to be useful either way.
-        if (Build(Ellipsis).Width > maxWidth) return string.Empty;
+        if (Build(Ellipsis, fontSize).Width > maxWidth) return string.Empty;
 
         var low = 0;
         var high = text.Length;
@@ -142,7 +190,7 @@ public sealed class ElidedText : FrameworkElement
 
             var candidate = string.Concat(text.AsSpan(0, head), Ellipsis, text.AsSpan(text.Length - tail, tail));
 
-            if (Build(candidate).Width <= maxWidth)
+            if (Build(candidate, fontSize).Width <= maxWidth)
             {
                 best = candidate;
                 low = keep + 1;
@@ -156,13 +204,13 @@ public sealed class ElidedText : FrameworkElement
         return best;
     }
 
-    private FormattedText Build(string text) => new(
+    private FormattedText Build(string text, double fontSize) => new(
         text ?? string.Empty,
         CultureInfo.CurrentUICulture,
         // Qualified: FrameworkElement has its own FlowDirection property, which shadows the type name here.
         System.Windows.FlowDirection.LeftToRight,
         new Typeface(FontFamily, FontStyles.Normal, FontWeight, FontStretches.Normal),
-        FontSize,
+        fontSize,
         Foreground,
         VisualTreeHelper.GetDpi(this).PixelsPerDip);
 }
