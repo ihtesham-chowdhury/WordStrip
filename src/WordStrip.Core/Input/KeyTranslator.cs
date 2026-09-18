@@ -12,7 +12,16 @@ namespace WordStrip.Core.Input;
 public static class KeyTranslator
 {
     /// <summary>Returns the character the given key press would type in the foreground window's layout, or null if it's not a printable character (e.g. arrow keys, function keys, modifiers alone).</summary>
-    public static char? TryTranslateToChar(int virtualKeyCode, uint scanCode)
+    public static char? TryTranslateToChar(int virtualKeyCode, uint scanCode) =>
+        TryTranslateToChar(virtualKeyCode, scanCode, preserveKeyboardState: false);
+
+    /// <param name="preserveKeyboardState">
+    /// Asks the layout not to update its state — chiefly a pending dead key — while translating. Needed by a
+    /// second caller looking at the same keystroke: TypingSession already translates every key once, and a
+    /// second translation that consumed the dead-key state would change what the first one produces. Supported
+    /// from Windows 10 1607; older systems ignore the flag.
+    /// </param>
+    public static char? TryTranslateToChar(int virtualKeyCode, uint scanCode, bool preserveKeyboardState)
     {
         var keyboardState = new byte[256];
         if (!GetKeyboardState(keyboardState))
@@ -23,7 +32,8 @@ public static class KeyTranslator
         var layout = GetKeyboardLayout(foregroundThreadId);
 
         var buffer = new StringBuilder(8);
-        var result = ToUnicodeEx((uint)virtualKeyCode, scanCode, keyboardState, buffer, buffer.Capacity, 0, layout);
+        var flags = preserveKeyboardState ? 0x4u : 0u;
+        var result = ToUnicodeEx((uint)virtualKeyCode, scanCode, keyboardState, buffer, buffer.Capacity, flags, layout);
 
         // result > 0: buffer holds `result` translated characters.
         // result == 0: key has no translation in this layout (e.g. a bare modifier key).

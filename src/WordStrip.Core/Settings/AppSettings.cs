@@ -90,14 +90,14 @@ public sealed class AppSettings
     public AppearanceMode AppearanceMode { get; set; } = AppearanceMode.Auto;
 
     /// <summary>
-    /// Whether the strip keeps one width regardless of what is on it.
+    /// Whether the strip keeps one geometry regardless of what is on it.
     ///
-    /// <para>Off by default, which sizes the strip to its content — that is what it has always done and it
-    /// wastes no space. On, it behaves like a phone keyboard's suggestion row: one width, always, with the
-    /// words centred inside it. Which is better is a matter of taste, but a strip that resizes on every
-    /// keystroke is undeniably busier, and on a phone nobody has ever wanted that.</para>
+    /// <para>On by default. The strip's width is then fixed by how many slots it has, not by the words in
+    /// them, so typing changes what the bar says and never its shape. Off sizes the strip to its content,
+    /// which wastes no space but means it resizes as the words change — kept for anyone who prefers that,
+    /// but a strip that moves on every keystroke is exactly what a writing aid should not do.</para>
     /// </summary>
-    public bool FixedBarWidth { get; set; }
+    public bool FixedBarWidth { get; set; } = true;
 
     /// <summary>
     /// How wide the strip is when <see cref="FixedBarWidth"/> is on, as a fraction of the work area.
@@ -165,4 +165,76 @@ public sealed class AppSettings
     public bool NeuralRerankingEnabled { get; set; }
 
     public bool StartWithWindows { get; set; }
+
+    // --- Interaction model -----------------------------------------------------------------------------
+
+    public const int MinCompletionPrefixLength = 2;
+    public const int MaxCompletionPrefixLength = 6;
+    public const int MinCycleWindowMs = 400;
+    public const int MaxCycleWindowMs = 2500;
+
+    private int _completionMinPrefixLength = 3;
+    private double _completionMinConfidence = 0.6;
+    private double _completionMinScoreMargin = 0.25;
+    private int _predictionCycleWindowMs = 900;
+    private double _rankingHysteresis = 0.35;
+
+    /// <summary>
+    /// Whether Space and closing punctuation finish a partly typed word with its strongest completion —
+    /// "looki" then Space gives "looking ". Only ever fires when the completion is unambiguous; see
+    /// <c>CompletionPolicy</c> for every condition. On by default because it is the change that lets the
+    /// bar be used without being operated.
+    /// </summary>
+    public bool CompleteOnSpace { get; set; } = true;
+
+    /// <summary>
+    /// Shortest partial word Space may complete, [2, 6]. Two letters match almost anything, so the floor is a
+    /// safety margin rather than a preference.
+    /// </summary>
+    public int CompletionMinPrefixLength
+    {
+        get => _completionMinPrefixLength;
+        set => _completionMinPrefixLength = Math.Clamp(value, MinCompletionPrefixLength, MaxCompletionPrefixLength);
+    }
+
+    /// <summary>
+    /// How much of the candidates' combined likelihood the top completion must hold before Space may commit
+    /// it, [0.3, 0.99]. Computed from ranking scores, which are log-scaled, so 0.6 means "clearly the answer"
+    /// rather than "narrowly ahead".
+    /// </summary>
+    public double CompletionMinConfidence
+    {
+        get => _completionMinConfidence;
+        set => _completionMinConfidence = Math.Clamp(value, 0.3, 0.99);
+    }
+
+    /// <summary>
+    /// Minimum lead, in ranking-score units, the top completion must have over the runner-up, [0, 5]. Score
+    /// units are roughly log₁₀ of frequency, so 0.25 is a lead of about 1.8×.
+    /// </summary>
+    public double CompletionMinScoreMargin
+    {
+        get => _completionMinScoreMargin;
+        set => _completionMinScoreMargin = Math.Clamp(value, 0, 5);
+    }
+
+    /// <summary>
+    /// How long after Tab inserts a prediction a further Tab replaces it with the next candidate rather than
+    /// inserting another word, in milliseconds, [400, 2500].
+    /// </summary>
+    public int PredictionCycleWindowMs
+    {
+        get => _predictionCycleWindowMs;
+        set => _predictionCycleWindowMs = Math.Clamp(value, MinCycleWindowMs, MaxCycleWindowMs);
+    }
+
+    /// <summary>
+    /// Score lead a candidate needs before it may overtake one already on screen, [0, 5]. Purely about visual
+    /// stability — the model's scores are untouched; only the order the bar shows them in resists churn.
+    /// </summary>
+    public double RankingHysteresis
+    {
+        get => _rankingHysteresis;
+        set => _rankingHysteresis = Math.Clamp(value, 0, 5);
+    }
 }

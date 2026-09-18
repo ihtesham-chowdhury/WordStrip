@@ -111,6 +111,24 @@ public sealed class TsfTextContextProvider : ITextContextProvider
     }
 
     /// <summary>
+    /// Mirrors an exact replacement onto the cached document text, so the context is right before the text
+    /// service reports back. If the cache does not end with <paramref name="existing"/> it is left alone:
+    /// the service is about to report the real document, and guessing would only be wrong sooner.
+    /// </summary>
+    public void NoteTextReplaced(string existing, string replacement)
+    {
+        existing ??= string.Empty;
+
+        lock (_gate)
+        {
+            if (!_context.IsEditable) return;
+            if (!_textBeforeCaret.EndsWith(existing, StringComparison.Ordinal)) return;
+
+            ApplyTextLocked(_textBeforeCaret[..^existing.Length] + (replacement ?? string.Empty));
+        }
+    }
+
+    /// <summary>
     /// Rewrites the last finished word after autocorrect changed it, for the same reason as
     /// <see cref="NoteTextInserted"/>.
     ///

@@ -50,7 +50,8 @@ public readonly record struct TextContext(
     bool IsAtSentenceStart,
     CaretRect? Caret,
     TextContextSource Source,
-    bool HasSelection = false)
+    bool HasSelection = false,
+    bool IsSingleLine = false)
 {
     /// <summary>
     /// Whether WordStrip may offer suggestions here — and, identically, whether it may learn from what is

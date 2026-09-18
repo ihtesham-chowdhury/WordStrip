@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -21,31 +20,17 @@ namespace WordStrip.App.UI;
 /// deliberate structure instead of emptiness, and it holds each suggestion in one place. Gboard's strip has
 /// just as much unused space as WordStrip's did; the dividers are the whole difference.</para>
 ///
-/// <para><b>Slots are compact, not stretched.</b> Every slot starts at <see cref="PreferredSlotWidth"/> — a
-/// constant sized for a typical predicted word, not a share of whatever width the strip happens to have on
-/// offer. Stretching each slot out to fill the strip's full reserved width is what made three short
-/// suggestions look as swollen as seven; sizing to the words instead means the bar itself comes out short
-/// when there is little to show, the way the count of suggestions varies without the columns ballooning to
-/// compensate. Only when a word genuinely needs more than its slot does anything shift, first by borrowing
-/// the spare room its neighbours are not using, and only past that by growing the whole row — bounded by
-/// whatever ceiling the caller's available width represents — before <see cref="ElidedText"/> takes over
-/// with its own shrink-then-ellipsis fallback. So the common case — several ordinary words — produces a row
-/// that does not change shape at all between keystrokes, at a width that matches what is actually on it.</para>
+/// <para><b>Fixed geometry.</b> In slot mode the panel is exactly <see cref="SlotCount"/> slots of
+/// <see cref="PreferredSlotWidth"/> each, whatever the words in them. Its size therefore never changes while
+/// someone types, and neither does anything above it: a word changing length re-measures its own chip and
+/// stops here, because this panel's answer to "how big are you" is the same as it was a keystroke ago. Every
+/// earlier arrangement let the words influence the geometry in some way — stretching to fill a width,
+/// borrowing from a neighbour, growing a row — and every one of them showed up as the bar moving under the
+/// user's eyes. A word too long for its slot is shrunk and then shortened from the middle by
+/// <see cref="ElidedText"/>; it never widens anything.</para>
 /// </summary>
 public sealed class SlotPanel : Panel
 {
-    /// <summary>
-    /// Relative share of a slot's width a child asks for. Emoji get less: they are one glyph and giving them
-    /// a full word's column would waste the room a word could have used.
-    /// </summary>
-    public static readonly DependencyProperty WeightProperty = DependencyProperty.RegisterAttached(
-        "Weight", typeof(double), typeof(SlotPanel),
-        new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsParentMeasure));
-
-    public static void SetWeight(UIElement element, double value) => element.SetValue(WeightProperty, value);
-
-    public static double GetWeight(UIElement element) => (double)element.GetValue(WeightProperty);
-
     /// <summary>
     /// Off, this behaves as an ordinary horizontal stack sized to its content — which is what the strip does
     /// when the user has not asked for a fixed width, and what the settings-window preview wants.
@@ -55,9 +40,8 @@ public sealed class SlotPanel : Panel
         new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsMeasure));
 
     /// <summary>
-    /// The width one ordinary-weight slot asks for before any borrowing or growth. Set from the same "roughly
-    /// how many characters" formula the window uses to decide how many columns can exist at all, so the two
-    /// numbers can never disagree with each other.
+    /// The width of every slot. Set from the same "roughly how many characters" formula the window uses to
+    /// decide how many slots can exist at all, so the two numbers can never disagree with each other.
     /// </summary>
     public static readonly DependencyProperty PreferredSlotWidthProperty = DependencyProperty.Register(
         nameof(PreferredSlotWidth), typeof(double), typeof(SlotPanel),
@@ -67,6 +51,31 @@ public sealed class SlotPanel : Panel
     {
         get => (double)GetValue(PreferredSlotWidthProperty);
         set => SetValue(PreferredSlotWidthProperty, value);
+    }
+
+    /// <summary>How many slots the panel lays out in slot mode — its width is this many slots, filled or not.</summary>
+    public static readonly DependencyProperty SlotCountProperty = DependencyProperty.Register(
+        nameof(SlotCount), typeof(int), typeof(SlotPanel),
+        new FrameworkPropertyMetadata(4, FrameworkPropertyMetadataOptions.AffectsMeasure));
+
+    public int SlotCount
+    {
+        get => (int)GetValue(SlotCountProperty);
+        set => SetValue(SlotCountProperty, value);
+    }
+
+    /// <summary>
+    /// How many leading slots hold a candidate. Dividers are drawn only between those: a hairline beside an
+    /// empty slot reads as a missing word rather than as structure.
+    /// </summary>
+    public static readonly DependencyProperty FilledCountProperty = DependencyProperty.Register(
+        nameof(FilledCount), typeof(int), typeof(SlotPanel),
+        new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public int FilledCount
+    {
+        get => (int)GetValue(FilledCountProperty);
+        set => SetValue(FilledCountProperty, value);
     }
 
     public static readonly DependencyProperty DividerBrushProperty = DependencyProperty.Register(
@@ -146,109 +155,31 @@ public sealed class SlotPanel : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         var count = InternalChildren.Count;
-        if (count == 0)
-        {
-            _slotWidths = Array.Empty<double>();
-            SyncDividers();
-            return new Size(0, 0);
-        }
 
-        // Without a finite width to divide there are no slots to speak of, so fall back to stacking. This is
-        // also the path the settings preview and the non-fixed-width strip take.
-        if (!UseSlots || double.IsInfinity(availableSize.Width))
-            return MeasureAsStack(availableSize);
+        if (!UseSlots || count == 0) return MeasureAsStack(availableSize);
 
-        _slotWidths = new double[count];
+        var slots = Math.Max(1, SlotCount);
 
-        var weights = new double[count];
-        var desired = new double[count];
-        var totalWeight = 0.0;
+        // One width for every slot, from the font and the configured count alone. The ceiling can only ever
+        // make the slots narrower — which is decided by the settings, not by what is being typed.
+        var slotWidth = PreferredSlotWidth;
+        if (!double.IsInfinity(availableSize.Width) && slotWidth * slots > availableSize.Width)
+            slotWidth = Math.Max(1, availableSize.Width / slots);
 
-        for (var i = 0; i < count; i++)
-        {
-            var child = InternalChildren[i];
+        if (_slotWidths.Length != count) _slotWidths = new double[count];
 
-            // Measured unconstrained first: the allocation below needs to know what each chip actually wants
-            // before deciding what it gets.
-            child.Measure(new Size(double.PositiveInfinity, availableSize.Height));
-            desired[i] = child.DesiredSize.Width;
-
-            weights[i] = Math.Max(0.01, GetWeight(child));
-            totalWeight += weights[i];
-        }
-
-        // Every slot's preferred share — a constant per unit of weight, not a fraction of whatever width is
-        // on offer — clamped so that even this baseline can never itself exceed what the ceiling allows.
-        // That clamp is a safety net for a narrow ceiling with many slots; in the ordinary case it never
-        // engages, because EffectiveSlotCount has already kept the requested column count within what the
-        // ceiling can hold at this same preferred width.
-        var unit = totalWeight > 0 ? Math.Min(PreferredSlotWidth, availableSize.Width / totalWeight) : 0;
-
-        var share = new double[count];
-        var want = 0.0;
-        var spare = 0.0;
-
-        for (var i = 0; i < count; i++)
-        {
-            share[i] = unit * weights[i];
-            want += Math.Max(0, desired[i] - share[i]);
-            spare += Math.Max(0, share[i] - desired[i]);
-        }
-
-        // One round of borrowing from the slots that do not need their full share. One round is enough and is
-        // what keeps this stable: a slot only moves when some other slot genuinely could not fit, never
-        // merely because a word's width changed.
-        var transfer = Math.Min(want, spare);
-
-        for (var i = 0; i < count; i++)
-        {
-            var wants = Math.Max(0, desired[i] - share[i]);
-            var spares = Math.Max(0, share[i] - desired[i]);
-
-            _slotWidths[i] = share[i]
-                + (want > 0 ? wants * transfer / want : 0)
-                - (spare > 0 ? spares * transfer / spare : 0);
-        }
-
-        // Borrowing alone cannot help when every slot is short of room at once — the collective ask exceeds
-        // what the row could reshuffle internally. Only then does the row grow past its preferred total,
-        // and only up to the ceiling the caller's available width represents. Whatever is still unmet past
-        // that is left for ElidedText to shrink or elide at render time, rather than pushing the strip wider
-        // than the bar was allowed to be.
-        var unmet = want - spare;
-        if (unmet > 0)
-        {
-            var headroom = Math.Max(0, availableSize.Width - share.Sum());
-            var growth = Math.Min(unmet, headroom);
-
-            if (growth > 0)
-            {
-                for (var i = 0; i < count; i++)
-                {
-                    var stillWants = Math.Max(0, desired[i] - _slotWidths[i]);
-                    if (stillWants <= 0) continue;
-                    _slotWidths[i] += stillWants * growth / unmet;
-                }
-            }
-        }
-
-        // Second pass at the width each child is actually getting, so anything still too long can shorten
-        // itself to fit rather than overflow its column.
         var height = 0.0;
-        var totalWidth = 0.0;
         for (var i = 0; i < count; i++)
         {
+            _slotWidths[i] = i < slots ? slotWidth : 0;
+
             var child = InternalChildren[i];
             child.Measure(new Size(_slotWidths[i], availableSize.Height));
             height = Math.Max(height, child.DesiredSize.Height);
-            totalWidth += _slotWidths[i];
         }
 
         SyncDividers();
-
-        // Content-driven, not the full available width: a handful of short words should make for a short
-        // row, and this is what lets the window that hosts this panel shrink to match.
-        return new Size(totalWidth, height);
+        return new Size(slotWidth * slots, height);
     }
 
     private Size MeasureAsStack(Size availableSize)
@@ -288,7 +219,8 @@ public sealed class SlotPanel : Panel
 
     protected override void OnRender(DrawingContext drawingContext)
     {
-        if (!UseSlots || DividerBrush is null || InternalChildren.Count < 2) return;
+        var filled = Math.Min(FilledCount, InternalChildren.Count);
+        if (!UseSlots || DividerBrush is null || filled < 2) return;
         if (DividerThickness <= 0 || ActualHeight <= 0) return;
 
         var inset = ActualHeight * Math.Clamp(DividerInset, 0, 0.45);
@@ -301,7 +233,7 @@ public sealed class SlotPanel : Panel
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var x = 0.0;
 
-        for (var i = 0; i < InternalChildren.Count - 1; i++)
+        for (var i = 0; i < filled - 1; i++)
         {
             x += i < _slotWidths.Length ? _slotWidths[i] : 0;
 

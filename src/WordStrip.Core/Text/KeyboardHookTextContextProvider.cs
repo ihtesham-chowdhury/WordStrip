@@ -69,7 +69,11 @@ public sealed class KeyboardHookTextContextProvider : ITextContextProvider
             // A keystroke observer cannot see a selection made with the mouse, and reporting a confident
             // "false" for something unknown is the lesser evil only because every consumer currently treats
             // this as "nothing special to avoid". A TSF provider can answer it properly.
-            HasSelection: false);
+            HasSelection: false,
+
+            // A single-line Win32 edit is a form field, where Tab means "next field". Only an edit control
+            // can say so; everywhere else this stays false and Tab is left to the bar.
+            IsSingleLine: focus.IsStandardEditControl && focus.IsSingleLine);
     }
 
     /// <summary>
@@ -80,6 +84,9 @@ public sealed class KeyboardHookTextContextProvider : ITextContextProvider
     public void NoteTextInserted(string text) => _typingSession.NoteWordInserted(text);
 
     public void NoteWordCorrected(string correctedWord) => _typingSession.ReplaceLastWord(correctedWord);
+
+    public void NoteTextReplaced(string existing, string replacement) =>
+        _typingSession.NoteTextReplaced(existing, replacement);
 
     private void OnCurrentWordChanged(object? sender, string word) => CurrentWordChanged?.Invoke(this, word);
 

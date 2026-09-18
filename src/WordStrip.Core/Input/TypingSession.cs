@@ -118,6 +118,114 @@ public sealed class TypingSession : IDisposable
     }
 
     /// <summary>
+    /// Records that exactly <paramref name="existing"/> — the text immediately before the caret — was replaced
+    /// with exactly <paramref name="replacement"/> by WordStrip itself. Raises no events: the caller made the
+    /// change and publishes whatever follows from it.
+    ///
+    /// <para>This is what lets a prediction be swapped for the next candidate a moment after it was
+    /// inserted. The shadow buffer has to describe the text WordStrip put there — including a phrase that
+    /// spans words, or a completion that ended in punctuation — or the very next keystroke would be
+    /// interpreted against text that is no longer on screen.</para>
+    ///
+    /// <para>If <paramref name="existing"/> is not what this session believes precedes the caret, it cannot
+    /// be removed without guessing, so the context is dropped instead, exactly as for a click. The
+    /// replacement is still applied on top of that, because whatever else is uncertain, that text is known
+    /// to be there.</para>
+    /// </summary>
+    public void NoteTextReplaced(string existing, string replacement)
+    {
+        if (!TryRemoveTail(existing ?? string.Empty))
+        {
+            _currentWord.Clear();
+            _recentWords.Clear();
+            _atSentenceStart = true;
+        }
+
+        foreach (var c in replacement ?? string.Empty)
+        {
+            if (KeyTranslator.IsWordCharacter(c)) _currentWord.Append(c);
+            else CommitQuietly(c);
+        }
+    }
+
+    /// <summary>
+    /// Removes <paramref name="existing"/> from the end of what this session tracks, if — and only if — it
+    /// provably is the end of what it tracks. Words WordStrip inserted are separated by single boundary
+    /// characters, which is what makes a multi-word span recoverable from the word history.
+    /// </summary>
+    private bool TryRemoveTail(string existing)
+    {
+        var end = existing.Length;
+        var start = end;
+        while (start > 0 && KeyTranslator.IsWordCharacter(existing[start - 1])) start--;
+
+        var trailingWord = existing[start..end];
+        var current = CurrentWord;
+        if (!current.EndsWith(trailingWord, StringComparison.Ordinal)) return false;
+
+        // Entirely inside the word being typed: the common case, and the only one needing no history.
+        if (start == 0)
+        {
+            _currentWord.Length -= trailingWord.Length;
+            return true;
+        }
+
+        // The span reaches back past a boundary, so the word in progress must be exactly its last part.
+        if (current.Length != trailingWord.Length) return false;
+
+        var rest = existing[..start];
+        var popped = new List<string>();
+
+        while (rest.Length > 0)
+        {
+            if (KeyTranslator.IsWordCharacter(rest[^1])) return false;
+            rest = rest[..^1];
+
+            var wordStart = rest.Length;
+            while (wordStart > 0 && KeyTranslator.IsWordCharacter(rest[wordStart - 1])) wordStart--;
+
+            var word = rest[wordStart..];
+            if (word.Length == 0)
+            {
+                if (rest.Length == 0) break;  // a leading boundary, e.g. the space before a prediction
+                return false;
+            }
+
+            var historyIndex = _recentWords.Count - 1 - popped.Count;
+            if (historyIndex < 0 || !string.Equals(_recentWords[historyIndex], word, StringComparison.Ordinal))
+                return false;
+
+            popped.Add(word);
+            rest = rest[..wordStart];
+        }
+
+        _currentWord.Clear();
+        _recentWords.RemoveRange(_recentWords.Count - popped.Count, popped.Count);
+        if (_recentWords.Count == 0 && popped.Count > 0) _atSentenceStart = true;
+        return true;
+    }
+
+    /// <summary>The bookkeeping half of a word commit, for text WordStrip itself inserted. No events, no learning.</summary>
+    private void CommitQuietly(char boundaryChar)
+    {
+        if (_currentWord.Length == 0) return;
+
+        var word = CurrentWord;
+        _currentWord.Clear();
+
+        if (NGramTokenizer.IsSentenceTerminator(boundaryChar))
+        {
+            _recentWords.Clear();
+            _atSentenceStart = true;
+        }
+        else
+        {
+            PushHistory(word);
+            _atSentenceStart = false;
+        }
+    }
+
+    /// <summary>
     /// Corrects the most recent history entry after autocorrect rewrote it, so the model predicts from what
     /// actually ended up on screen rather than from the typo the user made.
     /// </summary>

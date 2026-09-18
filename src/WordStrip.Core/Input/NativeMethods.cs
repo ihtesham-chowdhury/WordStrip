@@ -227,6 +227,7 @@ internal static class NativeMethods
 
     public const int GWL_STYLE = -16;
     public const int ES_PASSWORD = 0x0020;
+    public const int ES_MULTILINE = 0x0004;
 
     // ---- Key translation (vkCode -> printable character, honoring layout/shift/capslock) ----
 

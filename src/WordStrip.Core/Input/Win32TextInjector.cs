@@ -39,10 +39,18 @@ public sealed class Win32TextInjector : ITextInjector
     /// </summary>
     public const int MaxCharactersPerBatch = 24;
 
+    public void ReplaceText(string existing, string replacement)
+    {
+        var keep = CaseMatching.CommonPrefixLength(existing, replacement);
+        if (keep == existing.Length && keep == replacement.Length) return;
+
+        SendReplacement(backspaces: existing.Length - keep, text: replacement[keep..]);
+    }
+
     public void ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace)
     {
-        var final = MatchCase(typedWord, replacement);
-        var keep = CommonPrefixLength(typedWord, final);
+        var final = CaseMatching.Apply(typedWord, replacement);
+        var keep = CaseMatching.CommonPrefixLength(typedWord, final);
 
         SendReplacement(
             backspaces: typedWord.Length - keep,
@@ -51,8 +59,8 @@ public sealed class Win32TextInjector : ITextInjector
 
     public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
     {
-        var final = MatchCase(typedWord, replacement);
-        var keep = CommonPrefixLength(typedWord, final);
+        var final = CaseMatching.Apply(typedWord, replacement);
+        var keep = CaseMatching.CommonPrefixLength(typedWord, final);
 
         // +1 for the boundary character the user already typed, which we re-append after the correction.
         SendReplacement(
@@ -199,40 +207,6 @@ public sealed class Win32TextInjector : ITextInjector
 
         return inputs;
     }
-
-    /// <summary>
-    /// How many leading characters the typed text and the replacement already share.
-    /// Everything up to that point is left untouched instead of being deleted and retyped — for the common
-    /// case of completing a word ("wor" → "world") that means zero backspaces. Beyond being faster and
-    /// flicker-free, not deleting text avoids disturbing the character formatting of the surrounding run,
-    /// which some rich-text controls re-derive when a run is removed and reinserted.
-    /// </summary>
-    private static int CommonPrefixLength(string a, string b)
-    {
-        var max = Math.Min(a.Length, b.Length);
-        var i = 0;
-        while (i < max && a[i] == b[i]) i++;
-        return i;
-    }
-
-    /// <summary>
-    /// Re-applies the capitalisation the user actually typed to the dictionary's (lower-case) word, so
-    /// accepting a suggestion after typing "Hel" yields "Help" rather than silently downcasing to "help".
-    /// </summary>
-    private static string MatchCase(string typedWord, string replacement)
-    {
-        if (typedWord.Length == 0 || replacement.Length == 0) return replacement;
-
-        var hasLetters = typedWord.Any(char.IsLetter);
-        if (hasLetters && typedWord.Where(char.IsLetter).All(char.IsUpper) && typedWord.Count(char.IsLetter) > 1)
-            return replacement.ToUpperInvariant();
-
-        if (char.IsUpper(typedWord[0]))
-            return char.ToUpperInvariant(replacement[0]) + replacement[1..];
-
-        return replacement;
-    }
-
 
     /// <summary>
     /// Wraps SendInput so a rejected batch surfaces instead of silently doing nothing. SendInput returns the

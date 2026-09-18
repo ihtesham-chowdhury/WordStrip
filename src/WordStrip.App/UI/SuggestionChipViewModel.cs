@@ -7,21 +7,81 @@ using Brushes = System.Windows.Media.Brushes;
 
 namespace WordStrip.App.UI;
 
+/// <summary>
+/// One slot on the bar. The bar keeps a fixed pool of these — one per slot — and changes their text in place
+/// as predictions change, rather than recreating them. Recreating chips regenerates their containers, and
+/// that is a layout pass through the whole window on every keystroke; changing a string is not.
+///
+/// <para>Three visual weights, none of which look like a selection: the first slot reads slightly stronger
+/// than the rest (it is what Tab takes), and firms up to semibold when Space would commit it. Only
+/// <see cref="IsSelected"/> — set solely while the user is cycling with Tab — carries the selection
+/// treatment.</para>
+/// </summary>
 public sealed class SuggestionChipViewModel : INotifyPropertyChanged
 {
+    /// <summary>How much alternates recede behind the first slot. Enough to rank them at a glance, not enough to hide them.</summary>
+    private const double AlternateOpacity = 0.74;
+
+    private string _word = string.Empty;
+    private bool _isEmoji;
+    private bool _isPrimary;
+    private bool _isArmed;
     private bool _isSelected;
+    private bool _collapseWhenEmpty;
     private Brush _foreground = Brushes.White;
 
-    public required string Word { get; init; }
+    public string Word
+    {
+        get => _word;
+        set
+        {
+            if (string.Equals(_word, value, StringComparison.Ordinal)) return;
+            _word = value ?? string.Empty;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ChipVisibility));
+        }
+    }
+
+    /// <summary>Emoji stay visually secondary: never emphasised, even in the first slot.</summary>
+    public bool IsEmoji
+    {
+        get => _isEmoji;
+        set { if (Set(ref _isEmoji, value)) RaiseAppearance(); }
+    }
+
+    public bool IsPrimary
+    {
+        get => _isPrimary;
+        set { if (Set(ref _isPrimary, value)) RaiseAppearance(); }
+    }
+
+    /// <summary>Space or closing punctuation would commit this chip. Only ever set on the first slot.</summary>
+    public bool IsArmed
+    {
+        get => _isArmed;
+        set { if (Set(ref _isArmed, value)) RaiseAppearance(); }
+    }
+
+    /// <summary>The user has just put this candidate into their text with Tab. The only selected state there is.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { if (Set(ref _isSelected, value)) RaiseAppearance(); }
+    }
 
     /// <summary>
-    /// Whether this chip is an emoji rather than a word. Emoji ask for a narrower slot: they are a single
-    /// glyph, and giving one a full word's column would spend on it the room a word could have used.
+    /// Empty slots keep their room when the bar has fixed geometry, so nothing shifts when fewer candidates
+    /// arrive; when the bar sizes to its content they take none.
     /// </summary>
-    public bool IsEmoji { get; init; }
+    public bool CollapseWhenEmpty
+    {
+        get => _collapseWhenEmpty;
+        set { if (Set(ref _collapseWhenEmpty, value)) OnPropertyChanged(nameof(ChipVisibility)); }
+    }
 
-    /// <summary>Relative share of the strip this chip asks for. Consumed by <see cref="SlotPanel"/>.</summary>
-    public double SlotWeight => IsEmoji ? 0.45 : 1.0;
+    public Visibility ChipVisibility => _word.Length > 0
+        ? Visibility.Visible
+        : _collapseWhenEmpty ? Visibility.Collapsed : Visibility.Hidden;
 
     /// <summary>Sizing comes from the shared metrics so a thickness change reflows every chip identically.</summary>
     public required GlassMetrics Metrics { get; init; }
@@ -35,24 +95,9 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
     public double MinHeight => Metrics.ChipMinHeight;
     public double FontSize => Metrics.FontSize;
 
-    /// <summary>
-    /// Whether the selection surface is currently over this chip. Drives both the text colour and a one-step
-    /// weight change: selection is carried by surface, position and motion, so the type only needs to firm
-    /// up slightly rather than jump to bold.
-    /// </summary>
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set
-        {
-            if (_isSelected == value) return;
-            _isSelected = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(FontWeight));
-        }
-    }
+    public FontWeight FontWeight => _isSelected || (_isArmed && !_isEmoji) ? FontWeights.SemiBold : FontWeights.Medium;
 
-    public FontWeight FontWeight => _isSelected ? FontWeights.SemiBold : FontWeights.Medium;
+    public double TextOpacity => _isSelected || (_isPrimary && !_isEmoji) ? 1.0 : AlternateOpacity;
 
     public Brush Foreground
     {
@@ -66,6 +111,20 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void RaiseAppearance()
+    {
+        OnPropertyChanged(nameof(FontWeight));
+        OnPropertyChanged(nameof(TextOpacity));
+    }
+
+    private bool Set(ref bool field, bool value, [CallerMemberName] string? name = null)
+    {
+        if (field == value) return false;
+        field = value;
+        OnPropertyChanged(name);
+        return true;
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

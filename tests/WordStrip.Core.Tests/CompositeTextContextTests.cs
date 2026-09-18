@@ -416,6 +416,12 @@ public class CompositeTextContextTests
 
         public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement) =>
             Replacements.Add(replacement);
+
+
+        public List<(string Existing, string Replacement)> TextReplacements { get; } = new();
+
+
+        public void ReplaceText(string existing, string replacement) => TextReplacements.Add((existing, replacement));
     }
 
     [Fact]

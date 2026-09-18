@@ -23,4 +23,5 @@ public readonly record struct FocusedControlInfo(
     bool IsPasswordField,
     CaretRect? Caret = null,
     nint Handle = 0,
-    bool IsRichEdit = false);
+    bool IsRichEdit = false,
+    bool IsSingleLine = false);

@@ -45,14 +45,6 @@
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
 
-                <!-- The weight has to land on the generated container, not on the Button inside the template:
-                     the container is what SlotPanel actually lays out, and an attached property set in the
-                     item template would be read from the wrong element. -->
-                <ItemsControl.ItemContainerStyle>
-                    <Style TargetType="ContentPresenter">
-                        <Setter Property="ui:SlotPanel.Weight" Value="{Binding SlotWeight}" />
-                    </Style>
-                </ItemsControl.ItemContainerStyle>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type ui:SuggestionChipViewModel}">
                         <!-- Centred rather than stretched: the selection pill and the hover tint both trace
@@ -64,6 +56,7 @@
                                 BorderThickness="0"
                                 Background="Transparent"
                                 HorizontalAlignment="Center"
+                                Visibility="{Binding ChipVisibility}"
                                 Padding="{Binding Padding}"
                                 MinHeight="{Binding MinHeight}"
                                 Margin="{Binding Margin}">
@@ -120,6 +113,7 @@
                                            FontSize="{Binding FontSize}"
                                            FontWeight="{Binding FontWeight}"
                                            Foreground="{Binding Foreground}"
+                                           Opacity="{Binding TextOpacity}"
                                            VerticalAlignment="Center" />
                         </Button>
                     </DataTemplate>

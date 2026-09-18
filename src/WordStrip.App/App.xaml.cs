@@ -220,15 +220,24 @@ public partial class App : System.Windows.Application
         _suggestionController = new SuggestionController(
             _contextProvider, predictionEngine, textInjector, _settings, postToMessageLoop,
             personalLearning: _personalLearning,
-            neuralReranking: _neuralCoordinator)
+            neuralReranking: _neuralCoordinator,
+            // The keystroke-built word is never behind the keyboard; a text service's can be, by a moment.
+            // Where they disagree the controller leaves Space and Tab alone rather than completing a word
+            // that is one letter short. See its constructor.
+            keySynchronousWord: () => _typingSession!.CurrentWord)
         {
             IsPaused = _trayIcon?.IsPaused ?? false,
+            VisibleSlotLimit = _barWindow.VisibleSlotCount,
         };
 
-        // Subscription order matters: BarInputRouter's Tab handling must run before TypingSession's, since
-        // accepting a suggestion needs to read TypingSession.CurrentWord before TypingSession's own Tab
-        // handling clears it. Router subscribes here; TypingSession only subscribes on the explicit Attach() below.
-        var router = new BarInputRouter(_keyboardHook, _suggestionController, _barWindow);
+        _barWindow.SlotCountChanged += (_, _) => _suggestionController.VisibleSlotLimit = _barWindow.VisibleSlotCount;
+
+        // Subscription order matters: the router must see every key before TypingSession does. It consumes
+        // Space, Tab, Backspace and punctuation when they commit or cycle a suggestion, and TypingSession must
+        // then skip them entirely; and it ends a Tab cycle before an ordinary keystroke is processed, so the
+        // cycle can never touch what the user types next. Router subscribes here; TypingSession only
+        // subscribes on the explicit Attach() below.
+        _ = new BarInputRouter(_keyboardHook, _suggestionController);
 
         // Same reasoning on the mouse hook, and just as load-bearing. A click outside the bar dismisses it,
         // and TypingSession reacts to the same click by resetting its buffer — which republishes the idle
@@ -238,7 +247,19 @@ public partial class App : System.Windows.Application
         _mouseHook.MouseButtonDown += (_, _) => _suggestionController.Dismiss();
         _typingSession.Attach();
 
-        _suggestionController.SuggestionsChanged += (_, update) => _barWindow.ShowSuggestions(update.Suggestions, update.Caret);
+        // Prediction runs on every keystroke; drawing is coalesced. Updates are posted at background priority,
+        // which runs only once pending input has been processed, so a burst of keystrokes draws once — as its
+        // last state — and a delivery always reads the newest value rather than the one that scheduled it.
+        // Text injection is posted at Input priority, so it always lands before the redraw that follows it.
+        LatestValueCoalescer<SuggestionUpdate>? render = null;
+        render = new LatestValueCoalescer<SuggestionUpdate>(
+            action => _barWindow.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, action),
+            update =>
+            {
+                _barWindow.ShowSuggestions(update);
+                FrameProbe.SetCoalesced(render!.Coalesced);
+            });
+        _suggestionController.SuggestionsChanged += (_, update) => render.Post(update);
         _barWindow.SuggestionClicked += (_, suggestion) => _suggestionController.AcceptSuggestion(suggestion);
 
         StartFocusWatchdog();

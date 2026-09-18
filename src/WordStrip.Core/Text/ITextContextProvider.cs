@@ -59,4 +59,16 @@ public interface ITextContextProvider : IDisposable
     /// ended up on screen rather than the typo that was replaced.
     /// </summary>
     void NoteWordCorrected(string correctedWord);
+
+    /// <summary>
+    /// Tells the provider that exactly <paramref name="existing"/>, the text immediately before the caret,
+    /// was replaced with exactly <paramref name="replacement"/> — no implied space, nothing inferred. This is
+    /// how WordStrip keeps a provider's picture of the document exact across its own insertions, including a
+    /// prediction replaced by the next candidate a moment later.
+    ///
+    /// <para>Raises no events; the caller made the change and publishes what follows from it. The default
+    /// does nothing, which is only correct for a provider that re-reads the document anyway — every real
+    /// provider overrides it.</para>
+    /// </summary>
+    void NoteTextReplaced(string existing, string replacement) { }
 }

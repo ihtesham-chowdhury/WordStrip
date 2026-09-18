@@ -9,6 +9,7 @@ using WordStrip.App.UI.Theming;
 using WordStrip.Core.Automation;
 using WordStrip.Core.Prediction;
 using WordStrip.Core.Settings;
+using WordStrip.Core.Suggestions;
 using Point = System.Windows.Point;
 using Color = System.Windows.Media.Color;
 using Colors = System.Windows.Media.Colors;
@@ -56,7 +57,11 @@ public partial class SuggestionBarWindow : Window
         InitializeComponent();
         DataContext = this;
 
-        SizeChanged += (_, _) => Reposition();
+        SizeChanged += (_, _) =>
+        {
+            FrameProbe.CountResize();
+            Reposition();
+        };
 
         // ApplyAppearance runs below, before the items control has generated its panel, so the slot settings
         // it tries to push have nowhere to land. Re-applying once the list is loaded is what actually
@@ -73,7 +78,13 @@ public partial class SuggestionBarWindow : Window
         GlassWindowBehavior.Apply(this);
     }
 
-    public bool HasSelection => _selectedIndex >= 0;
+    /// <summary>How many slots the bar shows, from its width and font. The controller trims to this.</summary>
+    public int VisibleSlotCount => EffectiveSlotCount();
+
+    /// <summary>Raised when appearance changes may have changed <see cref="VisibleSlotCount"/>.</summary>
+    public event EventHandler? SlotCountChanged;
+
+    private SuggestionUpdate _lastUpdate = SuggestionUpdate.Empty;
 
     /// <summary>
     /// Whether to animate at all. Two independent ways to say no: Windows' own "animation effects" switch,
@@ -82,65 +93,61 @@ public partial class SuggestionBarWindow : Window
     /// </summary>
     private bool UseMotion => SystemAppearance.UseMotion && !_motion.IsInstant;
 
-    public void ShowSuggestions(IReadOnlyList<Suggestion> suggestions, CaretRect? caret)
+    /// <summary>
+    /// Renders one update from the controller.
+    ///
+    /// <para><b>A model update changes words, not the bar.</b> The chips are a fixed pool, one per slot, and
+    /// an update rewrites their text in place: no chips are created or destroyed, no layout is forced, the
+    /// window does not move unless its target position actually changed, and nothing animates. The lens —
+    /// the only prominent motion the bar has — moves solely when the update carries a selection, which only
+    /// the user pressing Tab can produce.</para>
+    /// </summary>
+    public void ShowSuggestions(SuggestionUpdate update)
     {
-        _caret = caret;
+        _lastUpdate = update;
+        _caret = update.Caret;
 
-        if (suggestions.Count == 0)
+        if (update.Suggestions.Count == 0)
         {
             HideBar();
             return;
         }
 
-        // Trimmed here rather than asked for upstream: how many fit is a question about this strip's width
-        // and font, which the prediction engine has no business knowing about.
-        var slots = EffectiveSlotCount();
-        if (suggestions.Count > slots)
-            suggestions = suggestions.Take(slots).ToList();
-
-        var sameWords = suggestions.Count == _currentSuggestions.Count;
-        if (sameWords)
-        {
-            for (var i = 0; i < suggestions.Count; i++)
-            {
-                if (!string.Equals(suggestions[i].Word, _currentSuggestions[i].Word, StringComparison.Ordinal))
-                {
-                    sameWords = false;
-                    break;
-                }
-            }
-        }
-
-        _currentSuggestions = suggestions;
+        FrameProbe.CountRender();
+        if (update.SelectedIndex < 0) FrameProbe.Record("typing", TimeSpan.FromSeconds(2));
         var reappearing = !_isRevealed;
+        var poolRebuilt = EnsureChipPool();
 
-        // Rebuilding the chips on every keystroke would restart the reveal animation and make the strip
-        // strobe while typing, so only touch them when the words actually changed.
-        if (!sameWords)
+        var suggestions = update.Suggestions.Count > Chips.Count
+            ? update.Suggestions.Take(Chips.Count).ToList()
+            : update.Suggestions;
+        _currentSuggestions = suggestions;
+
+        for (var i = 0; i < Chips.Count; i++)
         {
-            Chips.Clear();
-            foreach (var s in suggestions)
-                Chips.Add(CreateChip(s.Word, s.Source == SuggestionSource.Emoji));
+            var chip = Chips[i];
+            Suggestion? candidate = i < suggestions.Count ? suggestions[i] : null;
+
+            chip.Word = candidate?.Word ?? string.Empty;
+            chip.IsEmoji = candidate?.IsEmoji ?? false;
+            chip.IsPrimary = i == 0;
+            chip.IsArmed = i == 0 && update.FirstIsArmed;
         }
 
-        // A bar that has just reappeared must start with nothing highlighted, even when it happens to be
-        // showing the same words as last time. Carrying a stale selection over would mean the next Space
-        // silently replaces the word with a candidate the user never chose.
-        if (!sameWords || reappearing)
-            ClearSelection();
+        if (FindSlotPanel() is { } slots) slots.FilledCount = suggestions.Count;
 
         Show();
 
-        // Only force a synchronous layout pass when the content actually changed. Doing it on every
-        // keystroke made the window re-measure and move constantly, which is felt as stutter while typing.
-        if (!sameWords)
+        // Geometry only needs settling when it can actually have changed: the bar appearing, the slot pool
+        // being rebuilt, or the bar sizing itself to its words. In the fixed layout a word change cannot
+        // alter the window's size, so forcing a layout pass here would be work spent proving nothing moved.
+        if (reappearing || poolRebuilt || !_settings.FixedBarWidth)
         {
             UpdateLayout();
-
-            // Needs the pass above to have run, because it works from what the words actually measured to.
-            if (UpdateDynamicWidth()) UpdateLayout();
+            if (!_settings.FixedBarWidth && UpdateDynamicWidth()) UpdateLayout();
         }
 
+        ApplySelection(update.SelectedIndex);
         Reposition();
         AdaptToBackground(reappearing);
         Reveal();
@@ -202,7 +209,7 @@ public partial class SuggestionBarWindow : Window
     public void HideBar()
     {
         _currentSuggestions = Array.Empty<Suggestion>();
-        ClearSelection();
+        ClearSelection(fade: false);
 
         // A bar that has gone away has no width worth defending; the next one should open at the size its own
         // words ask for rather than inheriting the last sentence's.
@@ -217,67 +224,81 @@ public partial class SuggestionBarWindow : Window
         Dismiss();
     }
 
-    private SuggestionChipViewModel CreateChip(string word, bool isEmoji) => new()
+    private SuggestionChipViewModel CreateChip() => new()
     {
-        Word = word,
-        IsEmoji = isEmoji,
         Metrics = _metrics,
         HoverBrush = new SolidColorBrush(_brushes.HoverOverlay),
         Foreground = _restingTextBrush,
+        CollapseWhenEmpty = !_settings.FixedBarWidth,
     };
 
-    /// <summary>Drops the highlight and returns every chip to its resting appearance.</summary>
-    private void ClearSelection()
+    /// <summary>
+    /// Keeps exactly one chip per slot. Returns true when the pool had to be rebuilt, which only happens when
+    /// the slot count or the metrics change — never because of what is being typed.
+    /// </summary>
+    private bool EnsureChipPool()
     {
-        _selectedIndex = -1;
-        _lastCycleAt = DateTime.MinValue;
+        var wanted = EffectiveSlotCount();
+        if (Chips.Count == wanted) return false;
 
-        foreach (var chip in Chips)
-        {
-            chip.IsSelected = false;
-            chip.Foreground = _restingTextBrush;
-        }
+        ClearSelection(fade: false);
+        Chips.Clear();
+        for (var i = 0; i < wanted; i++) Chips.Add(CreateChip());
 
-        HidePill();
+        if (FindSlotPanel() is { } slots) slots.SlotCount = wanted;
+        return true;
     }
 
-    /// <summary>Moves the highlighted chip forward (Tab) or backward (Shift+Tab), wrapping around.</summary>
-    public void CycleSelection(bool forward)
+    /// <summary>Drops the highlight and returns every chip to its resting appearance.</summary>
+    private void ClearSelection(bool fade = true)
     {
-        if (Chips.Count == 0) return;
-
         if (_selectedIndex >= 0 && _selectedIndex < Chips.Count)
         {
             Chips[_selectedIndex].IsSelected = false;
             Chips[_selectedIndex].Foreground = _restingTextBrush;
         }
 
-        _selectedIndex = _selectedIndex < 0
-            ? (forward ? 0 : Chips.Count - 1)
-            : ((_selectedIndex + (forward ? 1 : -1)) % Chips.Count + Chips.Count) % Chips.Count;
+        _selectedIndex = -1;
+        _lastCycleAt = DateTime.MinValue;
+        HidePill(fade);
+    }
 
-        Chips[_selectedIndex].IsSelected = true;
-        Chips[_selectedIndex].Foreground = _selectedTextBrush;
+    /// <summary>
+    /// Puts the selection where the controller says it is. Passive updates (index -1) clear it; an active one
+    /// moves the lens, and consecutive Tabs inside the repeat threshold switch to a spring short enough to
+    /// keep up, so rapid Tab presses read as one continuous glide rather than a lens that lags behind.
+    /// </summary>
+    private void ApplySelection(int index)
+    {
+        if (index < 0 || index >= _currentSuggestions.Count || index >= Chips.Count)
+        {
+            if (_selectedIndex >= 0) ClearSelection();
+            return;
+        }
 
-        // Holding Tab auto-repeats at roughly 30/second. A spring tuned for one deliberate press never
-        // reaches its target between repeats, so the lens lags further behind on every tick and ends up
-        // looking stuck. Detect the scrub and switch to a spring short enough to keep up.
+        if (index == _selectedIndex) return;
+
+        var wasActive = _selectedIndex >= 0;
+        if (wasActive && _selectedIndex < Chips.Count)
+        {
+            Chips[_selectedIndex].IsSelected = false;
+            Chips[_selectedIndex].Foreground = _restingTextBrush;
+        }
+
+        _selectedIndex = index;
+        Chips[index].IsSelected = true;
+        Chips[index].Foreground = _selectedTextBrush;
+
         var now = DateTime.UtcNow;
-        var isRepeat = now - _lastCycleAt < MotionProfile.RepeatThreshold;
+        var isRepeat = wasActive && now - _lastCycleAt < MotionProfile.RepeatThreshold;
         _lastCycleAt = now;
 
         var motion = isRepeat ? _motion.ForRepeat() : _motion;
-        MovePillTo(_selectedIndex, motion);
+        MovePillTo(index, motion);
 
-        // Sample only while the lens is actually moving. Frames sampled after it settles are idle frames,
-        // whose intervals are irregular by design and would otherwise be miscounted as dropped frames.
+        // Sample only while the lens is actually moving; frames after it settles are idle frames.
         FrameProbe.Record(isRepeat ? "tab-repeat" : "tab-cycle", TimeSpan.FromSeconds(motion.LensSeconds));
     }
-
-    public Suggestion? GetSelectedSuggestion() =>
-        _selectedIndex >= 0 && _selectedIndex < _currentSuggestions.Count
-            ? _currentSuggestions[_selectedIndex]
-            : null;
 
     /// <summary>
     /// Rebuilds the material from the current settings and system accessibility state. Called at startup and
@@ -304,26 +325,12 @@ public partial class SuggestionBarWindow : Window
         ApplyPalette();
         ApplySlotLayout();
 
-        // Chip sizing lives on the view models, so re-create them to pick up new metrics.
-        if (Chips.Count > 0)
-        {
-            var previous = Chips.Select(c => (c.Word, c.IsEmoji)).ToList();
-            var selected = _selectedIndex;
-            Chips.Clear();
-            foreach (var (word, isEmoji) in previous)
-                Chips.Add(CreateChip(word, isEmoji));
+        // Chip sizing lives on the view models, so the pool is rebuilt to pick up new metrics and the last
+        // update rendered into it again.
+        Chips.Clear();
+        if (_lastUpdate.Suggestions.Count > 0 && IsVisible) ShowSuggestions(_lastUpdate);
 
-            _selectedIndex = -1;
-            HidePill();
-            if (selected >= 0 && selected < Chips.Count)
-            {
-                _selectedIndex = selected;
-                Chips[selected].IsSelected = true;
-                Chips[selected].Foreground = _selectedTextBrush;
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
-                    new Action(() => MovePillTo(selected)));
-            }
-        }
+        SlotCountChanged?.Invoke(this, EventArgs.Empty);
 
         UpdateLayout();
         Reposition();
@@ -479,6 +486,7 @@ public partial class SuggestionBarWindow : Window
         if (FindSlotPanel() is not { } slots) return;
 
         slots.UseSlots = _settings.FixedBarWidth;
+        slots.SlotCount = EffectiveSlotCount();
         slots.PreferredSlotWidth = PreferredSlotWidth();
         slots.DividerBrush = _brushes.Divider;
         slots.DividerThickness = Math.Max(1, _metrics.RimThickness);
@@ -568,7 +576,7 @@ public partial class SuggestionBarWindow : Window
         if (sender is not FrameworkElement { DataContext: SuggestionChipViewModel vm }) return;
 
         var index = Chips.IndexOf(vm);
-        if (index >= 0 && index < _currentSuggestions.Count)
+        if (vm.Word.Length > 0 && index >= 0 && index < _currentSuggestions.Count)
             SuggestionClicked?.Invoke(this, _currentSuggestions[index]);
     }
 
@@ -743,8 +751,19 @@ public partial class SuggestionBarWindow : Window
             { EasingFunction = Spring(motion.LensResponse * 1.1, motion.LensDamping, motion.LensSeconds) });
     }
 
-    private void HidePill()
+    /// <summary>
+    /// Takes the lens away. Leaving the active state fades it briefly rather than blinking it out, since that
+    /// follows the user's own action; anything structural hides it at once.
+    /// </summary>
+    private void HidePill(bool fade = false)
     {
+        if (fade && UseMotion && Lens.Opacity > 0.01)
+        {
+            Lens.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, new Duration(TimeSpan.FromSeconds(Math.Min(0.14, _motion.FadeInSeconds)))));
+            return;
+        }
+
         Lens.BeginAnimation(SelectionLens.LensXProperty, null);
         Lens.BeginAnimation(SelectionLens.LensWidthProperty, null);
         Lens.BeginAnimation(OpacityProperty, null);
@@ -780,8 +799,10 @@ public partial class SuggestionBarWindow : Window
 
         // Moving a top-level window is a compositor operation, not a cheap property set. Re-applying the
         // same position on every keystroke produced visible jitter, so only move when it actually changed.
-        if (Math.Abs(Left - left) > 0.5) Left = left;
-        if (Math.Abs(Top - top) > 0.5) Top = top;
+        var moved = false;
+        if (Math.Abs(Left - left) > 0.5) { Left = left; moved = true; }
+        if (Math.Abs(Top - top) > 0.5) { Top = top; moved = true; }
+        if (moved) FrameProbe.CountMove();
     }
 
     private (double Left, double Top) ComputeNearCaret(CaretRect caret, Rect workArea)

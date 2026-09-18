@@ -43,6 +43,12 @@ public class TextContextTests
 
         public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement) =>
             CommittedReplacements.Add((typedWord, boundaryChar, replacement));
+
+
+        public List<(string Existing, string Replacement)> TextReplacements { get; } = new();
+
+
+        public void ReplaceText(string existing, string replacement) => TextReplacements.Add((existing, replacement));
     }
 
     /// <summary>

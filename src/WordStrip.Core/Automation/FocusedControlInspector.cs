@@ -44,7 +44,24 @@ public static class FocusedControlInspector
             Caret: TryGetCaretScreenRect(info),
             Handle: info.hwndFocus,
             IsRichEdit: className.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase) ||
-                        className.StartsWith("RICHEDIT", StringComparison.Ordinal));
+                        className.StartsWith("RICHEDIT", StringComparison.Ordinal),
+            IsSingleLine: (style & ES_MULTILINE) == 0);
+    }
+
+    /// <summary>
+    /// Which window has keyboard focus, whatever its class — zero if it cannot be told. Used only to notice
+    /// that focus moved: a browser's text field is not an edit control, but it still has a focus window, and
+    /// that is all an identity check needs.
+    /// </summary>
+    public static nint GetFocusedWindowHandle()
+    {
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == 0) return 0;
+
+        var threadId = GetWindowThreadProcessId(foregroundWindow, out _);
+        var info = new GUITHREADINFO { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<GUITHREADINFO>() };
+
+        return GetGUIThreadInfo(threadId, ref info) ? info.hwndFocus : 0;
     }
 
     /// <summary>
