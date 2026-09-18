@@ -129,6 +129,8 @@ public sealed class CompositeTextContextProvider : ITextContextProvider
     public void NoteTextReplaced(string existing, string replacement) =>
         ForEachLiveProvider(p => p.NoteTextReplaced(existing, replacement));
 
+    public void InvalidateContext() => ForEachLiveProvider(p => p.InvalidateContext());
+
     private void ForEachLiveProvider(Action<ITextContextProvider> action)
     {
         foreach (var provider in _providers)

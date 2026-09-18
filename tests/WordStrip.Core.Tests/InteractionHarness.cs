@@ -13,9 +13,10 @@ namespace WordStrip.Core.Tests;
 /// typing and by the injector. The provider side answers from its own shadow, changed by typing and by the
 /// notes the controller sends — exactly the split a real provider has. Tests assert on <see cref="Text"/>.
 ///
-/// <para>The injector refuses to replace text that is not actually at the end of the field. That is the
-/// property the cycle depends on — WordStrip replaces exactly what it inserted, never a guess — so a test
-/// that would violate it throws rather than quietly producing plausible text.</para>
+/// <para>The injector refuses to replace text that is not actually at the end of the field, exactly as the
+/// real one does for an edit control it can read, and counts each refusal. The cycle depends on that
+/// property — WordStrip replaces exactly what it inserted, never a guess — so tests can assert both that a
+/// stale edit was refused and that an ordinary session never needed a refusal at all.</para>
 /// </summary>
 internal sealed class FakeDocument : ITextContextProvider, ITextInjector
 {
@@ -31,6 +32,8 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
     public bool IsAvailable => true;
 
     public List<(string Existing, string Replacement)> Replacements { get; } = new();
+
+    public int Refusals { get; private set; }
 
     public event EventHandler<string>? CurrentWordChanged;
     public event EventHandler<WordCommittedEventArgs>? WordCommitted;
@@ -84,30 +87,47 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
 
     // --- The injector ---------------------------------------------------------------------------------
 
-    public void ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace)
+    public bool ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace)
     {
-        RequireEnding(typedWord);
+        if (!Text.EndsWith(typedWord, StringComparison.Ordinal))
+        {
+            Refusals++;
+            return false;
+        }
+
         Text = Text[..^typedWord.Length] + CaseMatching.Apply(typedWord, replacement) + (appendTrailingSpace ? " " : "");
+        return true;
     }
 
-    public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
+    public bool ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
     {
-        RequireEnding(typedWord + boundaryChar);
+        if (!Text.EndsWith(typedWord + boundaryChar, StringComparison.Ordinal))
+        {
+            Refusals++;
+            return false;
+        }
+
         Text = Text[..^(typedWord.Length + 1)] + CaseMatching.Apply(typedWord, replacement) + boundaryChar;
+        return true;
     }
 
-    public void ReplaceText(string existing, string replacement)
-    {
-        RequireEnding(existing);
-        Replacements.Add((existing, replacement));
-        Text = Text[..^existing.Length] + replacement;
-    }
-
-    private void RequireEnding(string existing)
+    public bool ReplaceText(string existing, string replacement)
     {
         if (!Text.EndsWith(existing, StringComparison.Ordinal))
-            throw new InvalidOperationException($"Injector told to replace '{existing}' but the field ends '{Text}'.");
+        {
+            Refusals++;
+            return false;
+        }
+
+        Replacements.Add((existing, replacement));
+        Text = Text[..^existing.Length] + replacement;
+        return true;
     }
+
+    public void InvalidateContext() => _shadow = string.Empty;
+
+    /// <summary>The application changes its own text with no keystroke — what WM_SETTEXT does, invisibly to a hook.</summary>
+    public void ChangeInvisibly(string text) => Text = text;
 
     // --- The user -------------------------------------------------------------------------------------
 
@@ -198,6 +218,10 @@ internal sealed class ManualClock : TimeProvider
 /// <summary>
 /// The controller wired to a <see cref="FakeDocument"/>, plus the key routing the app performs: each key is
 /// offered to the controller first, and only reaches the field if the controller did not consume it.
+///
+/// <para>Text edits are queued and run after each key is handled, not inline. That is how the app works —
+/// the controller is called from inside the keyboard hook and every edit is posted to the message loop — and
+/// running them inline would test a different ordering than the one users get.</para>
 /// </summary>
 internal sealed class InteractionHarness : IDisposable
 {
@@ -215,6 +239,8 @@ internal sealed class InteractionHarness : IDisposable
     public SuggestionController Controller { get; }
     public List<SuggestionUpdate> Published { get; } = new();
 
+    private readonly Queue<Action> _messageLoop = new();
+
     /// <summary>Identity of the focused control. Change it to simulate focus moving elsewhere.</summary>
     public nint Focus { get; set; } = 1;
 
@@ -225,7 +251,7 @@ internal sealed class InteractionHarness : IDisposable
     {
         Controller = new SuggestionController(
             Doc, engine ?? InteractionTestEngine.Build(), Doc, Settings,
-            postToMessageLoop: null,
+            postToMessageLoop: _messageLoop.Enqueue,
             personalLearning: learning,
             timeProvider: Clock,
             focusIdentity: () => Focus,
@@ -252,7 +278,11 @@ internal sealed class InteractionHarness : IDisposable
     {
         if (CompletionPolicy.IsCommitBoundary(c))
         {
-            if (Controller.HandleBoundary(c)) return;
+            if (Controller.HandleBoundary(c))
+            {
+                Pump();
+                return;
+            }
         }
         else
         {
@@ -260,15 +290,21 @@ internal sealed class InteractionHarness : IDisposable
         }
 
         Doc.Receive(c);
+        Pump();
     }
 
     /// <summary>Returns whether WordStrip took the Tab. If not, it reaches the field.</summary>
     public bool Tab(bool shift = false)
     {
-        if (Controller.HandleTab(forward: !shift)) return true;
+        if (Controller.HandleTab(forward: !shift))
+        {
+            Pump();
+            return true;
+        }
 
         Doc.ReceiveRaw('\t');
         Doc.LoseContext();
+        Pump();
         return false;
     }
 
@@ -276,20 +312,35 @@ internal sealed class InteractionHarness : IDisposable
     {
         Controller.HandleOtherKey(isLineBreak: true);
         Doc.Receive('\n');
+        Pump();
     }
 
     public void Backspace()
     {
         if (!Controller.HandleBackspace()) Doc.ReceiveBackspace();
+        Pump();
     }
 
-    public bool Escape() => Controller.HandleEscape();
+    public bool Escape()
+    {
+        var consumed = Controller.HandleEscape();
+        Pump();
+        return consumed;
+    }
 
     /// <summary>A click in the field: the mouse hook dismisses first, then the typing buffer resets.</summary>
     public void Click()
     {
         Controller.Dismiss();
         Doc.LoseContext();
+        Pump();
+    }
+
+    /// <summary>A click on one of the bar's chips.</summary>
+    public void Choose(Suggestion suggestion)
+    {
+        Controller.AcceptSuggestion(suggestion);
+        Pump();
     }
 
     /// <summary>An arrow key: an ordinary key as far as the router is concerned, and a lost context.</summary>
@@ -297,9 +348,20 @@ internal sealed class InteractionHarness : IDisposable
     {
         Controller.HandleOtherKey(isLineBreak: false);
         Doc.LoseContext();
+        Pump();
     }
 
-    public void Wait(int milliseconds) => Clock.Advance(TimeSpan.FromMilliseconds(milliseconds));
+    public void Wait(int milliseconds)
+    {
+        Clock.Advance(TimeSpan.FromMilliseconds(milliseconds));
+        Pump();
+    }
+
+    /// <summary>Runs whatever the controller posted, as the message loop would once the hook returned.</summary>
+    public void Pump()
+    {
+        while (_messageLoop.Count > 0) _messageLoop.Dequeue()();
+    }
 
     public void Dispose() => Controller.Dispose();
 }

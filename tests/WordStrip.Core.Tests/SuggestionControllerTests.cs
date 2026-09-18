@@ -33,17 +33,15 @@ public class SuggestionControllerTests
         public List<(string Typed, string Replacement, bool TrailingSpace)> InProgressReplacements { get; } = new();
         public List<(string Typed, char Boundary, string Replacement)> CommittedReplacements { get; } = new();
 
-        public void ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace) =>
-            InProgressReplacements.Add((typedWord, replacement, appendTrailingSpace));
+        public bool ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace) { InProgressReplacements.Add((typedWord, replacement, appendTrailingSpace)); return true; }
 
-        public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement) =>
-            CommittedReplacements.Add((typedWord, boundaryChar, replacement));
+        public bool ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement) { CommittedReplacements.Add((typedWord, boundaryChar, replacement)); return true; }
 
 
         public List<(string Existing, string Replacement)> TextReplacements { get; } = new();
 
 
-        public void ReplaceText(string existing, string replacement) => TextReplacements.Add((existing, replacement));
+        public bool ReplaceText(string existing, string replacement) { TextReplacements.Add((existing, replacement)); return true; }
     }
 
     /// <summary>

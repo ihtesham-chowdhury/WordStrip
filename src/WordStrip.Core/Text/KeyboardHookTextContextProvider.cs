@@ -88,6 +88,8 @@ public sealed class KeyboardHookTextContextProvider : ITextContextProvider
     public void NoteTextReplaced(string existing, string replacement) =>
         _typingSession.NoteTextReplaced(existing, replacement);
 
+    public void InvalidateContext() => _typingSession.ResetBuffer();
+
     private void OnCurrentWordChanged(object? sender, string word) => CurrentWordChanged?.Invoke(this, word);
 
     private void OnWordCommitted(object? sender, WordCommittedEventArgs e) => WordCommitted?.Invoke(this, e);

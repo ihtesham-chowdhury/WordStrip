@@ -76,6 +76,76 @@ public class InteractionModelTests
     }
 
     [Fact]
+    public void A_typo_that_happens_to_begin_a_rare_word_is_not_completed_into_it()
+    {
+        using var h = new InteractionHarness();
+
+        // "tehran" is the only word "teh" begins — a confident completion by every other measure — but "the",
+        // one transposition away, is thousands of times commoner. Found in real typing.
+        h.Type("teh ");
+
+        Assert.Equal("teh ", h.Text);
+    }
+
+    [Fact]
+    public void A_completion_into_a_field_that_changed_invisibly_is_refused_and_the_key_still_arrives()
+    {
+        using var h = new InteractionHarness();
+
+        h.Type("looki");
+        h.Doc.ChangeInvisibly("xyz");
+        h.Type(" ");
+
+        Assert.Equal("xyz ", h.Text);
+        Assert.Equal(1, h.Doc.Refusals);
+    }
+
+    [Fact]
+    public void A_cycle_never_edits_a_field_that_changed_underneath_it()
+    {
+        using var h = new InteractionHarness();
+
+        h.Type("i am looking ");
+        h.Tab();
+        h.Doc.ChangeInvisibly(string.Empty);
+        h.Tab();
+
+        Assert.Equal(string.Empty, h.Text);
+        Assert.False(h.Last.IsActive);
+    }
+
+    [Fact]
+    public void A_word_wordstrip_inserted_is_never_autocorrected_when_the_user_moves_on()
+    {
+        var personal = new PersonalVocabularyStore();
+        personal.Add("Northfield Data Systms");  // "Systms" is one edit from nothing here, but stands in for "Halsted"
+        using var h = new InteractionHarness(InteractionTestEngine.Build(personal));
+        h.Settings.AutocorrectEnabled = true;
+
+        h.Type("northf");
+        h.Tab();
+        h.Wait(h.Settings.PredictionCycleWindowMs + 100);
+        h.Type(" ");
+
+        Assert.Equal("Northfield Data Systms ", h.Text);
+    }
+
+    [Fact]
+    public void Autocorrect_on_a_field_that_changed_invisibly_is_refused()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+
+        h.Type("i am looking ");
+        h.Tab();                              // leaves "for" as the word in progress
+        h.Wait(h.Settings.PredictionCycleWindowMs + 100);
+        h.Doc.ChangeInvisibly(string.Empty);  // the application clears its own field
+        h.Type("i ");                         // WordStrip believes "fori" was just finished
+
+        Assert.Equal("i ", h.Text);
+    }
+
+    [Fact]
     public void Enter_never_carries_a_completion()
     {
         using var h = new InteractionHarness();
@@ -481,6 +551,7 @@ public class InteractionModelTests
         h.Type(", hel.");
 
         Assert.True(h.Doc.ShadowMatchesText, $"field '{h.Text}'");
+        Assert.Equal(0, h.Doc.Refusals);
     }
 
     // --- Passive and active ---------------------------------------------------------------------------
@@ -530,7 +601,7 @@ public class InteractionModelTests
 
         h.Type("i am looking ");
         h.Tab();
-        h.Controller.AcceptSuggestion(h.Last.Suggestions[2]);
+        h.Choose(h.Last.Suggestions[2]);
 
         Assert.Equal("i am looking back ", h.Text);
     }
@@ -541,7 +612,7 @@ public class InteractionModelTests
         using var h = new InteractionHarness();
 
         h.Type("i am looking ");
-        h.Controller.AcceptSuggestion(h.Last.Suggestions[1]);
+        h.Choose(h.Last.Suggestions[1]);
 
         Assert.Equal("i am looking at ", h.Text);
     }

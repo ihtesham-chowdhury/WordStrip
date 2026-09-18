@@ -336,6 +336,32 @@ public sealed class PredictionEngine
     }
 
     /// <summary>
+    /// Frequency of the commonest word one edit away from <paramref name="typed"/> that it is <em>not</em> the
+    /// start of — the likeliest reading of it as a typo. Zero when there is none.
+    ///
+    /// <para>What separates "teh" from "looki". Both are one letter off a common word and both begin some
+    /// dictionary word, but "the" is thousands of times commoner than "tehran", while "look" is barely
+    /// commoner than "looking". Completion is only the right reading when the completion is at least in the
+    /// same league as the typo explanation.</para>
+    /// </summary>
+    public long GetBestRepairFrequency(string typed)
+    {
+        if (string.IsNullOrEmpty(typed)) return 0;
+
+        var word = typed.ToLowerInvariant();
+        long best = 0;
+
+        foreach (var match in _fuzzyIndex.Lookup(word, CandidatePoolSize))
+        {
+            if (match.EditDistance != 1) continue;
+            if (match.Word.StartsWith(word, StringComparison.Ordinal)) continue;
+            best = Math.Max(best, match.Frequency);
+        }
+
+        return best;
+    }
+
+    /// <summary>
     /// Best autocorrect candidate for a word that was just completed (space/punctuation typed).
     /// Returns null when the word is already correctly spelled, or no sufficiently confident
     /// correction exists — callers should not silently replace on a low-confidence guess.

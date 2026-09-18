@@ -39,33 +39,119 @@ public sealed class Win32TextInjector : ITextInjector
     /// </summary>
     public const int MaxCharactersPerBatch = 24;
 
-    public void ReplaceText(string existing, string replacement)
+    public bool ReplaceText(string existing, string replacement)
     {
         var keep = CaseMatching.CommonPrefixLength(existing, replacement);
-        if (keep == existing.Length && keep == replacement.Length) return;
+        if (keep == existing.Length && keep == replacement.Length) return true;
+
+        // Anything to delete means trusting that the field still ends with what WordStrip thinks it does.
+        // A keyboard hook cannot see text change without a keystroke — an application clearing its own input
+        // box, say — and deleting on a stale belief deletes the wrong characters. Where the field can be read,
+        // it is checked first.
+        if (existing.Length > 0 && IsRefused(existing)) return false;
 
         SendReplacement(backspaces: existing.Length - keep, text: replacement[keep..]);
+        return true;
     }
 
-    public void ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace)
+    private enum FieldEnding { Unknown, Matches, Differs }
+
+    /// <summary>
+    /// True when the field can be read and ends with none of <paramref name="acceptable"/> — the one case in
+    /// which editing it would delete characters that are not the ones WordStrip means.
+    /// </summary>
+    private static bool IsRefused(params string[] acceptable)
+    {
+        var verdict = ReadFieldEnding(acceptable, out var seen);
+        Suggestions.InteractionLog.Write($"verify [{string.Join("] or [", acceptable)}] -> {verdict} {seen}");
+        if (verdict != FieldEnding.Differs) return false;
+
+        InjectionLog.Record("refused: expected [" + string.Join("] or [", acceptable) + "] saw " + seen,
+            0, 0, 0, 0, chunks: 0, method: "verify");
+        return true;
+    }
+
+    /// <summary>
+    /// Whether the focused edit control's text before the caret ends with any of <paramref name="acceptable"/>.
+    ///
+    /// <para>Only standard Edit and RichEdit controls can be read, and only through messages the system
+    /// marshals across processes by value: WM_GETTEXT, and EM_GETSEL in its integer form. A control that is
+    /// not answering, too large to be worth copying, or beyond EM_GETSEL's 16-bit reach reads as Unknown,
+    /// and the caller's record is trusted as it always was. A selection reads as Differs: typing would
+    /// replace the selection, and so would this.</para>
+    ///
+    /// <para>RichEdit counts a line break as one character in its caret positions but may hand back CRLF
+    /// from WM_GETTEXT, so both forms are tried before concluding the text differs.</para>
+    /// </summary>
+    private static FieldEnding ReadFieldEnding(string[] acceptable, out string seen)
+    {
+        seen = string.Empty;
+        var focus = Automation.FocusedControlInspector.GetFocusedControlInfo();
+        if (!focus.IsStandardEditControl || focus.IsPasswordField || focus.Handle == 0) return FieldEnding.Unknown;
+
+        const uint TimeoutMs = 50;
+        var control = focus.Handle;
+
+        if (SendMessageTimeoutWide(control, WM_GETTEXTLENGTH, 0, 0, SMTO_ABORTIFHUNG, TimeoutMs, out var length) == 0)
+            return FieldEnding.Unknown;
+        if (length < 0 || length > 60_000) return FieldEnding.Unknown;
+
+        var buffer = new System.Text.StringBuilder((int)length + 2);
+        if (SendMessageTimeoutText(control, WM_GETTEXT, (nint)(length + 1), buffer, SMTO_ABORTIFHUNG, TimeoutMs, out _) == 0)
+            return FieldEnding.Unknown;
+
+        if (SendMessageTimeoutWide(control, EM_GETSEL, 0, 0, SMTO_ABORTIFHUNG, TimeoutMs, out var selection) == 0)
+            return FieldEnding.Unknown;
+
+        var start = (int)(selection & 0xFFFF);
+        var end = (int)((selection >> 16) & 0xFFFF);
+        if (start != end)
+        {
+            seen = $"selection {start}..{end}";
+            return FieldEnding.Differs;
+        }
+
+        var text = buffer.ToString();
+        seen = $"len={length} got={text.Length} sel={start}..{end} tail=[{(text.Length > 24 ? text[^24..] : text)}]";
+        foreach (var candidate in new[] { text, text.Replace("\r\n", "\r") })
+        {
+            if (end > candidate.Length) continue;
+            foreach (var expected in acceptable)
+            {
+                if (candidate.AsSpan(0, end).EndsWith(expected, StringComparison.Ordinal)) return FieldEnding.Matches;
+            }
+        }
+
+        return FieldEnding.Differs;
+    }
+
+    public bool ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace)
     {
         var final = CaseMatching.Apply(typedWord, replacement);
         var keep = CaseMatching.CommonPrefixLength(typedWord, final);
+
+        if (typedWord.Length > keep && IsRefused(typedWord)) return false;
 
         SendReplacement(
             backspaces: typedWord.Length - keep,
             text: final[keep..] + (appendTrailingSpace ? " " : string.Empty));
+        return true;
     }
 
-    public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
+    public bool ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement)
     {
         var final = CaseMatching.Apply(typedWord, replacement);
         var keep = CaseMatching.CommonPrefixLength(typedWord, final);
+
+        // The boundary key was not swallowed, so it may still be queued for the control when this runs — a
+        // sent read jumps ahead of queued input. Either ending is therefore the word the user just finished.
+        if (IsRefused(typedWord + boundaryChar, typedWord)) return false;
 
         // +1 for the boundary character the user already typed, which we re-append after the correction.
         SendReplacement(
             backspaces: typedWord.Length - keep + 1,
             text: final[keep..] + boundaryChar);
+        return true;
     }
 
     /// <summary>

@@ -411,17 +411,15 @@ public class CompositeTextContextTests
     {
         public List<string> Replacements { get; } = new();
 
-        public void ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace) =>
-            Replacements.Add(replacement);
+        public bool ReplaceInProgressWord(string typedWord, string replacement, bool appendTrailingSpace) { Replacements.Add(replacement); return true; }
 
-        public void ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement) =>
-            Replacements.Add(replacement);
+        public bool ReplaceCommittedWord(string typedWord, char boundaryChar, string replacement) { Replacements.Add(replacement); return true; }
 
 
         public List<(string Existing, string Replacement)> TextReplacements { get; } = new();
 
 
-        public void ReplaceText(string existing, string replacement) => TextReplacements.Add((existing, replacement));
+        public bool ReplaceText(string existing, string replacement) { TextReplacements.Add((existing, replacement)); return true; }
     }
 
     [Fact]

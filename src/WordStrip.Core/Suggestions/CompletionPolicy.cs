@@ -4,7 +4,18 @@ using WordStrip.Core.Prediction;
 namespace WordStrip.Core.Suggestions;
 
 /// <summary>The thresholds <see cref="CompletionPolicy"/> applies. Kept as a value so tests can state them outright.</summary>
-public readonly record struct CompletionThresholds(int MinPrefixLength, double MinConfidence, double MinScoreMargin);
+/// <param name="TypoRatio">
+/// How many times commoner a one-edit repair of the typed letters may be than the completion before the
+/// letters are read as a typo instead. See <see cref="CompletionPolicy"/>, condition 5.
+/// </param>
+public readonly record struct CompletionThresholds(
+    int MinPrefixLength,
+    double MinConfidence,
+    double MinScoreMargin,
+    double TypoRatio = CompletionThresholds.DefaultTypoRatio)
+{
+    public const double DefaultTypoRatio = 20;
+}
 
 /// <summary>
 /// Decides whether a boundary key — Space, or closing punctuation — should finish the partly typed word with
@@ -22,6 +33,11 @@ public readonly record struct CompletionThresholds(int MinPrefixLength, double M
 /// aside. A fuzzy repair or an emoji is never committed by Space.</item>
 /// <item>It holds at least <see cref="CompletionThresholds.MinConfidence"/> of the candidates' combined
 /// likelihood, and leads the runner-up by at least <see cref="CompletionThresholds.MinScoreMargin"/>.</item>
+/// <item>The letters are not more plausibly a typo. "teh" begins "tehran", and "tehran" may be the only word
+/// that it begins — a perfectly confident completion — but one transposition away is "the", thousands of
+/// times commoner. When a one-edit repair outweighs the completion by more than
+/// <see cref="CompletionThresholds.TypoRatio"/>, the word is left for autocorrect to judge when it is
+/// finished. Found in real typing: without this, "teh " became "tehran ".</item>
 /// </list>
 ///
 /// <para>Scores are the ranker's, which are log-scaled (about log₁₀ of frequency, plus context), so
@@ -40,11 +56,16 @@ public static class CompletionPolicy
     public static bool IsCommitBoundary(char c) => c is ' ' or '.' or ',' or '!' or '?' or ':' or ';' or ')' or ']' or '}';
 
     /// <summary>The completion to commit, or null when the boundary should be typed as itself.</summary>
+    /// <param name="repairFrequency">
+    /// Frequency of the likeliest one-edit repair of <paramref name="typed"/> that it does not begin; see
+    /// <c>PredictionEngine.GetBestRepairFrequency</c>. Omitted, the typo check is skipped.
+    /// </param>
     public static Suggestion? SelectForBoundary(
         string typed,
         IReadOnlyList<Suggestion> displayed,
         Func<string, bool> isKnownWord,
-        CompletionThresholds thresholds)
+        CompletionThresholds thresholds,
+        Func<string, long>? repairFrequency = null)
     {
         if (string.IsNullOrEmpty(typed) || typed.Length < thresholds.MinPrefixLength) return null;
         if (!typed.All(KeyTranslator.IsWordCharacter)) return null;
@@ -57,6 +78,14 @@ public static class CompletionPolicy
         var confidence = Confidence(displayed, out var margin);
         if (confidence < thresholds.MinConfidence) return null;
         if (margin < thresholds.MinScoreMargin) return null;
+
+        // A word the dictionary has no frequency for is one the user added themselves; the typo reading has
+        // nothing to be weighed against, and the user's own word wins.
+        if (repairFrequency is not null && top.Frequency > 0
+            && repairFrequency(typed) > top.Frequency * thresholds.TypoRatio)
+        {
+            return null;
+        }
 
         return top;
     }

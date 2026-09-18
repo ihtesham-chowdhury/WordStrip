@@ -237,11 +237,13 @@ public sealed class SuggestionController : IDisposable
         if (!context.IsSuggestible || context.HasSelection) return false;
 
         var typed = context.CurrentWord;
+        InteractionLog.Write($"boundary '{boundary}' typed='{typed}' displayFor='{_displayFor}' idle={_displayIsIdle} finished='{_finishedWord}' source={context.Source}");
         if (_displayIsIdle || !string.Equals(_displayFor, typed, StringComparison.Ordinal)) return false;
         if (string.Equals(typed, _noAutoCompleteFor, StringComparison.Ordinal)) return false;
         if (!IsKeySynchronous(typed)) return false;
 
-        if (CompletionPolicy.SelectForBoundary(typed, _display, _predictionEngine.IsCorrectlySpelled, Thresholds)
+        if (CompletionPolicy.SelectForBoundary(
+                typed, _display, _predictionEngine.IsCorrectlySpelled, Thresholds, _predictionEngine.GetBestRepairFrequency)
             is not { } pick)
         {
             return false;
@@ -250,7 +252,8 @@ public sealed class SuggestionController : IDisposable
         var word = CaseMatching.Apply(typed, pick.Word);
         var inserted = word + boundary;
 
-        Replace(typed, inserted);
+        // If the field turns out not to hold what we think, the user's own key still has to arrive.
+        Replace(typed, inserted, onRefused: () => _textInjector.ReplaceText(string.Empty, boundary.ToString()));
         _undo = new Undo(inserted, typed, _focusIdentity());
 
         // The key never reaches TypingSession, so the commit it would have announced — and the learning that
@@ -291,6 +294,7 @@ public sealed class SuggestionController : IDisposable
         if (context.IsSingleLine) return false;
 
         var typed = context.CurrentWord;
+        InteractionLog.Write($"tab typed='{typed}' displayFor='{_displayFor}' idle={_displayIsIdle} lineStart={_atLineStart} source={context.Source}");
         if (_atLineStart && typed.Length == 0) return false;
         if (!string.Equals(_displayFor, typed, StringComparison.Ordinal)) return false;
         if (!IsKeySynchronous(typed)) return false;
@@ -420,7 +424,10 @@ public sealed class SuggestionController : IDisposable
 
         PublishIdle();
 
-        _postToMessageLoop(() => _textInjector.ReplaceInProgressWord(typed, suggestion.Word, appendTrailingSpace: true));
+        _postToMessageLoop(() =>
+        {
+            if (!_textInjector.ReplaceInProgressWord(typed, suggestion.Word, appendTrailingSpace: true)) Resynchronise();
+        });
     }
 
     /// <summary>
@@ -474,6 +481,7 @@ public sealed class SuggestionController : IDisposable
     {
         _cycle = cycle;
         _finishedWord = LastWordOf(cycle.Inserted);
+        InteractionLog.Write($"cycle index={cycle.Index} inserted='{cycle.Inserted}' finished='{_finishedWord}'");
         _dismissed = false;
         _atLineStart = false;
 
@@ -529,6 +537,7 @@ public sealed class SuggestionController : IDisposable
 
     private void OnCurrentWordChanged(object? sender, string word)
     {
+        InteractionLog.Write($"word '{word}' finished='{_finishedWord}' cycle={_cycle is not null}");
         // A text service confirming a word WordStrip itself just inserted is not the user typing.
         if (_cycle is not null && string.Equals(word, _finishedWord, StringComparison.Ordinal)) return;
 
@@ -587,7 +596,13 @@ public sealed class SuggestionController : IDisposable
 
         var wordOnScreen = e.Word;
 
-        if (_settings.AutocorrectEnabled && _predictionEngine.GetAutocorrection(e.Word) is { } correction)
+        // A word WordStrip itself inserted is never autocorrected: it came from the dictionary or the user's
+        // own list, and "correcting" it is how "Halsted", the last word of a saved address, became "Halted"
+        // when a Space followed the insertion.
+        var insertedByUs = string.Equals(e.Word, _finishedWord, StringComparison.Ordinal);
+        InteractionLog.Write($"committed '{e.Word}' boundary='{e.BoundaryChar}' finished='{_finishedWord}' ours={insertedByUs}");
+
+        if (!insertedByUs && _settings.AutocorrectEnabled && _predictionEngine.GetAutocorrection(e.Word) is { } correction)
         {
             // The context has to follow the correction, not the typo.
             _context.NoteWordCorrected(correction.Word);
@@ -597,7 +612,10 @@ public sealed class SuggestionController : IDisposable
             // from inside the hook callback races that keystroke and garbles the result.
             var typed = e.Word;
             var boundary = e.BoundaryChar;
-            _postToMessageLoop(() => _textInjector.ReplaceCommittedWord(typed, boundary, correction.Word));
+            _postToMessageLoop(() =>
+            {
+                if (!_textInjector.ReplaceCommittedWord(typed, boundary, correction.Word)) Resynchronise();
+            });
         }
 
         // Learn what ended up on screen, not what was typed — otherwise every typo the app just fixed would
@@ -607,6 +625,7 @@ public sealed class SuggestionController : IDisposable
 
     private void OnContextLost(object? sender, EventArgs e)
     {
+        InteractionLog.Write($"context lost (finished was '{_finishedWord}')");
         EndCycle(republish: false);
         _undo = null;
         _finishedWord = null;
@@ -695,7 +714,8 @@ public sealed class SuggestionController : IDisposable
         && !IsPaused
         && !_dismissed
         && !string.Equals(typed, _noAutoCompleteFor, StringComparison.Ordinal)
-        && CompletionPolicy.SelectForBoundary(typed, list, _predictionEngine.IsCorrectlySpelled, Thresholds) is not null;
+        && CompletionPolicy.SelectForBoundary(
+            typed, list, _predictionEngine.IsCorrectlySpelled, Thresholds, _predictionEngine.GetBestRepairFrequency) is not null;
 
     private void Publish(SuggestionUpdate update)
     {
@@ -740,10 +760,28 @@ public sealed class SuggestionController : IDisposable
     /// returned. The order matters: the next keystroke may be processed before the injection runs, and it has
     /// to be judged against the text as it is about to be.
     /// </summary>
-    private void Replace(string existing, string replacement)
+    private void Replace(string existing, string replacement, Action? onRefused = null)
     {
         _context.NoteTextReplaced(existing, replacement);
-        _postToMessageLoop(() => _textInjector.ReplaceText(existing, replacement));
+        _postToMessageLoop(() =>
+        {
+            if (_textInjector.ReplaceText(existing, replacement)) return;
+
+            // The field did not contain what WordStrip believed — changed without a keystroke, or the caret
+            // is elsewhere. Nothing was edited. What we hold about it is now known to be wrong, so it goes.
+            Resynchronise();
+            onRefused?.Invoke();
+        });
+    }
+
+    private void Resynchronise()
+    {
+        InteractionLog.Write("resynchronise: an edit was refused");
+        EndCycle(republish: false);
+        _undo = null;
+        _finishedWord = null;
+        _context.InvalidateContext();
+        PublishIdle();
     }
 
     private bool IsSameWordEvolving(string word) =>

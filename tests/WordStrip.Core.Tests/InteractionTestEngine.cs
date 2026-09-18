@@ -35,6 +35,7 @@ public static class InteractionTestEngine
         ("looks",        50_000_000L),
         ("hello",        32_000_000L),
         ("candle",        5_000_000L),
+        ("tehran",        2_000_000L),
     };
 
     private const string Bigrams = """

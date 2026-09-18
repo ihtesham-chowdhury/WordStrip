@@ -10,10 +10,15 @@
 
     Checks:
       1. Typing produces the typed text, and autocorrect fixes an obvious misspelling.
-      2. The bar STAYS VISIBLE after a word is committed — the persistent-bar feature itself.
-      3. Tab reaches the bar with nothing typed, and Space inserts a next-word prediction.
-      4. Tab cycles and Space accepts while a word IS in progress.
-      5. Esc puts the bar away.
+      2. The bar STAYS VISIBLE after a word is committed - the persistent-bar feature itself.
+      3. One Tab between words inserts a prediction; Space after it is an ordinary space.
+      4. Tab completes a word in progress.
+      5. Multi-word personal entries insert whole.
+      6. Space and punctuation finish a confident completion ("looki" -> "looking").
+      7. Tab after a finished word predicts; Tab again replaces that prediction with the next.
+      8. Typing after a prediction ends the cycle and is never rewritten.
+      9. Esc puts the bar away, and Tab then reaches the application.
+     10. A field changed without a keystroke is never edited on a stale belief about its contents.
 
 .NOTES
     Keep non-ASCII out of string literals in this file. It is saved as UTF-8, and Windows PowerShell reads a
@@ -213,6 +218,19 @@ function Send([IntPtr] $editHwnd, [string] $keys, [int] $settleMs = 700, [int] $
     Start-Sleep -Milliseconds $settleMs
 }
 
+<#
+    Empties the field and presses End, the way a user starting over would move the caret.
+
+    WM_SETTEXT, which is how the harness clears the field, is invisible to a keyboard hook: WordStrip's word
+    buffer would otherwise still hold the tail of the previous check. That is a real hazard and check 10
+    exercises it deliberately; everywhere else it would only make each check depend on the one before.
+#>
+function Clear-Field([IntPtr] $editHwnd) {
+    [W]::ClearText($editHwnd)
+    Start-Sleep -Milliseconds 200
+    Send $editHwnd '{END}' 300
+}
+
 Write-Host "`nWordStrip persistent-bar regression" -ForegroundColor Cyan
 Write-Host "Executable: $ExePath"
 Write-Host "Target control: $ControlClass, $PerKeyMs ms between keys"
@@ -234,13 +252,16 @@ Start-Sleep -Milliseconds 500
     typed "ale" is zero and backspaces are unavoidable, and multi-word, so a truncation is obvious.
 #>
 $personalWord = 'Alexandra Fairbourne Reed'
-$personalPrefix = 'ale'
+# Not "ale" or "alex": both are dictionary words, so Tab takes them as finished and predicts the next word.
+# A prefix that is not a word is what a user reaching for a saved entry types. Still lower-case against the
+# entry's capital A, so the shared prefix is zero and the backspaces this check exists for still happen.
+$personalPrefix = 'alexandraf'
 
 # A deliberately long entry, taken from a real report. Length is the variable that matters: every character
 # becomes two SendInput events, so a 51-character address is a 102-event batch against a 24-character name's
 # 48. Testing only the short one is what let a length-dependent failure through.
 $longWord = 'Flat 12, 46 Elmwood Crescent, Northfield, Halsted'
-$longPrefix = 'fla'
+$longPrefix = 'flate'
 
 $dataDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("wordstrip-regression-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null
@@ -340,13 +361,13 @@ try {
     #
     # This check previously asserted the opposite — that Tab fell through to the app between words — back
     # when the idle bar deliberately claimed no keys. That was reversed after real use.
-    Write-Host "`n3. Tab cycles next-word predictions and Space inserts one"
-    [W]::ClearText($edit)
+    Write-Host "`n3. One Tab inserts a next-word prediction"
+    Clear-Field $edit
     Start-Sleep -Milliseconds 300
     Send $edit 'how are '
     $beforePrediction = [W]::TextOf($edit)
-    Send $edit '{TAB}'          # highlight the first prediction
-    Send $edit ' '              # insert it
+    Send $edit '{TAB}' 1200     # inserts the first prediction outright, then lets the cycle window close
+    Send $edit ' '              # an ordinary space after a word WordStrip inserted
     $afterPrediction = [W]::TextOf($edit)
 
     Check 'Tab reaches the bar with nothing typed' ($afterPrediction -ne $beforePrediction) `
@@ -355,13 +376,13 @@ try {
         "got '$afterPrediction'"
 
     # --- 4. Tab cycles and Space accepts while completing ---------------------------------------------
-    Write-Host "`n4. Tab cycles / Space accepts a completion"
-    [W]::ClearText($edit)
+    Write-Host "`n4. Tab completes a word in progress"
+    Clear-Field $edit
     Start-Sleep -Milliseconds 300
     Send $edit 'wor'
     $beforeAccept = [W]::TextOf($edit)
-    Send $edit '{TAB}'          # highlight the first candidate
-    Send $edit ' '              # accept it
+    Send $edit '{TAB}' 1200     # completes it to the first candidate
+    Send $edit ' '              # "wor" is too ambiguous for Space to have completed it; this is a plain space
     $afterAccept = [W]::TextOf($edit)
     Check 'accepting a completion replaced the partial word' `
         ($afterAccept -ne $beforeAccept -and $afterAccept -notmatch 'wor$') "before='$beforeAccept' after='$afterAccept'"
@@ -382,10 +403,10 @@ try {
         #
         # Nobody types the next word one millisecond after accepting a suggestion. The harness did, and was
         # measuring its own impatience.
-        [W]::ClearText($edit)
+        Clear-Field $edit
         Start-Sleep -Milliseconds 900
         Send $edit $personalPrefix
-        Send $edit '{TAB}'
+        Send $edit '{TAB}' 1200
         Send $edit ' ' 1400
         $inserted = [W]::TextOf($edit)
 
@@ -402,10 +423,10 @@ try {
         #
         # Nobody types the next word one millisecond after accepting a suggestion. The harness did, and was
         # measuring its own impatience.
-        [W]::ClearText($edit)
+        Clear-Field $edit
         Start-Sleep -Milliseconds 900
         Send $edit $longPrefix
-        Send $edit '{TAB}'
+        Send $edit '{TAB}' 1200
         Send $edit ' ' 1800
         $insertedLong = [W]::TextOf($edit)
 
@@ -413,10 +434,95 @@ try {
             "expected '$longWord', got '$($insertedLong.Trim())'"
     }
 
-    # --- 6. Esc dismisses -----------------------------------------------------------------------------
-    Write-Host "`n6. Esc dismisses the bar"
+    # --- 6. Space and punctuation finish a confident completion ------------------------------------------
+    # No Tab, no highlight: the word is finished the way typing finishes a word anyway. "looki" has one
+    # overwhelming completion, which is exactly the case the policy exists to act on.
+    Write-Host "`n6. Space and punctuation finish a confident completion"
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'i am looki ' 1000
+    $spaced = [W]::TextOf($edit)
+    Check '"looki" + Space becomes "looking "' ($spaced -eq 'i am looking ') "got '$spaced'"
+
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'i am looki,' 1000
+    $punctuated = [W]::TextOf($edit)
+    Check '"looki" + comma becomes "looking,"' ($punctuated -eq 'i am looking,') "got '$punctuated'"
+
+    # A finished word is never extended. "work" completes to "working" in the dictionary; Space must not.
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'i work ' 1000
+    $plain = [W]::TextOf($edit)
+    Check 'a complete word + Space is left alone' ($plain -eq 'i work ') "got '$plain'"
+
+    # --- 7. Tab predicts, Tab again replaces --------------------------------------------------------------
+    # The second Tab has to land inside the cycle window, so the settle after the first one is short.
+    Write-Host "`n7. Tab after a finished word predicts; Tab again replaces it"
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'i am looking'
+    Send $edit '{TAB}' 250
+    $firstPrediction = [W]::TextOf($edit)
+    Send $edit '{TAB}' 900
+    $secondPrediction = [W]::TextOf($edit)
+
+    Check 'one Tab inserts a space and a prediction' ($firstPrediction -match '^i am looking [^ ]+$') "got '$firstPrediction'"
+    # The second candidate may be a phrase ("to the"), so this checks what matters: the first prediction was
+    # replaced, not appended to.
+    Check 'a second Tab replaces that prediction rather than adding another' `
+        ($secondPrediction.StartsWith('i am looking ') -and ($secondPrediction -ne $firstPrediction) -and `
+         -not $secondPrediction.StartsWith($firstPrediction + ' ')) `
+        "first '$firstPrediction', second '$secondPrediction'"
+
+    # --- 8. Typing after a prediction is never rewritten ---------------------------------------------------
+    Write-Host "`n8. Typing after a prediction ends the cycle"
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'i am looking'
+    Send $edit '{TAB}' 250
+    $predicted = [W]::TextOf($edit)
+    # "ward" rather than a stray letter: it turns the prediction into another real word ("for" becomes
+    # "forward"), so the Tab that follows has a finished word to predict from and nothing to correct.
+    Send $edit 'ward' 1400
+    $afterTyping = [W]::TextOf($edit)
+    Check 'the typed letters follow the prediction untouched' ($afterTyping -eq ($predicted + 'ward')) `
+        "predicted '$predicted', then '$afterTyping'"
+
+    Send $edit '{TAB}' 900
+    $afterLateTab = [W]::TextOf($edit)
+    Check 'a later Tab does not reach back into the earlier prediction' `
+        ($afterLateTab.StartsWith($predicted + 'ward')) "got '$afterLateTab'"
+
+    # --- 10. A field changed without a keystroke is never edited blind ---------------------------------------
+    # A Tab insertion leaves WordStrip's buffer holding a word with no space after it. Clearing the field with
+    # WM_SETTEXT does not tell a keyboard hook anything, so the buffer still holds that word; typing "i" makes
+    # it think "<word>i" is in progress. Space must not then "complete" that phantom word into the real "i" -
+    # which it did, writing "ir am ..." before the injector checked the field first.
+    Write-Host "`n10. A field changed without a keystroke is never edited blind"
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 600
+    Send $edit 'i am looking'
+    Send $edit '{TAB}' 1200
+    [W]::ClearText($edit)
+    Start-Sleep -Milliseconds 400
+    Send $edit 'i ' 1000
+    $afterInvisible = [W]::TextOf($edit)
+    Check 'typing into a field cleared behind WordStrip''s back is left as typed' ($afterInvisible -eq 'i ') `
+        "got '$afterInvisible'"
+
+    # --- 9. Esc dismisses, and Tab goes back to the application --------------------------------------------
+    Write-Host "`n9. Esc dismisses the bar"
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'how are ' 900
     Send $edit '{ESC}' 1200
     Check 'bar is hidden after Esc' (-not [W]::HasVisibleWpfWindow($app.Id))
+
+    Send $edit '{TAB}' 600
+    $tabbed = [W]::TextOf($edit)
+    Check 'after Esc, Tab reaches the application' ($tabbed -eq "how are `t") "got '$($tabbed -replace "`t", '\t')'"
 
     Write-Host "`nFinal contents: '$([W]::TextOf($edit) -replace "`t", '\t')'"
 }

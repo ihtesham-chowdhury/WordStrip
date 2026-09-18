@@ -56,6 +56,8 @@ internal static class NativeMethods
     /// selection messages, which pass a pointer only valid in the caller's own address space.</para>
     /// </summary>
     public const int EM_GETSEL = 0x00B0;
+    public const int WM_GETTEXT = 0x000D;
+    public const int WM_GETTEXTLENGTH = 0x000E;
     public const int EM_SETSEL = 0x00B1;
 
     /// <summary>Give up rather than wait on a target that has stopped responding.</summary>
@@ -256,6 +258,20 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern nint SendMessageTimeout(
         nint hWnd, uint msg, nint wParam, nint lParam, uint flags, uint timeoutMs, out nint result);
+
+    /// <summary>
+    /// The wide entry point, for reading a Unicode control. The unqualified import above binds the ANSI one,
+    /// and Windows thunks EM_GETSEL for ANSI callers: the selection end came back as zero, which read as a
+    /// caret at the start of the field and refused every verified edit.
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
+    public static extern nint SendMessageTimeoutWide(
+        nint hWnd, uint msg, nint wParam, nint lParam, uint flags, uint timeoutMs, out nint result);
+
+    /// <summary>For WM_GETTEXT, which the system marshals across process boundaries into this buffer.</summary>
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "SendMessageTimeoutW")]
+    public static extern nint SendMessageTimeoutText(
+        nint hWnd, uint msg, nint wParam, System.Text.StringBuilder lParam, uint flags, uint timeoutMs, out nint result);
 
     [DllImport("user32.dll")]
     public static extern int ToUnicodeEx(

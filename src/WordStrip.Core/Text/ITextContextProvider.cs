@@ -71,4 +71,12 @@ public interface ITextContextProvider : IDisposable
     /// provider overrides it.</para>
     /// </summary>
     void NoteTextReplaced(string existing, string replacement) { }
+
+    /// <summary>
+    /// Tells the provider that what it believes precedes the caret has been shown to be wrong — an edit
+    /// WordStrip expected to make was refused because the field did not contain what it should have. The
+    /// provider drops what it holds rather than keep predicting from it. A provider that re-reads the
+    /// document anyway can ignore this, which is the default.
+    /// </summary>
+    void InvalidateContext() { }
 }
