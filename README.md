@@ -35,7 +35,7 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.13.1. Verified two ways:
+Working preview, 0.13.2. Verified two ways:
 
 - **500+ unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
   personal vocabulary and learning, text injection, the typing-history rules, and the interaction model end
@@ -111,7 +111,7 @@ key that is already under your fingers.
 | `Space` | Finishes the word with the first suggestion and types the space: `I am looking ` — **only when WordStrip is sure** (see below). Otherwise it's just a space. |
 | `,` `.` `!` `?` `:` `;` `)` `]` `}` | Same rule, keeping your punctuation: `I am looking,` |
 | `Backspace` | An ordinary delete, always. (`Ctrl+Backspace` removes a whole word, as in any editor.) |
-| `Tab` | Takes the first suggestion, whatever it is. |
+| `Tab` | Takes the first suggestion, whatever it is. `Tab` again within about a second moves to the second, then the third — even when what you typed is already a word: `his` → Tab Tab → `history`. |
 | `Enter` | Never completes anything — Enter sends messages and submits forms. |
 
 **Between words** — `I am looking|` or `I am looking |`:

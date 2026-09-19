@@ -302,8 +302,19 @@ public sealed class SuggestionController : IDisposable
                 return true;
             }
 
-            // Already a whole word, and the most likely one: Tab takes it as finished and moves on to the
-            // next word, which is what a completion that adds nothing would otherwise waste the key on.
+            // Already the first suggestion. If the strip offers anything else, Tab still means "slot one" and
+            // opens the cycle on it, so a quick second Tab reaches slot two: typing "his" with "history"
+            // showing, Tab Tab gives "history". This used to jump straight to predicting the next word, which
+            // made the second Tab cycle predictions instead - "history" was unreachable, and whether Tab Tab
+            // glided along the strip depended on whether what you had typed happened to be a word.
+            if (candidates.Count > 1)
+            {
+                StartCycle(candidates, typed, casingSource: typed, isIdle: false);
+                return true;
+            }
+
+            // Nothing else on the strip: taking the word as finished and predicting the next is the only
+            // useful thing Tab can do.
             var next = WordsOnly(PredictAfter(typed, context));
             if (next.Count == 0) return false;
 

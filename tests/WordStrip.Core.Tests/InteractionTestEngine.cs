@@ -43,6 +43,8 @@ public static class InteractionTestEngine
         ("well",        900_000_000L),
         ("were",        900_000_000L),
         ("ill",          50_000_000L),
+        ("his",       3_000_000_000L),
+        ("history",     150_000_000L),
     };
 
     private const string Bigrams = """

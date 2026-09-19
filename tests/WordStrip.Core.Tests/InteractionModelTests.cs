@@ -434,6 +434,41 @@ public class InteractionModelTests
     }
 
     [Fact]
+    public void Tab_tab_on_a_whole_word_glides_to_the_second_suggestion()
+    {
+        using var h = new InteractionHarness();
+
+        h.Type("his");
+        Assert.Equal(new[] { "his", "history" }, h.LastWords.Take(2));
+
+        Assert.True(h.Tab());
+        Assert.Equal("his", h.Text);            // slot one is what was typed: nothing to change
+        Assert.Equal(0, h.Last.SelectedIndex);
+
+        h.Wait(300);
+        Assert.True(h.Tab());
+        Assert.Equal("history", h.Text);
+
+        h.Wait(300);
+        h.Tab(shift: true);
+        Assert.Equal("his", h.Text);
+    }
+
+    [Fact]
+    public void Tab_on_a_whole_word_then_a_pause_then_tab_predicts_the_next_word()
+    {
+        using var h = new InteractionHarness();
+
+        h.Type("his");
+        h.Tab();
+        h.Wait(h.Settings.PredictionCycleWindowMs + 100);
+        h.Tab();
+
+        Assert.StartsWith("his ", h.Text);
+        Assert.True(h.Text.Length > "his ".Length);
+    }
+
+    [Fact]
     public void Tab_on_a_part_typed_word_completes_it_without_a_space()
     {
         using var h = new InteractionHarness();

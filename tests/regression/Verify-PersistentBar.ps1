@@ -15,7 +15,8 @@
       4. Tab completes a word in progress.
       5. Multi-word personal entries insert whole.
       6. Space and punctuation finish a confident completion ("looki" -> "looking").
-      7. Tab after a finished word predicts; Tab again replaces that prediction with the next.
+      7. Tab between words predicts; Tab again replaces that prediction with the next. Tab Tab on a
+         whole word ("his") reaches the strip's second suggestion.
       8. Typing after a prediction ends the cycle and is never rewritten.
       9. Esc puts the bar away, and Tab then reaches the application.
      10. A field changed without a keystroke is never edited on a stale belief about its contents.
@@ -477,16 +478,16 @@ try {
 
     # --- 7. Tab predicts, Tab again replaces --------------------------------------------------------------
     # The second Tab has to land inside the cycle window, so the settle after the first one is short.
-    Write-Host "`n7. Tab after a finished word predicts; Tab again replaces it"
+    Write-Host "`n7. Tab between words predicts; Tab again replaces it"
     Clear-Field $edit
     Start-Sleep -Milliseconds 900
-    Send $edit 'i am looking'
+    Send $edit 'i am looking '
     Send $edit '{TAB}' 250
     $firstPrediction = [W]::TextOf($edit)
     Send $edit '{TAB}' 900
     $secondPrediction = [W]::TextOf($edit)
 
-    Check 'one Tab inserts a space and a prediction' ($firstPrediction -match '^i am looking [^ ]+$') "got '$firstPrediction'"
+    Check 'one Tab inserts a prediction' ($firstPrediction -match '^i am looking [^ ]+$') "got '$firstPrediction'"
     # The second candidate may be a phrase ("to the"), so this checks what matters: the first prediction was
     # replaced, not appended to.
     Check 'a second Tab replaces that prediction rather than adding another' `
@@ -495,10 +496,24 @@ try {
         "first '$firstPrediction', second '$secondPrediction'"
 
     # --- 8. Typing after a prediction is never rewritten ---------------------------------------------------
+    # --- 7b. Tab Tab on a whole word glides along the strip ---------------------------------------------------
+    # Typed "his" with "history" beside it: slot one is what was typed, so the first Tab changes nothing and
+    # the second must reach slot two. It used to predict the next word instead, leaving slot two unreachable.
+    Write-Host "`n7b. Tab Tab on a whole word reaches the second suggestion"
+    Clear-Field $edit
+    Start-Sleep -Milliseconds 900
+    Send $edit 'his'
+    Send $edit '{TAB}' 250
+    $afterOne = [W]::TextOf($edit)
+    Send $edit '{TAB}' 900
+    $afterTwo = [W]::TextOf($edit)
+    Check 'one Tab on a whole word leaves it as typed' ($afterOne -ceq 'his') "got '$afterOne'"
+    Check 'a second Tab swaps it for the next suggestion' ($afterTwo -match '^[^ ]+$' -and $afterTwo -ne 'his') "got '$afterTwo'"
+
     Write-Host "`n8. Typing after a prediction ends the cycle"
     Clear-Field $edit
     Start-Sleep -Milliseconds 900
-    Send $edit 'i am looking'
+    Send $edit 'i am looking '
     Send $edit '{TAB}' 250
     $predicted = [W]::TextOf($edit)
     # "ward" rather than a stray letter: it turns the prediction into another real word ("for" becomes
