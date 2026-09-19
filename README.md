@@ -35,7 +35,7 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.12.1. Verified two ways:
+Working preview, 0.13.0. Verified two ways:
 
 - **440 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
   personal vocabulary and learning, text injection, the typing-history rules, and the interaction model end
