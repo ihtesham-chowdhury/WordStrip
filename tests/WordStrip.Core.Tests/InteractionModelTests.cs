@@ -145,6 +145,119 @@ public class InteractionModelTests
         Assert.Equal("i ", h.Text);
     }
 
+    // --- Written forms and capitals, when a word is finished ---------------------------------------------
+
+    [Theory]
+    [InlineData("im ", "I'm ")]
+    [InlineData("i ", "I ")]
+    [InlineData("ive ", "I've ")]
+    [InlineData("dont ", "don't ")]
+    [InlineData("london ", "London ")]
+    [InlineData("i am in london, ", "I am in London, ")]
+    public void A_finished_word_takes_its_written_form(string typed, string expected)
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+        h.Settings.FixCapitalsAndApostrophes = true;
+
+        h.Type(typed);
+
+        Assert.Equal(expected, h.Text);
+    }
+
+    [Theory]
+    [InlineData("ill ")]
+    [InlineData("were ")]
+    [InlineData("well ")]
+    [InlineData("don't ")]
+    public void Ambiguous_or_already_written_words_are_left_as_typed(string typed)
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+        h.Settings.FixCapitalsAndApostrophes = true;
+
+        h.Type(typed);
+
+        Assert.Equal(typed, h.Text);
+    }
+
+    [Fact]
+    public void The_first_word_of_a_sentence_is_capitalised_when_the_sentence_start_is_known()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+        h.Settings.FixCapitalsAndApostrophes = true;
+        h.Doc.SentenceStartsAreKnown = true;
+
+        h.Type("hello. how ");
+
+        Assert.Equal("Hello. How ", h.Text);
+    }
+
+    [Fact]
+    public void Capitals_and_apostrophes_are_fixed_even_with_spelling_autocorrect_off()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = false;
+        h.Settings.FixCapitalsAndApostrophes = true;
+
+        h.Type("im in london ");
+
+        Assert.Equal("I'm in London ", h.Text);
+    }
+
+    [Fact]
+    public void Capitals_and_apostrophes_can_be_switched_off()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = false;  // on its own, spelling correction turns "im" into "in"
+        h.Settings.FixCapitalsAndApostrophes = false;
+
+        h.Type("im in london ");
+
+        Assert.Equal("im in london ", h.Text);
+    }
+
+    [Fact]
+    public void With_both_on_im_becomes_I_m_rather_than_being_spell_corrected_to_in()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+        h.Settings.FixCapitalsAndApostrophes = true;
+
+        h.Type("im ");
+
+        Assert.Equal("I'm ", h.Text);
+    }
+
+    [Fact]
+    public void Nothing_is_capitalised_on_a_guess()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+        h.Settings.FixCapitalsAndApostrophes = true;
+        h.Doc.SentenceStartsAreKnown = false;  // the keyboard hook after a click: likely, but not known
+
+        h.Type("hello ");
+
+        Assert.Equal("hello ", h.Text);
+    }
+
+    [Fact]
+    public void At_a_known_sentence_start_the_strip_shows_and_inserts_capitals()
+    {
+        using var h = new InteractionHarness();
+        h.Settings.AutocorrectEnabled = true;
+        h.Settings.FixCapitalsAndApostrophes = true;
+        h.Doc.SentenceStartsAreKnown = true;
+
+        h.Type("hello. looki");
+        Assert.Equal("Looking", h.LastWords[0]);
+
+        h.Type(" ");
+        Assert.Equal("Hello. Looking ", h.Text);  // the start of the field is a known sentence start too
+    }
+
     [Fact]
     public void Enter_never_carries_a_completion()
     {
@@ -179,19 +292,14 @@ public class InteractionModelTests
     }
 
     [Fact]
-    public void Backspace_straight_after_a_completion_restores_what_was_typed_and_space_then_leaves_it_alone()
+    public void Backspace_after_a_completion_is_an_ordinary_backspace()
     {
         using var h = new InteractionHarness();
 
         h.Type("looki ");
-        Assert.Equal("looking ", h.Text);
-
         h.Backspace();
-        Assert.Equal("looki", h.Text);
 
-        // The user has just said "not that word". Completing it again on the next Space would be arguing.
-        h.Type(" ");
-        Assert.Equal("looki ", h.Text);
+        Assert.Equal("looking", h.Text);
     }
 
     [Fact]
@@ -229,15 +337,40 @@ public class InteractionModelTests
     }
 
     [Fact]
-    public void Nothing_is_completed_when_the_keystroke_record_disagrees_with_the_provider()
+    public void When_the_provider_trails_the_keyboard_the_keystrokes_decide()
     {
         using var h = new InteractionHarness();
 
-        h.Type("looki");
-        h.KeySynchronousOverride = "look";  // the provider is a letter behind the keyboard
+        h.Type("i am looki");
+        h.Doc.LagCharacters = 1;  // the text service still reports "look"
         h.Type(" ");
 
-        Assert.Equal("looki ", h.Text);
+        Assert.Equal("i am looking ", h.Text);
+    }
+
+    [Fact]
+    public void When_the_keystroke_record_lost_track_the_provider_decides()
+    {
+        using var h = new InteractionHarness();
+
+        h.Type("i am looki");
+        h.KeySynchronousOverride = string.Empty;  // e.g. a click reset the keystroke record
+        h.Type(" ");
+
+        Assert.Equal("i am looking ", h.Text);
+    }
+
+    [Fact]
+    public void A_quick_second_tab_swaps_the_prediction_even_while_the_first_is_still_being_reported()
+    {
+        using var h = new InteractionHarness();
+
+        h.Type("i am looking ");
+        h.Tab();
+        h.Doc.LagCharacters = 2;  // the browser has only reported "i am looking f" so far
+        h.Tab();
+
+        Assert.Equal("i am looking at", h.Text);
     }
 
     [Fact]

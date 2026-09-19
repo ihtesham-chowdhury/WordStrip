@@ -148,7 +148,10 @@ public partial class SuggestionBarWindow : Window
             if (!_settings.FixedBarWidth && UpdateDynamicWidth()) UpdateLayout();
         }
 
-        ApplySelection(update.SelectedIndex);
+        // The highlight means "this is what your key will take". While cycling that is the candidate Tab just
+        // inserted; otherwise it marks the first candidate when Space will commit it - the same selection
+        // surface in every theme, because a weight change alone proved too easy to miss.
+        ApplySelection(update.SelectedIndex >= 0 ? update.SelectedIndex : update.FirstIsArmed ? 0 : -1);
         Reposition();
         AdaptToBackground(reappearing);
         Reveal();
@@ -244,6 +247,29 @@ public partial class SuggestionBarWindow : Window
 
         _appearance = next;
         ApplyPalette();
+    }
+
+    /// <summary>
+    /// Renders the bar once, invisibly, so the first real appearance is not also the first render.
+    ///
+    /// <para>Measured: the first time the bar showed, it blocked the UI thread for about 750 ms (JIT and
+    /// first-use setup of the glass, text and layout paths). The keyboard hook runs on that same thread, and
+    /// Windows skips a low-level hook that does not answer in time — so keys typed during that stall never
+    /// reached WordStrip. The first Space of a session went missing, "i am" was tracked as "iam", and
+    /// everything that followed was judged against the wrong word. Paying the cost at startup, before the hook
+    /// is installed, moves it to where no keystroke can be lost.</para>
+    /// </summary>
+    public void WarmUp()
+    {
+        Opacity = 0;
+        ShowSuggestions(new SuggestionUpdate(
+            new[] { new Suggestion("warm", 1, 0), new Suggestion("up", 1, 0) }, null, SelectedIndex: 0));
+        UpdateLayout();
+        HideBar();
+
+        Hide();
+        _isRevealed = false;
+        Opacity = 1;
     }
 
     public void HideBar()

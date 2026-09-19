@@ -89,6 +89,68 @@ public static class TipRegistrationManager
     /// <summary>Elevates <c>regsvr32 /u &lt;DllPath&gt;</c>. Safe to call even if nothing is registered.</summary>
     public static TipRegistrationResult Unregister() => RunElevatedRegsvr32(unregister: true);
 
+    /// <summary>
+    /// The input profile as Windows names it in a user's keyboard list: language, service, profile. Matches
+    /// <c>WORDSTRIP_TIP_LANGID</c> and <c>GUID_WordStripProfile</c> in <c>src/WordStrip.Tip/Guids.h</c>.
+    /// </summary>
+    public const string InputProfile = "0409:" + Clsid + "{312BED7F-33DF-49BD-87EE-3B6BF1E2C614}";
+
+    /// <summary>
+    /// Whether WordStrip is in the current user's keyboard list.
+    ///
+    /// <para><b>Registration is not enough.</b> The text service is a keyboard input method, and Windows only
+    /// loads one into an application while it is a keyboard the user has. Registration makes it available
+    /// machine-wide; this per-user list is what actually switches it on. If the entry disappears — removed in
+    /// Settings, or dropped by Windows — every browser and Office suggestion silently stops, while the
+    /// registration still reads as "enabled". That happened, and cost a round of debugging, which is why the
+    /// two are now checked separately.</para>
+    ///
+    /// <para>Read from <c>HKCU\Control Panel\International\User Profile</c>, where each language holds one
+    /// value per keyboard, named by its profile string.</para>
+    /// </summary>
+    public static bool IsInKeyboardList()
+    {
+        using var profiles = Registry.CurrentUser.OpenSubKey(@"Control Panel\International\User Profile", writable: false);
+        if (profiles is null) return false;
+
+        foreach (var language in profiles.GetSubKeyNames())
+        {
+            using var key = profiles.OpenSubKey(language, writable: false);
+            if (key is null) continue;
+
+            foreach (var name in key.GetValueNames())
+            {
+                if (string.Equals(name, InputProfile, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Adds WordStrip to the current user's keyboards and makes it the default input method, so it is active
+    /// in every application without the user having to pick it. Per-user and needs no elevation — this is
+    /// the documented <c>InstallLayoutOrTip</c> call that Windows' own Settings page uses. The user's other
+    /// keyboards are left in place and still reachable with Win+Space.
+    /// </summary>
+    public static bool AddToKeyboardList()
+    {
+        const uint ILOT_DEFPROFILE = 0x00000002;
+
+        try
+        {
+            return InstallLayoutOrTip(InputProfile, ILOT_DEFPROFILE);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("input.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool InstallLayoutOrTip(string profile, uint flags);
+
     private static TipRegistrationResult RunElevatedRegsvr32(bool unregister)
     {
         if (!DllPresent) return TipRegistrationResult.Failed;

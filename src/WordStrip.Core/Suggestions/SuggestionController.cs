@@ -75,18 +75,12 @@ public sealed class SuggestionController : IDisposable
     /// <summary>A Tab insertion that a further Tab may replace. Null outside the cycle window.</summary>
     private Cycle? _cycle;
 
-    /// <summary>A Space/punctuation completion that an immediate Backspace takes back. Cleared by any other key.</summary>
-    private Undo? _undo;
-
     /// <summary>
     /// The word before the caret when WordStrip itself put it there with Tab. It is complete by construction,
     /// so the bar shows what comes after it rather than ways to extend it. Typing more letters onto it makes
     /// it an ordinary word in progress again.
     /// </summary>
     private string? _finishedWord;
-
-    /// <summary>A word the user reverted a completion on. Space must not complete it a second time.</summary>
-    private string? _noAutoCompleteFor;
 
     /// <summary>
     /// The last key that reached the application started a line. Tab there is indentation, not a request for
@@ -104,8 +98,6 @@ public sealed class SuggestionController : IDisposable
         nint Focus,
         DateTimeOffset LastAt,
         bool IsIdle);
-
-    private sealed record Undo(string Inserted, string Original, nint Focus);
 
     /// <summary>Global on/off switch, e.g. from the tray icon's "Pause" menu item. Deliberately not persisted — always starts unpaused.</summary>
     public bool IsPaused { get; set; }
@@ -226,7 +218,7 @@ public sealed class SuggestionController : IDisposable
     /// </summary>
     public bool HandleBoundary(char boundary)
     {
-        _undo = null;
+        EndEcho();
         EndCycle(republish: true);
         _atLineStart = false;
 
@@ -236,11 +228,10 @@ public sealed class SuggestionController : IDisposable
         var context = _context.GetContext();
         if (!context.IsSuggestible || context.HasSelection) return false;
 
-        var typed = context.CurrentWord;
-        InteractionLog.Write($"boundary '{boundary}' typed='{typed}' displayFor='{_displayFor}' idle={_displayIsIdle} finished='{_finishedWord}' source={context.Source}");
-        if (_displayIsIdle || !string.Equals(_displayFor, typed, StringComparison.Ordinal)) return false;
-        if (string.Equals(typed, _noAutoCompleteFor, StringComparison.Ordinal)) return false;
-        if (!IsKeySynchronous(typed)) return false;
+        var typed = ResolveWordInProgress(context);
+        InteractionLog.Write($"boundary '{boundary}' typed='{typed}' reported='{context.CurrentWord}' displayFor='{_displayFor}' idle={_displayIsIdle} finished='{_finishedWord}' source={context.Source}");
+        if (typed.Length == 0 || string.Equals(typed, _finishedWord, StringComparison.Ordinal)) return false;
+        EnsureCompletionsFor(typed, context);
 
         if (CompletionPolicy.SelectForBoundary(
                 typed, _display, _predictionEngine.IsCorrectlySpelled, Thresholds, _predictionEngine.GetBestRepairFrequency)
@@ -254,7 +245,6 @@ public sealed class SuggestionController : IDisposable
 
         // If the field turns out not to hold what we think, the user's own key still has to arrive.
         Replace(typed, inserted, onRefused: () => _textInjector.ReplaceText(string.Empty, boundary.ToString()));
-        _undo = new Undo(inserted, typed, _focusIdentity());
 
         // The key never reaches TypingSession, so the commit it would have announced — and the learning that
         // hangs off it — happens here instead. The word learned is the one now on screen.
@@ -272,7 +262,6 @@ public sealed class SuggestionController : IDisposable
     /// </summary>
     public bool HandleTab(bool forward)
     {
-        _undo = null;
         if (IsPaused) return false;
 
         var context = _context.GetContext();
@@ -293,11 +282,11 @@ public sealed class SuggestionController : IDisposable
         if (_dismissed || _display.Count == 0 || !context.IsSuggestible || context.HasSelection) return false;
         if (context.IsSingleLine) return false;
 
-        var typed = context.CurrentWord;
-        InteractionLog.Write($"tab typed='{typed}' displayFor='{_displayFor}' idle={_displayIsIdle} lineStart={_atLineStart} source={context.Source}");
+        var typed = ResolveWordInProgress(context);
+        InteractionLog.Write($"tab typed='{typed}' reported='{context.CurrentWord}' displayFor='{_displayFor}' idle={_displayIsIdle} lineStart={_atLineStart} source={context.Source}");
         if (_atLineStart && typed.Length == 0) return false;
+        if (typed.Length > 0 && !string.Equals(typed, _finishedWord, StringComparison.Ordinal)) EnsureCompletionsFor(typed, context);
         if (!string.Equals(_displayFor, typed, StringComparison.Ordinal)) return false;
-        if (!IsKeySynchronous(typed)) return false;
 
         var candidates = WordsOnly(_display);
         if (candidates.Count == 0) return false;
@@ -330,25 +319,17 @@ public sealed class SuggestionController : IDisposable
         return true;
     }
 
-    /// <summary>Backspace straight after a Space completion puts back what was typed, without the space.</summary>
-    public bool HandleBackspace()
+    /// <summary>
+    /// Backspace is always an ordinary delete. It only ends a Tab cycle, like any other key. (It used to undo a
+    /// Space completion; that was removed at the owner's request — Ctrl+Backspace already removes a whole
+    /// word, and a Backspace that sometimes deletes a character and sometimes restores a word is one more
+    /// thing to have to think about.)
+    /// </summary>
+    public void HandleBackspace()
     {
-        var undo = _undo;
-        _undo = null;
+        EndEcho();
         _atLineStart = false;
         EndCycle(republish: true);
-
-        if (undo is null || IsPaused) return false;
-
-        var context = _context.GetContext();
-        if (!context.IsSuggestible || _focusIdentity() != undo.Focus) return false;
-
-        Replace(undo.Inserted, undo.Original);
-        _noAutoCompleteFor = undo.Original;
-        _dismissed = false;
-
-        PublishCompletions(undo.Original, _context.GetContext());
-        return true;
     }
 
     /// <summary>Esc: ends any interaction and dismisses. Swallowed only when it cancelled an active cycle.</summary>
@@ -365,7 +346,7 @@ public sealed class SuggestionController : IDisposable
     /// </summary>
     public void HandleOtherKey(bool isLineBreak)
     {
-        _undo = null;
+        EndEcho();
         _atLineStart = isLineBreak;
         EndCycle(republish: true);
     }
@@ -375,7 +356,6 @@ public sealed class SuggestionController : IDisposable
     /// <summary>A candidate chosen by clicking it. Inserted followed by a space.</summary>
     public void AcceptSuggestion(Suggestion suggestion)
     {
-        _undo = null;
 
         var context = _context.GetContext();
         var typed = context.CurrentWord;
@@ -438,7 +418,6 @@ public sealed class SuggestionController : IDisposable
     public void Dismiss()
     {
         _dismissed = true;
-        _undo = null;
         Hide();
     }
 
@@ -489,11 +468,17 @@ public sealed class SuggestionController : IDisposable
         ScheduleExpiry(cycle);
     }
 
+    /// <summary>
+    /// Whether a Tab may still replace the cycle's insertion. The word before the caret must still be the one
+    /// inserted — except while that insertion is itself still arriving, when a text service may report it
+    /// half-typed. Nothing the user did can have intervened then (any key of theirs ends the echo guard), so
+    /// the cycle's own record is the truth.
+    /// </summary>
     private bool IsCycleValid(Cycle cycle, TextContext context) =>
         _time.GetUtcNow() - cycle.LastAt <= CycleWindow
         && context.IsSuggestible
         && _focusIdentity() == cycle.Focus
-        && string.Equals(context.CurrentWord, LastWordOf(cycle.Inserted), StringComparison.Ordinal);
+        && (IsEchoing || string.Equals(context.CurrentWord, LastWordOf(cycle.Inserted), StringComparison.Ordinal));
 
     private void EndCycle(bool republish)
     {
@@ -537,24 +522,34 @@ public sealed class SuggestionController : IDisposable
 
     private void OnCurrentWordChanged(object? sender, string word)
     {
-        InteractionLog.Write($"word '{word}' finished='{_finishedWord}' cycle={_cycle is not null}");
+        if (InteractionLog.IsEnabled)
+        {
+            var probe = _context.GetContext();
+            InteractionLog.Write($"word '{word}' finished='{_finishedWord}' cycle={_cycle is not null} source={probe.Source} editable={probe.IsEditable} ctxword='{probe.CurrentWord}'");
+        }
         // A text service confirming a word WordStrip itself just inserted is not the user typing.
         if (_cycle is not null && string.Equals(word, _finishedWord, StringComparison.Ordinal)) return;
 
+        // Nor is one reporting that insertion arriving letter by letter. In a browser WordStrip's text is
+        // typed with synthetic keystrokes, and the document is reported at every step - "f", "fo", "for".
+        // Treating those as typing ended the Tab cycle mid-insertion, so a quick second Tab added a word
+        // instead of swapping it.
+        if (IsEchoing)
+        {
+            InteractionLog.Write($"echo '{word}' ignored");
+            return;
+        }
+
         EndCycle(republish: false);
-        _undo = null;
 
         if (string.IsNullOrEmpty(word))
         {
             // Fires after every commit as well as when backspacing erases the last character. Either way
             // there is no word in progress, so the bar falls back to whatever it shows between words.
             _finishedWord = null;
-            _noAutoCompleteFor = null;
             PublishIdle();
             return;
         }
-
-        if (!string.Equals(word, _noAutoCompleteFor, StringComparison.Ordinal)) _noAutoCompleteFor = null;
 
         // Typing is the signal that the user wants the bar back after dismissing it.
         _dismissed = false;
@@ -602,11 +597,13 @@ public sealed class SuggestionController : IDisposable
         var insertedByUs = string.Equals(e.Word, _finishedWord, StringComparison.Ordinal);
         InteractionLog.Write($"committed '{e.Word}' boundary='{e.BoundaryChar}' finished='{_finishedWord}' ours={insertedByUs}");
 
-        if (!insertedByUs && _settings.AutocorrectEnabled && _predictionEngine.GetAutocorrection(e.Word) is { } correction)
+        var corrected = insertedByUs ? null : CorrectionFor(e);
+
+        if (corrected is not null)
         {
             // The context has to follow the correction, not the typo.
-            _context.NoteWordCorrected(correction.Word);
-            wordOnScreen = correction.Word;
+            _context.NoteWordCorrected(corrected);
+            wordOnScreen = corrected;
 
             // Deferred so the boundary key the user just pressed lands in the target app first; correcting
             // from inside the hook callback races that keystroke and garbles the result.
@@ -614,7 +611,7 @@ public sealed class SuggestionController : IDisposable
             var boundary = e.BoundaryChar;
             _postToMessageLoop(() =>
             {
-                if (!_textInjector.ReplaceCommittedWord(typed, boundary, correction.Word)) Resynchronise();
+                if (!_textInjector.ReplaceCommittedWord(typed, boundary, corrected)) Resynchronise();
             });
         }
 
@@ -623,13 +620,48 @@ public sealed class SuggestionController : IDisposable
         Learn(wordOnScreen, e.PrecedingWords);
     }
 
+    /// <summary>
+    /// What a finished word should become, or null to leave it. In order: the written form of a word that is
+    /// only ever written one way ("im" to "I'm", "i" to "I", "london" to "London"); otherwise a spelling
+    /// correction, itself in written form; and a capital if the word is known to open a sentence. A word
+    /// that is already a written form is never "spell-corrected" — "don't" is not a misspelling of "dont".
+    /// </summary>
+    private string? CorrectionFor(WordCommittedEventArgs e)
+    {
+        var forms = _settings.FixCapitalsAndApostrophes;
+        var word = forms ? EnglishForms.CorrectionFor(e.Word) : null;
+
+        if (word is null && _settings.AutocorrectEnabled && !EnglishForms.IsKnownForm(e.Word)
+            && _predictionEngine.GetAutocorrection(e.Word) is { } fix)
+        {
+            word = forms ? EnglishForms.ToWritten(fix.Word) : fix.Word;
+        }
+
+        if (forms && e.StartsSentence)
+            word = EnglishForms.Capitalize(word ?? e.Word);
+
+        return word is null || string.Equals(word, e.Word, StringComparison.Ordinal) ? null : word;
+    }
+
+    /// <summary>
+    /// At a point known to begin a sentence, suggestions are shown capitalised, which is also how they will be
+    /// inserted. Only on knowledge (see <see cref="TextContext.IsSentenceStartKnown"/>): capitalising after a
+    /// click that merely might be at a sentence start would be wrong more often than right.
+    /// </summary>
+    private IReadOnlyList<Suggestion> ForSentenceStart(IReadOnlyList<Suggestion> list, TextContext snapshot)
+    {
+        if (!_settings.FixCapitalsAndApostrophes || !snapshot.IsSentenceStartKnown || list.Count == 0) return list;
+
+        return list
+            .Select(s => s.IsEmoji ? s : s with { Word = EnglishForms.Capitalize(s.Word) })
+            .ToList();
+    }
+
     private void OnContextLost(object? sender, EventArgs e)
     {
         InteractionLog.Write($"context lost (finished was '{_finishedWord}')");
         EndCycle(republish: false);
-        _undo = null;
         _finishedWord = null;
-        _noAutoCompleteFor = null;
         PublishIdle();
     }
 
@@ -638,8 +670,9 @@ public sealed class SuggestionController : IDisposable
     private void PublishCompletions(string word, TextContext snapshot)
     {
         var context = BuildContext(word, snapshot);
-        var fresh = _predictionEngine.GetLiveSuggestions(
-            word, CandidateCount, context, _settings.EmojiSuggestionsEnabled);
+        var fresh = ForSentenceStart(
+            _predictionEngine.GetLiveSuggestions(word, CandidateCount, context, _settings.EmojiSuggestionsEnabled),
+            snapshot);
 
         // Consecutive states of one word: hold the order steady unless the model is decisively surer.
         var shown = IsSameWordEvolving(word)
@@ -682,8 +715,11 @@ public sealed class SuggestionController : IDisposable
         }
 
         var context = typed.Length > 0 ? AfterWord(snapshot, typed) : BuildContext(string.Empty, snapshot);
-        var predictions = _predictionEngine.GetNextWords(
-            context, CandidateCount, includePhrases: _settings.PhraseSuggestionsEnabled);
+        var predictions = ShapePredictions(_predictionEngine.GetNextWords(
+            context, CandidateCount, includePhrases: _settings.PhraseSuggestionsEnabled));
+
+        // After a word WordStrip just inserted, the next word does not begin a sentence, whatever came before.
+        if (typed.Length == 0) predictions = ForSentenceStart(predictions, snapshot);
 
         Show(predictions, snapshot.Caret, isIdle: true, forWord: typed);
     }
@@ -713,7 +749,6 @@ public sealed class SuggestionController : IDisposable
         _settings.CompleteOnSpace
         && !IsPaused
         && !_dismissed
-        && !string.Equals(typed, _noAutoCompleteFor, StringComparison.Ordinal)
         && CompletionPolicy.SelectForBoundary(
             typed, list, _predictionEngine.IsCorrectlySpelled, Thresholds, _predictionEngine.GetBestRepairFrequency) is not null;
 
@@ -762,6 +797,7 @@ public sealed class SuggestionController : IDisposable
     /// </summary>
     private void Replace(string existing, string replacement, Action? onRefused = null)
     {
+        _echoUntil = _time.GetUtcNow() + EchoWindow;
         _context.NoteTextReplaced(existing, replacement);
         _postToMessageLoop(() =>
         {
@@ -778,7 +814,6 @@ public sealed class SuggestionController : IDisposable
     {
         InteractionLog.Write("resynchronise: an edit was refused");
         EndCycle(republish: false);
-        _undo = null;
         _finishedWord = null;
         _context.InvalidateContext();
         PublishIdle();
@@ -791,12 +826,85 @@ public sealed class SuggestionController : IDisposable
         && (word.StartsWith(_displayFor, StringComparison.OrdinalIgnoreCase)
             || _displayFor.StartsWith(word, StringComparison.OrdinalIgnoreCase));
 
-    private bool IsKeySynchronous(string typed) =>
-        _keySynchronousWord is null || string.Equals(_keySynchronousWord(), typed, StringComparison.Ordinal);
+    /// <summary>
+    /// How long after one of WordStrip's own edits the provider's reports are taken as that edit arriving,
+    /// rather than as the user typing. Long enough for a browser to report a synthetic-keystroke insertion;
+    /// irrelevant in practice for anything the user does, because every key of theirs ends it immediately.
+    /// </summary>
+    private static readonly TimeSpan EchoWindow = TimeSpan.FromMilliseconds(400);
+
+    private DateTimeOffset _echoUntil = DateTimeOffset.MinValue;
+
+    private bool IsEchoing => _time.GetUtcNow() < _echoUntil;
+
+    private void EndEcho() => _echoUntil = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// The word being typed, as best it can be known at this keystroke. A text service reports the document
+    /// asynchronously and can be a letter or two behind the keyboard; the keystroke record is never behind.
+    /// When the keystrokes simply extend what was last reported, the service is lagging and the keystrokes
+    /// are right. Otherwise the reported document wins: the keystroke record is the one that loses track, on
+    /// a click or an arrow key. While WordStrip's own edit is still arriving, the keystroke record is the
+    /// only one that already includes it.
+    /// </summary>
+    private string ResolveWordInProgress(TextContext context)
+    {
+        var reported = context.CurrentWord;
+        var keyed = _keySynchronousWord?.Invoke();
+        if (keyed is null) return reported;
+
+        if (IsEchoing) return keyed;
+
+        return keyed.Length > reported.Length && keyed.StartsWith(reported, StringComparison.Ordinal)
+            ? keyed
+            : reported;
+    }
+
+    /// <summary>
+    /// Makes sure what is on the bar is the completion list for <paramref name="typed"/>, recomputing it if
+    /// the provider's update for the latest keystroke has not been processed yet. Decisions are made on the
+    /// candidates for the word actually typed, never on the list for the word before it.
+    /// </summary>
+    private void EnsureCompletionsFor(string typed, TextContext context)
+    {
+        if (!_displayIsIdle && string.Equals(_displayFor, typed, StringComparison.Ordinal)) return;
+        PublishCompletions(typed, context);
+    }
 
     private IReadOnlyList<Suggestion> PredictAfter(string word, TextContext snapshot) =>
-        _predictionEngine.GetNextWords(
-            AfterWord(snapshot, word), CandidateCount, includePhrases: _settings.PhraseSuggestionsEnabled);
+        ShapePredictions(_predictionEngine.GetNextWords(
+            AfterWord(snapshot, word), CandidateCount, includePhrases: _settings.PhraseSuggestionsEnabled));
+
+    /// <summary>
+    /// Longest phrase worth a slot. Beyond this a phrase no longer fits a column and is shortened into
+    /// something unreadable ("and t... the"), which is worse than not offering it.
+    /// </summary>
+    private const int MaxPhraseLength = 10;
+
+    /// <summary>
+    /// Keeps the first slot a single word. It is what Tab inserts, and one Tab putting in several words —
+    /// then a second Tab swapping them for several others — read as the bar typing on the user's behalf.
+    /// Phrases can still sit in the other slots, where choosing one is deliberate, as long as they fit.
+    /// </summary>
+    internal static IReadOnlyList<Suggestion> ShapePredictions(IReadOnlyList<Suggestion> predictions)
+    {
+        var kept = predictions.Where(s => !s.IsPhrase || s.Word.Length <= MaxPhraseLength).ToList();
+        if (kept.Count == 0 || !kept[0].IsPhrase) return kept;
+
+        var firstWord = kept.FindIndex(s => !s.IsPhrase && !s.IsEmoji);
+        if (firstWord > 0)
+        {
+            var word = kept[firstWord];
+            kept.RemoveAt(firstWord);
+            kept.Insert(0, word);
+            return kept;
+        }
+
+        // Only phrases: lead with the first word of the best one.
+        var lead = kept[0].Word.Split(' ')[0];
+        kept.Insert(0, kept[0] with { Word = lead, Source = SuggestionSource.FrequentWord });
+        return kept;
+    }
 
     private static IReadOnlyList<Suggestion> WordsOnly(IReadOnlyList<Suggestion> list) =>
         list.Where(s => !s.IsEmoji).ToList();

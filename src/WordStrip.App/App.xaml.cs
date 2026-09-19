@@ -155,6 +155,17 @@ public partial class App : System.Windows.Application
 
         StartSuggestionEngine(predictionEngine);
 
+        // Browser and Office support needs two things, and the second can vanish on its own: the service
+        // registered, and WordStrip in the user's keyboard list. With the first but not the second, every
+        // browser silently gets nothing while Settings still says "Enabled" — so say so, once, at startup.
+        if (WordStrip.Core.Platform.TipRegistrationManager.IsRegisteredForThisInstall()
+            && !WordStrip.Core.Platform.TipRegistrationManager.IsInKeyboardList())
+        {
+            _trayIcon?.Notify(
+                "WordStrip is switched off in browsers",
+                "WordStrip is no longer one of your keyboards, so Chrome, Edge and Word get no suggestions. Click to switch it back on in Settings.");
+        }
+
         if (openSettingsOnLaunch)
             ShowSettingsWindow();
     }
@@ -282,6 +293,10 @@ public partial class App : System.Windows.Application
 
         StartFocusWatchdog();
         StartLearningSaveTimer();
+
+        // Before the hooks go in: the first render of the bar is slow, and a hook that is slow to answer
+        // loses keystrokes. See SuggestionBarWindow.WarmUp.
+        _barWindow.WarmUp();
 
         _keyboardHook.Install();
         _mouseHook.Install();

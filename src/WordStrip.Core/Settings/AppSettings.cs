@@ -121,6 +121,14 @@ public sealed class AppSettings
     public bool AutocorrectEnabled { get; set; } = true;
 
     /// <summary>
+    /// Whether finished words take their written form — "i" to "I", "dont" to "don't", "london" to "London",
+    /// a capital at a known sentence start — and suggestions are shown that way. Separate from
+    /// <see cref="AutocorrectEnabled"/> on purpose: spelling correction guesses which word was meant, this
+    /// only writes a word the way it is always written, and people who switch the first off still want this.
+    /// </summary>
+    public bool FixCapitalsAndApostrophes { get; set; } = true;
+
+    /// <summary>
     /// Whether the strip stays on screen between words, showing common words when nothing is part-typed,
     /// the way a phone keyboard's suggestion row does. Off restores the original behaviour, where the strip
     /// appears for the duration of each word and vanishes the moment it is committed.
@@ -176,7 +184,7 @@ public sealed class AppSettings
     private int _completionMinPrefixLength = 3;
     private double _completionMinConfidence = 0.6;
     private double _completionMinScoreMargin = 0.25;
-    private int _predictionCycleWindowMs = 900;
+    private int _predictionCycleWindowMs = 1200;
     private double _rankingHysteresis = 0.35;
 
     /// <summary>

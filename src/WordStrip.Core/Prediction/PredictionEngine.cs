@@ -133,6 +133,7 @@ public sealed class PredictionEngine
         if (string.IsNullOrEmpty(word)) return false;
 
         return _dictionary.Contains(word.ToLowerInvariant())
+            || EnglishForms.IsKnownForm(word)
             || (_personalVocabulary?.Contains(word) ?? false);
     }
 
@@ -167,6 +168,7 @@ public sealed class PredictionEngine
         var candidates = _prefixIndex.FindByPrefix(prefix, CandidatePoolSize);
 
         MergePersonalCompletions(prefix, candidates);
+        MergeContractions(partialWord, candidates);
 
         // Only reach for fuzzy candidates when prefix matching came up short. Short prefixes are excluded
         // because at one or two letters almost any word is within edit distance 2, which produces noise
@@ -184,7 +186,42 @@ public sealed class PredictionEngine
         var ranked = _ranker.Rank(new RankingContext(prefix, context), candidates, maxResults);
 
         // An emoji for the word being typed goes in last, after ranking has settled.
-        return includeEmoji ? WithEmoji(ranked, prefix, maxResults) : ranked;
+        return AsWritten(includeEmoji ? WithEmoji(ranked, prefix, maxResults) : ranked);
+    }
+
+    /// <summary>
+    /// Adds the contractions a partial word could be heading for — "don", "dont" and "don'" all reach
+    /// "don't". The dictionary has no apostrophes, so without this the commonest words in informal writing
+    /// could never be suggested at all.
+    /// </summary>
+    private static void MergeContractions(string partialWord, List<Suggestion> candidates)
+    {
+        foreach (var contraction in EnglishForms.ContractionCandidates(partialWord))
+        {
+            if (candidates.Exists(c => string.Equals(c.Word, contraction.Word, StringComparison.OrdinalIgnoreCase))) continue;
+            candidates.Add(contraction);
+        }
+    }
+
+    /// <summary>
+    /// Every candidate in the form it is written: "I", "London", "don't". Applied after ranking, since case
+    /// says nothing about likelihood, and de-duplicated in case two candidates now read the same.
+    /// </summary>
+    private static IReadOnlyList<Suggestion> AsWritten(IReadOnlyList<Suggestion> list)
+    {
+        if (list.Count == 0) return list;
+
+        var result = new List<Suggestion>(list.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var suggestion in list)
+        {
+            var written = suggestion.IsEmoji ? suggestion.Word : EnglishForms.ToWrittenPhrase(suggestion.Word);
+            if (!seen.Add(written)) continue;
+            result.Add(ReferenceEquals(written, suggestion.Word) ? suggestion : suggestion with { Word = written });
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -232,7 +269,7 @@ public sealed class PredictionEngine
     /// the model files are missing. <see cref="GetNextWords"/> is the contextual replacement.</para>
     /// </summary>
     public IReadOnlyList<Suggestion> GetFrequentWords(int maxResults) =>
-        maxResults <= 0 ? Array.Empty<Suggestion>() : _prefixIndex.MostFrequent(maxResults);
+        maxResults <= 0 ? Array.Empty<Suggestion>() : AsWritten(_prefixIndex.MostFrequent(maxResults));
 
     /// <summary>
     /// What is likely to come next, given the words before the caret. This is what the strip shows between
@@ -277,7 +314,7 @@ public sealed class PredictionEngine
                         Confidence: phrase.Confidence));
                 }
 
-                return _ranker.Rank(new RankingContext(string.Empty, context), phraseCandidates, maxResults);
+                return AsWritten(_ranker.Rank(new RankingContext(string.Empty, context), phraseCandidates, maxResults));
             }
         }
 
@@ -295,7 +332,7 @@ public sealed class PredictionEngine
                 SuggestionSource.FrequentWord));
         }
 
-        return _ranker.Rank(new RankingContext(string.Empty, context), candidates, maxResults);
+        return AsWritten(_ranker.Rank(new RankingContext(string.Empty, context), candidates, maxResults));
     }
 
     private static string FirstWordOf(string phrase)

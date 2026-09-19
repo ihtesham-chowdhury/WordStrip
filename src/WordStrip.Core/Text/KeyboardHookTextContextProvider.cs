@@ -73,7 +73,8 @@ public sealed class KeyboardHookTextContextProvider : ITextContextProvider
 
             // A single-line Win32 edit is a form field, where Tab means "next field". Only an edit control
             // can say so; everywhere else this stays false and Tab is left to the bar.
-            IsSingleLine: focus.IsStandardEditControl && focus.IsSingleLine);
+            IsSingleLine: focus.IsStandardEditControl && focus.IsSingleLine,
+            IsSentenceStartKnown: _typingSession.IsSentenceStartKnown);
     }
 
     /// <summary>

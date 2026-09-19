@@ -139,6 +139,10 @@
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
                            Text="With a fixed width, this is how many columns the bar is divided into, and a narrow bar may fit fewer than you ask for. A word too long for its column is shortened in the middle, so the columns stay where they are." />
 
+                <CheckBox Content="Fix capitals and apostrophes" IsChecked="{Binding FixCapitalsAndApostrophes}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
+                           Text="i becomes I, im becomes I'm, dont becomes don't, london becomes London, and a sentence starts with a capital once WordStrip has seen the full stop. Words with two possible spellings, like ill, were and its, are always left as you typed them. Separate from spelling autocorrect." />
+
                 <CheckBox Content="Finish a word with Space when WordStrip is sure" IsChecked="{Binding CompleteOnSpace}" Margin="0,0,0,2" />
                 <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
                            Text="Type &quot;looki&quot; and Space gives &quot;looking &quot;. Only when one completion is clearly the answer - never for a word you have already finished, and never for what looks like a typo. The first suggestion turns bold when Space will take it, and Backspace straight after puts back what you typed." />
@@ -355,6 +359,16 @@
                         Visibility="{Binding TipDllMissing, Converter={StaticResource BoolToVisibility}}">
                     <TextBlock Style="{StaticResource Hint}" Foreground="#4A5060"
                                Text="This build does not include the component (WordStripTip.dll is missing from the install folder), so this option is unavailable here." />
+                </Border>
+
+                <Border Background="#FFF4E5" CornerRadius="8" Padding="10,8" Margin="0,0,0,10"
+                        Visibility="{Binding TipNotSelected, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <Button Content="Switch it on" Padding="12,4" Margin="10,0,0,0" DockPanel.Dock="Right"
+                                VerticalAlignment="Center" Click="OnSwitchTipOnClick" />
+                        <TextBlock Style="{StaticResource Hint}" Foreground="#8A5A00" TextWrapping="Wrap"
+                                   Text="Installed, but WordStrip is not one of your keyboards, so Windows is not loading it and browsers and Office get no suggestions. Switching it on adds it to your keyboards; your other keyboards stay available with Win+Space." />
+                    </DockPanel>
                 </Border>
 
                 <DockPanel>

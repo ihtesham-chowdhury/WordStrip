@@ -169,6 +169,7 @@ public sealed class TsfTextContextProvider : ITextContextProvider
             CurrentWord = currentWord,
             PrecedingWords = preceding,
             IsAtSentenceStart = atSentenceStart,
+            IsSentenceStartKnown = atSentenceStart,
             HasSelection = false,
         };
 
@@ -226,7 +227,8 @@ public sealed class TsfTextContextProvider : ITextContextProvider
                 IsAtSentenceStart: atSentenceStart,
                 Caret: message.Caret,
                 Source: TextContextSource.TextServices,
-                HasSelection: message.HasSelection);
+                HasSelection: message.HasSelection,
+                IsSentenceStartKnown: atSentenceStart);
 
             // Focus left a text surface. The bar has to come down, and the idle list must not be published
             // for a document that is no longer in front of the user.

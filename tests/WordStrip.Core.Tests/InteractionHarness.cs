@@ -28,6 +28,9 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
     public bool IsPasswordField { get; set; }
     public bool IsSingleLine { get; set; }
 
+    /// <summary>Whether this field reports sentence starts as knowledge, as a text service does. Off by default, like the hook.</summary>
+    public bool SentenceStartsAreKnown { get; set; }
+
     public TextContextSource Source => TextContextSource.KeyboardHook;
     public bool IsAvailable => true;
 
@@ -43,10 +46,17 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
 
     public bool ShadowMatchesText => string.Equals(_shadow, Text, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Makes the provider report the text as it was this many characters ago, the way a text service trails
+    /// the keyboard. The keystroke record (<see cref="CurrentWord"/>) is never behind.
+    /// </summary>
+    public int LagCharacters { get; set; }
+
     public TextContext GetContext()
     {
-        var current = WordAtEnd(_shadow);
-        var before = _shadow[..^current.Length];
+        var view = LagCharacters > 0 && _shadow.Length >= LagCharacters ? _shadow[..^LagCharacters] : _shadow;
+        var current = WordAtEnd(view);
+        var before = view[..^current.Length];
 
         var sentenceStart = before.LastIndexOfAny(new[] { '.', '!', '?', '\n' }) + 1;
         var segment = before[sentenceStart..];
@@ -55,10 +65,12 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
             .TakeLast(2)
             .ToArray();
 
+        var atStart = segment.Trim().Length == 0;
         return new TextContext(
             IsEditable, IsPasswordField, current, words,
-            IsAtSentenceStart: segment.Trim().Length == 0,
-            Caret: null, Source, HasSelection: false, IsSingleLine);
+            IsAtSentenceStart: atStart,
+            Caret: null, Source, HasSelection: false, IsSingleLine,
+            IsSentenceStartKnown: atStart && SentenceStartsAreKnown);
     }
 
     // --- The provider's notes -------------------------------------------------------------------------
@@ -135,7 +147,8 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
     public void Receive(char c)
     {
         var wordBefore = WordAtEnd(_shadow);
-        var preceding = GetContext().PrecedingWords.ToArray();
+        var before = GetContext();
+        var preceding = before.PrecedingWords.ToArray();
 
         Text += c;
         _shadow += c;
@@ -153,6 +166,7 @@ internal sealed class FakeDocument : ITextContextProvider, ITextInjector
             Word = wordBefore,
             BoundaryChar = c,
             PrecedingWords = preceding,
+            StartsSentence = before.IsSentenceStartKnown,
         });
         CurrentWordChanged?.Invoke(this, string.Empty);
     }
@@ -230,6 +244,7 @@ internal sealed class InteractionHarness : IDisposable
         PersistentBar = true,
         SuggestionCount = 4,
         AutocorrectEnabled = false,
+        FixCapitalsAndApostrophes = false,
         PersonalLearningEnabled = false,
         EmojiSuggestionsEnabled = true,
     };
@@ -317,7 +332,8 @@ internal sealed class InteractionHarness : IDisposable
 
     public void Backspace()
     {
-        if (!Controller.HandleBackspace()) Doc.ReceiveBackspace();
+        Controller.HandleBackspace();
+        Doc.ReceiveBackspace();
         Pump();
     }
 

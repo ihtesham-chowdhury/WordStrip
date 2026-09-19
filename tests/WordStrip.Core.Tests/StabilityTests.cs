@@ -130,6 +130,42 @@ public class StabilityTests
         Assert.Equal(1.0, margin, precision: 6);
     }
 
+    // --- One word per Tab --------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_first_prediction_is_always_a_single_word()
+    {
+        var predictions = new[]
+        {
+            S("to the", 150, SuggestionSource.Phrase), S("for", 148, SuggestionSource.FrequentWord),
+            S("at", 146, SuggestionSource.FrequentWord),
+        };
+
+        var shaped = SuggestionController.ShapePredictions(predictions);
+
+        Assert.Equal(new[] { "for", "to the", "at" }, Words(shaped));
+    }
+
+    [Fact]
+    public void With_only_phrases_the_first_slot_is_the_first_word_of_the_best_one()
+    {
+        var predictions = new[] { S("to the", 150, SuggestionSource.Phrase), S("for a bit", 140, SuggestionSource.Phrase) };
+        // "for a bit" is 9 characters: short enough to keep.
+
+        var shaped = SuggestionController.ShapePredictions(predictions);
+
+        Assert.Equal("to", shaped[0].Word);
+        Assert.False(shaped[0].IsPhrase);
+    }
+
+    [Fact]
+    public void A_phrase_too_long_for_a_slot_is_not_offered()
+    {
+        var predictions = new[] { S("for", 150, SuggestionSource.FrequentWord), S("forward to seeing you", 140, SuggestionSource.Phrase) };
+
+        Assert.Equal(new[] { "for" }, Words(SuggestionController.ShapePredictions(predictions)));
+    }
+
     // --- Render coalescing -------------------------------------------------------------------------------
 
     [Fact]

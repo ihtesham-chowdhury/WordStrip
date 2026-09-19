@@ -35,9 +35,9 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.13.0. Verified two ways:
+Working preview, 0.13.1. Verified two ways:
 
-- **440 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
+- **500+ unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
   personal vocabulary and learning, text injection, the typing-history rules, and the interaction model end
   to end — driven against an in-memory text field whose injector refuses to replace text that isn't there.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
@@ -110,7 +110,7 @@ key that is already under your fingers.
 |---|---|
 | `Space` | Finishes the word with the first suggestion and types the space: `I am looking ` — **only when WordStrip is sure** (see below). Otherwise it's just a space. |
 | `,` `.` `!` `?` `:` `;` `)` `]` `}` | Same rule, keeping your punctuation: `I am looking,` |
-| `Backspace` | Straight after a completion, puts back exactly what you typed; Space then leaves that word alone. |
+| `Backspace` | An ordinary delete, always. (`Ctrl+Backspace` removes a whole word, as in any editor.) |
 | `Tab` | Takes the first suggestion, whatever it is. |
 | `Enter` | Never completes anything — Enter sends messages and submits forms. |
 
@@ -119,7 +119,7 @@ key that is already under your fingers.
 | Key | What happens |
 |---|---|
 | `Tab` | Puts the first prediction in: `I am looking for`. One key, no highlight step. |
-| `Tab` again, straight away | Swaps it for the next one: `for` → `at` → `back` … (`Shift+Tab` goes back). |
+| `Tab` again, within about a second | Swaps it for the next one: `for` → `at` → `back` … (`Shift+Tab` goes back). |
 | Anything else | Ends that: typing, Space, a click, an arrow key, switching windows, or a second's pause. After that, Tab predicts the *next* word instead of swapping this one. |
 
 `Esc` puts the bar away, and Tab goes back to the application until you type again. A click on a suggestion
@@ -130,8 +130,18 @@ around refusals. It completes only when there is a word in progress of at least 
 typed isn't already a word (`the`, `work` and `can` are left alone), the first suggestion genuinely
 continues it, and it clearly beats the others. It also won't complete what looks like a typo: `teh` begins
 `tehran`, but it's far more likely to be `the`, so it's left for autocorrect. When Space *will* complete,
-the first suggestion is shown in bold. Turn it off in **Settings → Suggestions → Finish a word with Space
+the first suggestion is highlighted the same way a Tab selection is, so it reads clearly in every theme. Turn it off in **Settings → Suggestions → Finish a word with Space
 when WordStrip is sure**.
+
+**Capitals and apostrophes.** Suggestions appear the way the words are written: `I'm`, `don't`, `London`,
+`Iran`, `Monday`. Contractions are offered as you type (`do` → `don't`), and when you finish a word that is
+never meant as typed it is fixed for you: `im` → `I'm`, `ive` → `I've`, `dont` → `don't`, `i` → `I`. The first
+word of a sentence gets its capital. Pairs where both spellings are real words (`ill`/`I'll`, `were`/`we're`,
+`its`/`it's`) are only ever suggested, never changed. Turn it off in **Settings → Fix capitals and apostrophes**.
+
+**Browsers, Office and the Claude app need WordStrip in your keyboard list.** Those apps are reached through
+the Windows text service, which Windows only loads for keyboards you have switched on. If WordStrip is
+installed but not in the list, Settings shows a **Switch it on** button (and the tray says so at startup).
 
 **Tab is left alone where it means something else**: in single-line form fields (so it still moves to the
 next field), at the start of a line (so it still indents), and after `Esc`.

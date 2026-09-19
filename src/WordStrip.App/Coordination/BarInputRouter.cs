@@ -93,7 +93,7 @@ public sealed class BarInputRouter
                 return;
 
             case VK_BACK:
-                e.Suppress = _controller.HandleBackspace();
+                _controller.HandleBackspace();
                 return;
 
             // Swallowed only when it cancelled an active cycle. With the bar passive, Esc dismisses it AND

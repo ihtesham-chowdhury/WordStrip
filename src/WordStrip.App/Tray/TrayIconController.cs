@@ -48,6 +48,16 @@ public sealed class TrayIconController : IDisposable
         PauseToggled?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>A one-off notice from the tray. Clicking it opens Settings, where the fix lives.</summary>
+    public void Notify(string title, string text)
+    {
+        _notifyIcon.BalloonTipClicked -= OnBalloonClicked;
+        _notifyIcon.BalloonTipClicked += OnBalloonClicked;
+        _notifyIcon.ShowBalloonTip(10_000, title, text, Forms.ToolTipIcon.Warning);
+    }
+
+    private void OnBalloonClicked(object? sender, EventArgs e) => SettingsRequested?.Invoke(this, EventArgs.Empty);
+
     public void Dispose()
     {
         _notifyIcon.Visible = false;

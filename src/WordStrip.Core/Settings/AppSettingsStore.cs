@@ -22,7 +22,7 @@ public sealed class AppSettingsStore
             {
                 var json = File.ReadAllText(_filePath);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (settings is not null) return settings;
+                if (settings is not null) return Migrate(settings);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -31,6 +31,17 @@ public sealed class AppSettingsStore
         }
 
         return new AppSettings();
+    }
+
+    /// <summary>
+    /// Brings forward values that were only ever an old default. The Tab cycle window was 900 ms and never
+    /// shown in the settings window, so a saved 900 cannot be a choice anybody made — it is the old default,
+    /// written back to disk with everything else, and it would otherwise pin every existing user to it.
+    /// </summary>
+    private static AppSettings Migrate(AppSettings settings)
+    {
+        if (settings.PredictionCycleWindowMs == 900) settings.PredictionCycleWindowMs = 1200;
+        return settings;
     }
 
     public void Save(AppSettings settings)

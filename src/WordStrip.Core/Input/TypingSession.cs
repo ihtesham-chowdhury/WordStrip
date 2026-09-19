@@ -27,6 +27,16 @@ public sealed class TypingSession : IDisposable
     private bool _ownsHooks;
     private bool _atSentenceStart = true;
 
+    /// <summary>
+    /// A sentence terminator was actually seen before the caret, with nothing typed since. Unlike
+    /// <see cref="_atSentenceStart"/>, which is also the safe assumption after losing track of the caret,
+    /// this is only ever set on evidence — it is what capitalisation acts on.
+    /// </summary>
+    private bool _sentenceStartSeen;
+
+    /// <summary>Whether the word in progress began where <see cref="_sentenceStartSeen"/> held.</summary>
+    private bool _wordStartsSentence;
+
     public event EventHandler<string>? CurrentWordChanged;
     public event EventHandler<WordCommittedEventArgs>? WordCommitted;
     public event EventHandler? BufferReset;
@@ -45,6 +55,13 @@ public sealed class TypingSession : IDisposable
 
     /// <summary>Whether the caret is at the start of a sentence — after a full stop, or wherever tracking last restarted.</summary>
     public bool IsAtSentenceStart => _atSentenceStart;
+
+    /// <summary>
+    /// Whether the word in progress — or, between words, the next one — is known to begin a sentence. Known
+    /// means a full stop, question mark or exclamation mark was seen; after a click or an arrow key the
+    /// answer is no, however likely a sentence start may be.
+    /// </summary>
+    public bool IsSentenceStartKnown => _currentWord.Length > 0 ? _wordStartsSentence : _sentenceStartSeen;
 
     /// <summary>
     /// Does NOT subscribe to the hooks yet — call <see cref="Attach"/> once any other hook subscriber that
@@ -94,8 +111,9 @@ public sealed class TypingSession : IDisposable
         _recentWords.Clear();
 
         // With no history the model answers as if a sentence were starting, which is the most defensible
-        // guess when the caret's surroundings are genuinely unknown.
+        // guess when the caret's surroundings are genuinely unknown. It is a guess, so nothing capitalises on it.
         _atSentenceStart = true;
+        _sentenceStartSeen = false;
 
         if (hadBuffer) BufferReset?.Invoke(this, EventArgs.Empty);
     }
@@ -113,6 +131,7 @@ public sealed class TypingSession : IDisposable
 
         PushHistory(word);
         _atSentenceStart = false;
+        _sentenceStartSeen = false;
 
         if (hadBuffer) BufferReset?.Invoke(this, EventArgs.Empty);
     }
@@ -139,11 +158,12 @@ public sealed class TypingSession : IDisposable
             _currentWord.Clear();
             _recentWords.Clear();
             _atSentenceStart = true;
+            _sentenceStartSeen = false;
         }
 
         foreach (var c in replacement ?? string.Empty)
         {
-            if (KeyTranslator.IsWordCharacter(c)) _currentWord.Append(c);
+            if (KeyTranslator.IsWordCharacter(c)) AppendToWord(c);
             else CommitQuietly(c);
         }
     }
@@ -202,6 +222,7 @@ public sealed class TypingSession : IDisposable
         _currentWord.Clear();
         _recentWords.RemoveRange(_recentWords.Count - popped.Count, popped.Count);
         if (_recentWords.Count == 0 && popped.Count > 0) _atSentenceStart = true;
+        _sentenceStartSeen = false;
         return true;
     }
 
@@ -217,12 +238,20 @@ public sealed class TypingSession : IDisposable
         {
             _recentWords.Clear();
             _atSentenceStart = true;
+            _sentenceStartSeen = true;
         }
         else
         {
             PushHistory(word);
             _atSentenceStart = false;
+            _sentenceStartSeen = false;
         }
+    }
+
+    private void AppendToWord(char c)
+    {
+        if (_currentWord.Length == 0) _wordStartsSentence = _sentenceStartSeen;
+        _currentWord.Append(c);
     }
 
     /// <summary>
@@ -288,6 +317,7 @@ public sealed class TypingSession : IDisposable
                 // so predicting from it would be predicting from text being edited away.
                 _recentWords.Clear();
                 _atSentenceStart = true;
+                _sentenceStartSeen = false;
                 BufferReset?.Invoke(this, EventArgs.Empty);
             }
             return;
@@ -310,7 +340,7 @@ public sealed class TypingSession : IDisposable
 
         if (KeyTranslator.IsWordCharacter(ch.Value))
         {
-            _currentWord.Append(ch.Value);
+            AppendToWord(ch.Value);
             CurrentWordChanged?.Invoke(this, CurrentWord);
         }
         else
@@ -325,6 +355,7 @@ public sealed class TypingSession : IDisposable
         if (_currentWord.Length == 0) return;
 
         var word = CurrentWord;
+        var startsSentence = _wordStartsSentence;
         _currentWord.Clear();
 
         // Captured before the history moves on, because the two branches below leave it in incompatible
@@ -338,11 +369,13 @@ public sealed class TypingSession : IDisposable
         {
             _recentWords.Clear();
             _atSentenceStart = true;
+            _sentenceStartSeen = true;
         }
         else
         {
             PushHistory(word);
             _atSentenceStart = false;
+            _sentenceStartSeen = false;
         }
 
         WordCommitted?.Invoke(this, new WordCommittedEventArgs
@@ -350,6 +383,7 @@ public sealed class TypingSession : IDisposable
             Word = word,
             BoundaryChar = boundaryChar,
             PrecedingWords = precedingWords,
+            StartsSentence = startsSentence,
         });
 
         CurrentWordChanged?.Invoke(this, CurrentWord);

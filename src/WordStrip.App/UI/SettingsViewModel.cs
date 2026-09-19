@@ -510,6 +510,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(PositionTop));
     }
 
+    public bool FixCapitalsAndApostrophes
+    {
+        get => _settings.FixCapitalsAndApostrophes;
+        set
+        {
+            if (_settings.FixCapitalsAndApostrophes == value) return;
+            _settings.FixCapitalsAndApostrophes = value;
+            Persist();
+            OnPropertyChanged();
+        }
+    }
+
     public bool CompleteOnSpace
     {
         get => _settings.CompleteOnSpace;
@@ -583,6 +595,23 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(TipRegistered));
         OnPropertyChanged(nameof(TipRegisteredLabel));
+        OnPropertyChanged(nameof(TipNotSelected));
+    }
+
+    /// <summary>
+    /// Registered, but not one of the user's keyboards — so Windows never loads it and browsers get nothing.
+    /// Shown as its own warning because the registration alone reads as "Enabled" and is not.
+    /// </summary>
+    public bool TipNotSelected => TipRegistered && !TipRegistrationManager.IsInKeyboardList();
+
+    public void AddTipToKeyboards()
+    {
+        TipStatus = TipRegistrationManager.AddToKeyboardList()
+            ? "Done. WordStrip is now your keyboard; restart the browser or Office apps that were already open."
+            : "Windows would not add it. You can add it yourself: Settings > Time & language > Language & region > English > Keyboards.";
+
+        OnPropertyChanged(nameof(TipNotSelected));
+        OnPropertyChanged(nameof(TipRegisteredLabel));
     }
 
     /// <summary>
@@ -598,7 +627,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// <summary>Inverse of <see cref="TipDllPresent"/>, so the XAML can bind a Visibility without a value converter — nothing in this codebase uses one.</summary>
     public bool TipDllMissing => !TipDllPresent;
 
-    public string TipRegisteredLabel => TipRegistered ? "Enabled" : "Not enabled";
+    public string TipRegisteredLabel => !TipRegistered ? "Not enabled" : TipNotSelected ? "Installed, but switched off" : "Enabled";
 
     public string TipStatus
     {
@@ -648,9 +677,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             TipBusy = false;
             OnPropertyChanged(nameof(TipRegistered));
             OnPropertyChanged(nameof(TipRegisteredLabel));
+            OnPropertyChanged(nameof(TipNotSelected));
             OnPropertyChanged(nameof(CanRegisterTip));
             OnPropertyChanged(nameof(CanUnregisterTip));
         }
+
+        // Registration alone does not switch it on; make it one of the user's keyboards in the same step.
+        if (TipRegistered && TipNotSelected) AddTipToKeyboards();
     }
 
     public void UnregisterTip()

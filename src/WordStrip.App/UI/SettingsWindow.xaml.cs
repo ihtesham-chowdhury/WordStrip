@@ -281,6 +281,11 @@ public partial class SettingsWindow : Window
         ViewModel.UnregisterTip();
     }
 
+    private void OnSwitchTipOnClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.AddTipToKeyboards();
+    }
+
     private void OnClearLearnedDataClick(object sender, RoutedEventArgs e)
     {
         // Confirmed because it cannot be undone, and because the user may not realise how much has built up.

@@ -12,10 +12,9 @@ namespace WordStrip.App.UI;
 /// as predictions change, rather than recreating them. Recreating chips regenerates their containers, and
 /// that is a layout pass through the whole window on every keystroke; changing a string is not.
 ///
-/// <para>Three visual weights, none of which look like a selection: the first slot reads slightly stronger
-/// than the rest (it is what Tab takes), and firms up to semibold when Space would commit it. Only
-/// <see cref="IsSelected"/> — set solely while the user is cycling with Tab — carries the selection
-/// treatment.</para>
+/// <para>The first slot reads slightly stronger than the rest (it is what Tab takes). The selection treatment
+/// — <see cref="IsSelected"/>, drawn with the theme's selection surface — marks whatever the user's next key
+/// will take: the first slot when Space would commit it, or the candidate a Tab cycle has just inserted.</para>
 /// </summary>
 public sealed class SuggestionChipViewModel : INotifyPropertyChanged
 {
@@ -95,7 +94,7 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
     public double MinHeight => Metrics.ChipMinHeight;
     public double FontSize => Metrics.FontSize;
 
-    public FontWeight FontWeight => _isSelected || (_isArmed && !_isEmoji) ? FontWeights.SemiBold : FontWeights.Medium;
+    public FontWeight FontWeight => _isSelected ? FontWeights.SemiBold : FontWeights.Medium;
 
     public double TextOpacity => _isSelected || (_isPrimary && !_isEmoji) ? 1.0 : AlternateOpacity;
 

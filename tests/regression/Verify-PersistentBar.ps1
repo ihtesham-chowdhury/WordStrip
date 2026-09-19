@@ -457,6 +457,24 @@ try {
     $plain = [W]::TextOf($edit)
     Check 'a complete word + Space is left alone' ($plain -eq 'i work ') "got '$plain'"
 
+    # Written forms. Case-sensitive comparisons on purpose (-ceq): PowerShell's -eq ignores case, which is
+    # exactly the thing being tested here.
+    [W]::ClearText($edit)
+    Start-Sleep -Milliseconds 300
+    Send $edit '{END}' 300
+    Send $edit 'im sure i dont know london ' 1200
+    $written = [W]::TextOf($edit)
+    Check 'contractions, "I" and proper nouns take their written form' ($written -ceq "I'm sure I don't know London ") `
+        "got '$written'"
+
+    [W]::ClearText($edit)
+    Start-Sleep -Milliseconds 300
+    Send $edit '{END}' 300
+    Send $edit 'well ill see. were ' 1200
+    $ambiguous = [W]::TextOf($edit)
+    Check 'ambiguous words are left alone, and a known sentence start is capitalised' `
+        ($ambiguous -ceq 'well ill see. Were ') "got '$ambiguous'"
+
     # --- 7. Tab predicts, Tab again replaces --------------------------------------------------------------
     # The second Tab has to land inside the cycle window, so the settle after the first one is short.
     Write-Host "`n7. Tab after a finished word predicts; Tab again replaces it"
@@ -472,7 +490,7 @@ try {
     # The second candidate may be a phrase ("to the"), so this checks what matters: the first prediction was
     # replaced, not appended to.
     Check 'a second Tab replaces that prediction rather than adding another' `
-        ($secondPrediction.StartsWith('i am looking ') -and ($secondPrediction -ne $firstPrediction) -and `
+        ($secondPrediction.StartsWith('i am looking ', 'OrdinalIgnoreCase') -and ($secondPrediction -ne $firstPrediction) -and `
          -not $secondPrediction.StartsWith($firstPrediction + ' ')) `
         "first '$firstPrediction', second '$secondPrediction'"
 

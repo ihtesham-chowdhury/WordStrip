@@ -15,4 +15,11 @@ public sealed class WordCommittedEventArgs : EventArgs
     /// entirely — and personal learning needs the pair to be exact.</para>
     /// </summary>
     public IReadOnlyList<string> PrecedingWords { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// The word is known for certain to begin a sentence — the provider saw the full stop, question mark or
+    /// exclamation mark before it. False whenever that is merely likely: a capital is only ever added on
+    /// knowledge, because capitalising a word mid-sentence is worse than missing one.
+    /// </summary>
+    public bool StartsSentence { get; init; }
 }
