@@ -90,7 +90,11 @@ public sealed class SelectionLens : FrameworkElement
 
     protected override void OnRender(DrawingContext drawingContext)
     {
-        if (LensWidth <= 0 || LensHeight <= 0 || Opacity <= 0) return;
+        // Opacity is deliberately not checked. The lens is positioned while still transparent and then faded
+        // in, and a change of Opacity never re-runs OnRender - it is applied by the compositor. Skipping the
+        // drawing at zero opacity recorded an empty lens that then faded in as nothing, so the pill never
+        // appeared on the first Tab or when Space was armed, only once a later Tab moved it.
+        if (LensWidth <= 0 || LensHeight <= 0) return;
 
         var pen = Rim is null ? null : new Pen(Rim, 1);
         pen?.Freeze();

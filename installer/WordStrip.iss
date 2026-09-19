@@ -3,7 +3,7 @@
 ; Expects the self-contained publish output in publish\portable\.
 
 #define AppName        "WordStrip"
-#define AppVersion     "0.13.2"
+#define AppVersion     "0.13.3"
 #define AppPublisher   "WordStrip"
 #define AppExeName     "WordStrip.exe"
 
