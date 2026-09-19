@@ -51,6 +51,20 @@ public sealed class BarInputRouter
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (!InteractionLog.IsEnabled)
+        {
+            Route(e);
+            return;
+        }
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        Route(e);
+        if (clock.Elapsed.TotalMilliseconds > 8)
+            InteractionLog.Write($"slow key vk=0x{e.VirtualKeyCode:X2} routed in {clock.Elapsed.TotalMilliseconds:0.0} ms");
+    }
+
+    private void Route(KeyEventArgs e)
+    {
         if (e.IsInjected || e.Suppress) return;
 
         var vk = e.VirtualKeyCode;

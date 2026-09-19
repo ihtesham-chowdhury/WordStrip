@@ -237,6 +237,11 @@ public partial class App : System.Windows.Application
         // then skip them entirely; and it ends a Tab cycle before an ordinary keystroke is processed, so the
         // cycle can never touch what the user types next. Router subscribes here; TypingSession only
         // subscribes on the explicit Attach() below.
+        // Diagnostics only: times each whole hook callback, router and typing session together, which is where
+        // prediction runs. Subscribed first and last so it brackets everything between.
+        var keyClock = new System.Diagnostics.Stopwatch();
+        if (InteractionLog.IsEnabled) _keyboardHook.KeyDown += (_, _) => keyClock.Restart();
+
         _ = new BarInputRouter(_keyboardHook, _suggestionController);
 
         // Same reasoning on the mouse hook, and just as load-bearing. A click outside the bar dismisses it,
@@ -247,6 +252,15 @@ public partial class App : System.Windows.Application
         _mouseHook.MouseButtonDown += (_, _) => _suggestionController.Dismiss();
         _typingSession.Attach();
 
+        if (InteractionLog.IsEnabled)
+        {
+            _keyboardHook.KeyDown += (_, e) =>
+            {
+                var elapsed = keyClock.Elapsed.TotalMilliseconds;
+                if (elapsed > 8) InteractionLog.Write($"slow keystroke vk=0x{e.VirtualKeyCode:X2}: {elapsed:0.0} ms in the hook");
+            };
+        }
+
         // Prediction runs on every keystroke; drawing is coalesced. Updates are posted at background priority,
         // which runs only once pending input has been processed, so a burst of keystrokes draws once — as its
         // last state — and a delivery always reads the newest value rather than the one that scheduled it.
@@ -256,8 +270,12 @@ public partial class App : System.Windows.Application
             action => _barWindow.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, action),
             update =>
             {
+                var clock = InteractionLog.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
                 _barWindow.ShowSuggestions(update);
                 FrameProbe.SetCoalesced(render!.Coalesced);
+
+                if (clock is not null && clock.Elapsed.TotalMilliseconds > 8)
+                    InteractionLog.Write($"slow render {clock.Elapsed.TotalMilliseconds:0.0} ms ({update.Suggestions.Count} candidates)");
             });
         _suggestionController.SuggestionsChanged += (_, update) => render.Post(update);
         _barWindow.SuggestionClicked += (_, suggestion) => _suggestionController.AcceptSuggestion(suggestion);

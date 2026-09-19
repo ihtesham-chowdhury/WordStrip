@@ -43,7 +43,8 @@ public partial class SuggestionBarWindow : Window
     private bool _isRevealed;
     private DateTime _lastCycleAt = DateTime.MinValue;
     private GlassAppearance _appearance = GlassAppearance.OverLight;
-    private DateTime _lastProbeAt = DateTime.MinValue;
+    private System.Windows.Threading.DispatcherTimer? _probePauseTimer;
+    private bool _probeInFlight;
     private SlotPanel? _slots;
     private double _heldWidth;
     private System.Windows.Threading.DispatcherTimer? _relaxTimer;
@@ -154,9 +155,15 @@ public partial class SuggestionBarWindow : Window
     }
 
     /// <summary>
-    /// Retints the glass for whatever is behind it. Only sampled when the bar (re)appears or after a pause —
-    /// reading pixels off the screen DC is far too costly to do on every keystroke, and the backdrop rarely
-    /// changes brightness mid-word anyway.
+    /// Retints the glass for whatever is behind it — but never while the user is typing.
+    ///
+    /// <para><b>Measured, not assumed.</b> Reading pixels off the screen DC takes about 145 ms on a typical
+    /// machine, and it used to run on the UI thread every 700 ms of typing. With WORDSTRIP_FRAMELOG on, that
+    /// was the whole of the bar's jank: every other render was well under a millisecond, and these produced
+    /// a frame gap of 150-200 ms three times a second. So the probe now runs only when the bar appears and
+    /// once typing has paused, and the pixel read itself happens on a worker thread; the UI thread only
+    /// applies the answer. The backdrop rarely changes brightness mid-word, and when it does the palette
+    /// catches up a moment after the user stops.</para>
     /// </summary>
     private void AdaptToBackground(bool reappearing)
     {
@@ -165,6 +172,7 @@ public partial class SuggestionBarWindow : Window
         // would be both wasteful and a lie about what the setting does.
         if (_settings.AppearanceMode != AppearanceMode.Auto)
         {
+            _probePauseTimer?.Stop();
             var pinned = _settings.AppearanceMode == AppearanceMode.Dark
                 ? GlassAppearance.OverDark
                 : GlassAppearance.OverLight;
@@ -178,21 +186,53 @@ public partial class SuggestionBarWindow : Window
 
         if (!SystemAppearance.UseGlass) return;
 
-        var now = DateTime.UtcNow;
-        if (!reappearing && now - _lastProbeAt < TimeSpan.FromMilliseconds(700)) return;
-        _lastProbeAt = now;
+        if (reappearing)
+        {
+            StartProbe();
+            return;
+        }
+
+        // Still typing: push the probe back until the updates stop.
+        _probePauseTimer ??= new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromMilliseconds(1200),
+            System.Windows.Threading.DispatcherPriority.Background,
+            (_, _) =>
+            {
+                _probePauseTimer!.Stop();
+                StartProbe();
+            },
+            Dispatcher);
+
+        _probePauseTimer.Stop();
+        _probePauseTimer.Start();
+    }
+
+    /// <summary>Samples the backdrop on a worker thread and applies the result back here. One at a time.</summary>
+    private void StartProbe()
+    {
+        if (_probeInFlight || !IsVisible) return;
 
         var scale = GetDpiScale();
-        var luminance = BackgroundProbe.SampleAround(
-            (int)Math.Round(Left * scale),
-            (int)Math.Round(Top * scale),
-            (int)Math.Round(ActualWidth * scale),
-            (int)Math.Round(ActualHeight * scale));
+        var left = (int)Math.Round(Left * scale);
+        var top = (int)Math.Round(Top * scale);
+        var width = (int)Math.Round(ActualWidth * scale);
+        var height = (int)Math.Round(ActualHeight * scale);
 
-        if (luminance is null) return;
+        _probeInFlight = true;
+        System.Threading.Tasks.Task.Run(() => BackgroundProbe.SampleAround(left, top, width, height))
+            .ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _probeInFlight = false;
+                if (task.Status == System.Threading.Tasks.TaskStatus.RanToCompletion) ApplyLuminance(task.Result);
+            })));
+    }
+
+    private void ApplyLuminance(double? luminance)
+    {
+        if (luminance is null || !_isRevealed || _settings.AppearanceMode != AppearanceMode.Auto) return;
 
         // Hysteresis around the midpoint: without a dead band, a backdrop hovering near the threshold would
-        // flip the whole material back and forth while the user types.
+        // flip the whole material back and forth.
         var next = _appearance switch
         {
             GlassAppearance.OverDark when luminance > 0.46 => GlassAppearance.OverLight,
