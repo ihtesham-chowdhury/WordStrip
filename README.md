@@ -37,17 +37,23 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 Working preview, 0.12.1. Verified two ways:
 
-- **367 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
-  personal vocabulary and learning, text injection, the suggestion controller and the typing-history rules.
+- **440 unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
+  personal vocabulary and learning, text injection, the typing-history rules, and the interaction model end
+  to end — driven against an in-memory text field whose injector refuses to replace text that isn't there.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
-  `Edit` control and reads the text back with `WM_GETTEXT` — not screenshots, which are meaningless here
-  (see [Why screenshots can't verify this](#why-screenshots-cant-verify-this)). It covers live suggestions,
-  Tab to highlight, Space to insert, Esc to dismiss, autocorrect on word commit, the bar persisting between
-  words, and Tab still reaching the app while the bar is idle.
+  `Edit` or `RICHEDIT50W` control and reads the text back with `WM_GETTEXT` — not screenshots, which are
+  meaningless here (see [Why screenshots can't verify this](#why-screenshots-cant-verify-this)). It covers
+  Space and punctuation completing a word, one-Tab prediction and Tab-again replacement, typing that ends
+  the cycle, a field changed behind WordStrip's back, autocorrect, multi-word personal entries, Esc, and Tab
+  reaching the app after Esc. Run it at human pace and fast:
 
 ```bash
-powershell -File .\tests\regression\Verify-PersistentBar.ps1
+powershell -File .\tests\regression\Verify-PersistentBar.ps1 -ControlClass RichEdit -PerKeyMs 30
 ```
+
+- **A stability measurement** (`tests\regression\Measure-BarStability.ps1`) that types a sentence and
+  samples the bar's window rectangle after every keystroke, plus the app's frame timings. The bar should
+  keep exactly one size and one position while you type.
 
 It takes over the keyboard and foreground for about a minute. It types only into a throwaway window it
 creates itself, and it re-checks that that window still has focus before every keystroke — otherwise a
@@ -62,11 +68,11 @@ stray focus change sends the test's typing into whatever you're actually doing.
 ## Build and run
 
 ```bash
-dotnet build "D:\Claude Code\WordStrip\WordStrip.sln"
+dotnet build WordStrip.sln
 ```
 
 ```bash
-"D:\Claude Code\WordStrip\src\WordStrip.App\bin\Debug\net8.0-windows\WordStrip.exe"
+.\src\WordStrip.App\bin\Debug\net8.0-windows\WordStrip.exe
 ```
 
 The app has no main window — it lives in the system tray. Startup takes a few seconds while the spelling
@@ -78,7 +84,7 @@ hooks would fight over every keystroke.
 ## Producing a shareable build
 
 ```bash
-powershell -File "D:\Claude Code\WordStrip\build-release.ps1"
+powershell -File .\build-release.ps1
 ```
 
 That produces, in `publish\`:
@@ -94,25 +100,49 @@ Both are unsigned, so Windows shows a SmartScreen "unknown publisher" warning on
 
 ## Using it
 
-Start typing in a supported text field. The bar appears above the taskbar with candidates.
+Start typing in a supported text field. The bar appears above the taskbar with candidates. The aim is that
+you think "I'm typing", not "I'm operating a suggestion bar" — so there are two situations, and each has the
+key that is already under your fingers.
 
-| Key | Action |
+**Part-way through a word** — `I am looki|`:
+
+| Key | What happens |
 |---|---|
-| `Tab` | Highlight the next candidate (`Shift+Tab` for previous). Hold to scrub through them. |
-| `Space` | Insert the highlighted candidate |
-| `Enter` | Also inserts the highlighted candidate |
-| `Esc` | Put the bar away |
-| Click | Insert a candidate directly — no need to Tab first |
+| `Space` | Finishes the word with the first suggestion and types the space: `I am looking ` — **only when WordStrip is sure** (see below). Otherwise it's just a space. |
+| `,` `.` `!` `?` `:` `;` `)` `]` `}` | Same rule, keeping your punctuation: `I am looking,` |
+| `Backspace` | Straight after a completion, puts back exactly what you typed; Space then leaves that word alone. |
+| `Tab` | Takes the first suggestion, whatever it is. |
+| `Enter` | Never completes anything — Enter sends messages and submits forms. |
 
-**Tab first, then Space.** Space only inserts when a candidate is actually highlighted — otherwise every
-space you typed would rewrite the word you just finished. With nothing highlighted, Space is just a space.
+**Between words** — `I am looking|` or `I am looking |`:
 
-**The bar owns Tab whenever it is showing anything** — completing a word or predicting the next one. That
-was not always so: the between-words bar briefly claimed no keys at all, to keep Tab indenting and moving
-between dialog fields. In use that was the wrong trade, because it put the predictions out of reach on
-exactly the path where they are most useful, straight after inserting a word. Esc is the escape hatch:
-dismiss the bar and Tab behaves normally again until the next keystroke brings it back. Esc itself is only
-swallowed when there is a highlighted candidate to cancel, so it still closes a dialog otherwise.
+| Key | What happens |
+|---|---|
+| `Tab` | Puts the first prediction in: `I am looking for`. One key, no highlight step. |
+| `Tab` again, straight away | Swaps it for the next one: `for` → `at` → `back` … (`Shift+Tab` goes back). |
+| Anything else | Ends that: typing, Space, a click, an arrow key, switching windows, or a second's pause. After that, Tab predicts the *next* word instead of swapping this one. |
+
+`Esc` puts the bar away, and Tab goes back to the application until you type again. A click on a suggestion
+inserts it, as it always has.
+
+**When Space completes, and when it doesn't.** Space is pressed thousands of times a day, so this is built
+around refusals. It completes only when there is a word in progress of at least three letters, what you've
+typed isn't already a word (`the`, `work` and `can` are left alone), the first suggestion genuinely
+continues it, and it clearly beats the others. It also won't complete what looks like a typo: `teh` begins
+`tehran`, but it's far more likely to be `the`, so it's left for autocorrect. When Space *will* complete,
+the first suggestion is shown in bold. Turn it off in **Settings → Suggestions → Finish a word with Space
+when WordStrip is sure**.
+
+**Tab is left alone where it means something else**: in single-line form fields (so it still moves to the
+next field), at the start of a line (so it still indents), and after `Esc`.
+
+**WordStrip only ever replaces text it can account for.** Swapping one prediction for the next replaces
+exactly the text WordStrip inserted — never "the word before the caret". And before editing a standard
+Windows text field it reads the field and refuses if the text isn't what it expected, which catches the one
+thing a keyboard hook cannot see: an application changing its own text without a keystroke.
+
+**The bar holds still.** Its size comes from how many suggestions it shows, not from the words in them, so
+typing changes what it says and never its shape. Nothing on it looks selected until you press Tab.
 
 ### The bar stays put between words
 
@@ -127,8 +157,7 @@ It goes away when you click elsewhere, press `Esc`, or focus leaves a text field
 Turn it off with **Settings → Suggestions → Keep the bar on screen between words** to get the original
 per-word behaviour.
 
-Tab cycles these exactly as it cycles completions — see [Using it](#using-it) for why that ended up being
-the right call, and what Esc does about it.
+One Tab takes the first of these; see [Using it](#using-it).
 
 Autocorrect fires when you finish a word with space, Enter, or punctuation, and only when the typed word
 isn't in the dictionary *and* a confident correction exists. It won't silently rewrite a low-confidence guess.
@@ -225,11 +254,11 @@ was typed.
 ### Regenerating the model
 
 ```bash
-powershell -File "D:\Claude Code\WordStrip\tools\ngram\Fetch-Corpus.ps1"
+powershell -File .\tools\ngram\Fetch-Corpus.ps1
 ```
 
 ```bash
-dotnet run --project "D:\Claude Code\WordStrip\tools\WordStrip.NGramBuilder" -c Release
+dotnet run --project .\tools\WordStrip.NGramBuilder -c Release
 ```
 
 The corpus lands in `.corpus\` (gitignored, ~47MB); only the generated model is committed. Pruning is
@@ -540,7 +569,7 @@ real model would be asserting on what a few dozen novels happen to contain, and 
 the next time the corpus changed.
 
 ```bash
-dotnet test "D:\Claude Code\WordStrip\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj"
+dotnet test .\tests\WordStrip.Core.Tests\WordStrip.Core.Tests.csproj
 ```
 
 `IFocusedControlProvider` exists for the same reason `ITextInjector` does. The focus check read live Win32

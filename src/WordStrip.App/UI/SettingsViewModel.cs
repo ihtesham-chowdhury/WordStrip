@@ -510,6 +510,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(PositionTop));
     }
 
+    public bool CompleteOnSpace
+    {
+        get => _settings.CompleteOnSpace;
+        set
+        {
+            if (_settings.CompleteOnSpace == value) return;
+            _settings.CompleteOnSpace = value;
+            Persist();
+            OnPropertyChanged();
+        }
+    }
+
     public bool PersistentBar
     {
         get => _settings.PersistentBar;

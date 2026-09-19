@@ -139,9 +139,13 @@
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
                            Text="With a fixed width, this is how many columns the bar is divided into, and a narrow bar may fit fewer than you ask for. A word too long for its column is shortened in the middle, so the columns stay where they are." />
 
+                <CheckBox Content="Finish a word with Space when WordStrip is sure" IsChecked="{Binding CompleteOnSpace}" Margin="0,0,0,2" />
+                <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
+                           Text="Type &quot;looki&quot; and Space gives &quot;looking &quot;. Only when one completion is clearly the answer - never for a word you have already finished, and never for what looks like a typo. The first suggestion turns bold when Space will take it, and Backspace straight after puts back what you typed." />
+
                 <CheckBox Content="Keep the bar on screen between words" IsChecked="{Binding PersistentBar}" Margin="0,0,0,2" />
                 <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
-                           Text="Shows common words when you're between words, like a phone keyboard. Turn this off to have the bar appear only while you're part-way through a word. Either way, Esc or a click elsewhere puts it away." />
+                           Text="Shows what is likely to come next when you're between words, like a phone keyboard. Tab puts the first one in; Tab again straight away swaps it for the next. Turn this off to have the bar appear only while you're part-way through a word. Either way, Esc or a click elsewhere puts it away." />
 
                 <CheckBox Content="Suggest whole phrases, not just single words" IsChecked="{Binding PhraseSuggestionsEnabled}" Margin="0,0,0,2" />
                 <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,12"
@@ -186,7 +190,7 @@
 
                 <CheckBox Content="Keep the bar one width" IsChecked="{Binding FixedBarWidth}" Margin="0,0,0,2" />
                 <TextBlock Style="{StaticResource Hint}" Margin="24,0,0,10"
-                           Text="A phone keyboard's suggestion row is always the same width. By default this bar sizes itself to the words on it, which wastes no space but means it resizes as you type." />
+                           Text="Like a phone keyboard's suggestion row, the bar keeps one size while you type - its width comes from how many words it shows, not from the words themselves. Turn this off to have it size itself to the words instead, which wastes no space but means it changes shape as you type." />
 
                 <StackPanel Margin="24,0,0,4"
                             Visibility="{Binding FixedBarWidth, Converter={StaticResource BoolToVisibility}}">

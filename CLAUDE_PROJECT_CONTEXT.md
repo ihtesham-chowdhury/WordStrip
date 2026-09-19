@@ -106,8 +106,12 @@ files the user can read and delete. **[fact]**
     gained a shrink-the-whole-word-first fallback before its existing middle-ellipsis. See §11 for detail.
     **[fact, 2026-09-18]**
   - Published on GitHub as v0.12.0, with a portable zip and an installer, both self-contained
-- **In progress:** Nothing. Both the slot layout and its sizing fix are built, verified on screen and
-  committed. **[fact]**
+  - **Interaction-model refactor**: Space/punctuation finish a confident completion; one Tab inserts a
+    prediction and Tab again replaces exactly that span; the bar is passive until Tab, has fixed geometry,
+    coalesced rendering and ranking hysteresis; every edit verifies the field first. 440 unit tests; the
+    real-typing regression passes on EDIT and RICHEDIT50W at 90 and 30 ms/key. See §11. **[fact, 2026-09-19]**
+- **In progress:** Nothing. The refactor is committed on `main`, **not yet pushed or released** — the owner
+  had asked for 0.12.1 to be published; this is the next version after it. **[fact]**
 - **Blocked:** Nothing.
 - **Next priority:** The owner still has to publish the GitHub Release by dragging both binaries into the
   "Attach binaries" drop zone (not the markdown body). After that, Phase 7 Stage 3 — committing through TSF,
@@ -573,6 +577,48 @@ Inspect these first, roughly in this order:
 
 ## 11. Recent Work
 
+**Interaction model and visual stability refactor.** **[fact, 2026-09-19]**
+
+Brief from the owner: make WordStrip feel like typing rather than operating a suggestion bar — "predicts
+constantly, asks for attention almost never". The prediction engine was deliberately left alone.
+
+| Situation | Behaviour now | Where |
+|---|---|---|
+| Word in progress | Space and `. , ! ? : ; ) ] }` commit the first candidate + the key, only if `CompletionPolicy` agrees. Enter never does. Backspace straight after undoes it and that word is then never auto-completed again. | `SuggestionController.HandleBoundary/HandleBackspace`, `CompletionPolicy` |
+| Between words | One Tab inserts prediction #1 (with a leading space if the caret is right after a word). Tab again within `PredictionCycleWindowMs` (900) replaces **exactly** what was inserted with #2, and so on; Shift+Tab goes back. | `HandleTab`, the `Cycle` record |
+| Tab on a word that is already complete and ranked first | Treated as finished: inserts " " + next-word prediction. This is how acceptance Scenario B ("I am looking" + Tab → "I am looking for") works. Consequence: typing "ale" + Tab does not reach a saved "Alexandra…" entry ranked second — type a non-word prefix ("alexandraf"). | `HandleTab` |
+| Tab left to the app | Single-line Win32 edits (forms), line start (indentation), Shift+Tab outside a cycle, after Esc until typing resumes, whenever the text-service word disagrees with the keystroke word. | `HandleTab`, `TextContext.IsSingleLine` |
+| Visuals | Passive by default (no lens; #1 slightly stronger, semibold when Space is armed); active only during a Tab cycle. Fixed slot geometry: `SlotCount × PreferredSlotWidth`, no borrowing or growth — words shrink then middle-elide. Chips are a fixed pool updated in place. | `SuggestionBarWindow`, `SlotPanel`, `SuggestionChipViewModel` |
+| Rendering | Controller publishes every keystroke; `LatestValueCoalescer` delivers only the newest at background priority. | `App.xaml.cs` |
+| Ranking stability | `CandidateStabilizer`: first slot kept unless beaten by > `RankingHysteresis`; other survivors keep their slots; new words fill holes. Display only — scores untouched, and `CompletionPolicy` still demands a real lead, so stability can never cause a completion. | `CandidateStabilizer` |
+
+`CompletionPolicy` conditions: prefix ≥ 3, typed text not a known word, first slot a true prefix completion
+(never fuzzy/emoji), confidence ≥ 0.6 (softmax over log-scaled scores), margin ≥ 0.25, and **no one-edit
+repair more than 20× commoner** than the completion.
+
+Found only by running the real regression — none of these were visible to unit tests:
+- **"teh " became "tehran "**: a typo that prefixes only a rare word is a "confident" completion. Hence the
+  typo-ratio rule (`PredictionEngine.GetBestRepairFrequency`).
+- **"ir am looking"**: after a Tab insertion the shadow buffer holds a word with no trailing space; the
+  harness cleared the field with a message (invisible to the hook); typing "i" made WordStrip think "thei"
+  was in progress and Space "completed" it into the real text. Fix: every injector operation reads the
+  focused edit control first and **refuses** unless it ends with what is about to be replaced; the
+  controller then drops its stale context (`ITextContextProvider.InvalidateContext`) and, for a boundary
+  key, types the user's key itself.
+- **Every verified edit was refused**: `SendMessageTimeout` was imported without a CharSet, binding the ANSI
+  entry point; Windows thunks `EM_GETSEL` for ANSI callers and the selection end came back 0. Reads use
+  `SendMessageTimeoutWide`.
+- **"Halsted" became "Halted"**: Tab leaves WordStrip's own last word in progress, so the next Space
+  autocorrected it. Words WordStrip inserted (`_finishedWord`) are never autocorrected.
+- **~190 ms UI stalls three times a second while typing**: the backdrop luminance probe (screen-DC read,
+  ~145 ms) ran on the UI thread every 700 ms of typing in Auto appearance — the default. Pre-existing, found
+  by `Measure-BarStability.ps1` plus render-step timing. Now probes only on appearance and after a 1.2 s
+  pause, on a worker thread. Worst frame gap while typing ~190 ms → ~45 ms; rapid Tab: no dropped frames.
+
+Not done, deliberately: **Alt+digit direct slot shortcuts (spec §16)** — optional and advanced; not
+implemented rather than shipped disabled. **Emoji no longer get a narrower slot** — uniform slots are what
+keeps geometry fixed when an emoji comes and goes.
+
 **The slot layout from the day before stretched every column to fill the bar's whole reserved width —**
 **fixed, not the columns.** **[fact, 2026-09-18]**
 
@@ -914,6 +960,18 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
 
 ### Testing gotchas discovered the hard way — read before writing UI or input tests
 
+- **Controller tests must queue deferred edits, not run them inline.** The app runs every text edit after
+  the hook callback returns; running `postToMessageLoop` inline tests an ordering users never get (a refused
+  edit then "happens" before the controller has finished the key). `InteractionHarness` queues and pumps.
+- **Windows PowerShell strips embedded double quotes from arguments to a child `powershell -File`.** JSON
+  passed that way arrives unparseable and the app silently runs on defaults — one measurement lied because of
+  it. Pass typed switches (`Measure-BarStability.ps1 -Appearance Light`), never raw JSON.
+- **The regression's field clears are invisible to the hook**, like any application changing its own text.
+  `Clear-Field` presses End afterwards so checks don't inherit each other's buffer; check 10 skips that on
+  purpose to exercise the hazard.
+- **A prefix that is itself a dictionary word is taken as finished by Tab.** Regression prefixes for saved
+  entries must be non-words ("alexandraf", "flate").
+
 17. **`PrintWindow` cannot capture a DWM backdrop.** It only captures what the app itself draws. Judging
     translucency from a `PrintWindow` grab is meaningless. **[fact]**
 18. **PowerShell is DPI-unaware by default.** Call `SetProcessDPIAware()` first or captures are rendered into
@@ -1047,6 +1105,26 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
   quietly ignoring every setting. PowerShell's `Out-File`/`ConvertTo-Json` pipeline adds one. Edit the file
   with a tool that writes plain UTF-8; this is the same trap as §12's source-file warning, with a worse
   failure mode because nothing reports it. **[fact — cost an hour of misdiagnosing the layout]**
+
+- **The router decides nothing.** `BarInputRouter` only maps keys to `SuggestionController.Handle*` calls and
+  sets `e.Suppress` from their return values; every rule lives in the controller, which is what makes the
+  interaction model testable without a keyboard. It must still subscribe before `TypingSession.Attach()`,
+  and it must report *every* non-consumed key (`HandleOtherKey`) — that is what ends a Tab cycle before the
+  user's keystroke lands. Bare modifiers are ignored so Shift+Tab can start with Shift alone.
+- **A cycle replaces exactly its recorded span.** `Cycle.Inserted` is the exact text WordStrip put before the
+  caret; `ITextInjector.ReplaceText(existing, replacement)` deletes only the part after the shared prefix.
+  Never replace "the word before the caret", never delete by length. Providers are told first via
+  `NoteTextReplaced`, then the edit is posted — the next keystroke must be judged against the new text.
+- **Every injector method returns whether it edited.** Returning false means the field was readable and did
+  not contain what was expected; the caller must `Resynchronise()`. Autocorrect accepts the field ending
+  with the word *or* word+boundary, because the unsuppressed boundary key may still be queued (a sent read
+  jumps ahead of queued input — the same race that killed the old EM_SETSEL approach).
+- **Cross-process reads of a Unicode control use the W entry point** (`SendMessageTimeoutWide`,
+  `SendMessageTimeoutText`). The ANSI thunk corrupts `EM_GETSEL`.
+- **Never autocorrect a word WordStrip inserted** (`insertedByUs` in `OnWordCommitted`).
+- **Nothing expensive on the UI thread while typing.** The backdrop probe is the precedent: ~145 ms, found
+  only by measuring. Use `WORDSTRIP_INTERACTIONLOG=1` (slow keystrokes/renders > 8 ms are logged) and
+  `Measure-BarStability.ps1` before claiming the bar is calm.
 
 ### UI/UX rules
 
