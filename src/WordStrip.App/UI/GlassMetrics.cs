@@ -1,12 +1,18 @@
+using WordStrip.App.UI.Theming;
+using WordStrip.Core.Presentation;
+
 namespace WordStrip.App.UI;
 
 /// <summary>
-/// Every size on the bar, derived from one scale factor and the theme's corner radius so the proportions
-/// stay right at any thickness and in any theme.
+/// Every size on the bar: the optical density decides how big, the theme decides what shape.
 ///
-/// <para>Concentricity is the reason this is centralised rather than hard-coded per element: the chip radius
-/// has to be the plate radius minus the inset and rim, or the curves stop running parallel to each other.
-/// Everything is in device-independent units, so it scales correctly on high-DPI displays.</para>
+/// <para>Density comes from <see cref="OpticalSizing"/>, which sizes the bar from the text it is sitting
+/// next to. This type is where those numbers meet a theme's own geometry — its corner radius factor, its
+/// candidate rhythm, its selection language — and become the concrete values the renderers draw with.</para>
+///
+/// <para>Concentricity is why this is centralised rather than hard-coded per element: the chip radius has to
+/// be the plate radius minus the inset and rim, or the curves stop running parallel. Everything is in
+/// device-independent units, so it scales correctly on high-DPI displays.</para>
 /// </summary>
 public readonly record struct GlassMetrics
 {
@@ -32,25 +38,38 @@ public readonly record struct GlassMetrics
     /// <summary>Indicator length as a fraction of the selected chip's width.</summary>
     public required double IndicatorWidthFactor { get; init; }
 
-    public static GlassMetrics ForScale(double scale, double themeCornerRadius, bool showIndicator)
-    {
-        // Clamped so the strip can never collapse into an unreadable sliver or balloon into a panel.
-        scale = Math.Clamp(scale, 0.7, 1.4);
+    /// <summary>The narrowest a candidate column may be before words start being shortened.</summary>
+    public required double MinSlotWidth { get; init; }
 
-        var inset = Math.Round(5 * scale);
+    /// <summary>Multiplies the theme's authored shadow. A small bar carries a smaller shadow.</summary>
+    public required double ShadowScale { get; init; }
+
+    /// <summary>
+    /// The sizes for one density and one theme.
+    /// </summary>
+    public static GlassMetrics For(DensityMetrics density, ThemeDefinition theme)
+    {
         const double rim = 1.0;
 
-        // 13px base: the strip is a typing aid read in passing, so it stays compact. Padding is generous
-        // relative to the text rather than the other way round.
-        var fontSize = Math.Round(13.5 * scale);
-        var chipPaddingY = Math.Round(5 * scale);
-        var chipHeight = Math.Round(fontSize * 1.42) + (chipPaddingY * 2);
+        var inset = Math.Round(density.EdgeInset);
+        var plateRadius = Math.Round(density.OuterRadius * theme.RadiusFactor);
 
-        var plateRadius = Math.Round(themeCornerRadius * scale);
-        var chipRadius = Math.Max(4, plateRadius - inset - rim);
+        // The indicator is part of the selection language, not decoration: only the themes whose selection
+        // is a mark beneath the word reserve room for one.
+        var showsIndicator = theme.ShowIndicator;
+        var indicatorThickness = showsIndicator
+            ? Math.Max(2, Math.Round((theme.Selection == SelectionStyle.Underline ? 2.5 : 2.0) * density.IndicatorScale))
+            : 0;
+        var indicatorReserve = showsIndicator ? Math.Round(6 * density.IndicatorScale) : 0;
 
-        var indicatorThickness = showIndicator ? Math.Max(2, Math.Round(2.5 * scale)) : 0;
-        var indicatorReserve = showIndicator ? Math.Round(6 * scale) : 0;
+        // A block cursor is a rectangle by definition; a capsule is as round as it can be without the ends
+        // meeting. Everything else stays concentric with the plate.
+        var chipRadius = theme.Selection switch
+        {
+            SelectionStyle.BlockCursor => 1.0,
+            SelectionStyle.SoftCapsule => Math.Round(density.ChipHeight / 2),
+            _ => Math.Max(3, Math.Min(density.CandidateRadius, plateRadius - inset - rim)),
+        };
 
         return new GlassMetrics
         {
@@ -58,18 +77,20 @@ public readonly record struct GlassMetrics
             RimThickness = rim,
             PlateRadius = plateRadius,
             ChipRadius = chipRadius,
-            ChipPaddingX = Math.Round(14 * scale),
-            ChipPaddingY = chipPaddingY,
-            ChipMinHeight = chipHeight,
-            ChipMarginX = Math.Round(2 * scale),
-            FontSize = fontSize,
-            EdgeGap = Math.Round(14 * scale),
+            ChipPaddingX = Math.Round(density.PaddingX),
+            ChipPaddingY = Math.Round(density.PaddingY),
+            ChipMinHeight = density.ChipHeight,
+            ChipMarginX = Math.Round(density.CandidateGap * theme.RhythmFactor / 2),
+            FontSize = Math.Round(density.FontSize * 2) / 2,   // half-point steps: the type has a rhythm too
+            EdgeGap = Math.Round(14 * (0.8 + (density.ShadowScale * 0.2))),
             IndicatorReserve = indicatorReserve,
             IndicatorThickness = indicatorThickness,
-            IndicatorWidthFactor = 0.42,
+            IndicatorWidthFactor = theme.Selection == SelectionStyle.Underline ? 0.86 : 0.42,
+            MinSlotWidth = Math.Round(density.CandidateMinWidth * theme.RhythmFactor),
+            ShadowScale = density.ShadowScale,
         };
     }
 
-    /// <summary>Approximate overall bar height, used to show the user what the thickness slider will produce.</summary>
+    /// <summary>Overall bar height, used to show the user what a size choice will produce.</summary>
     public double ApproximateBarHeight => ChipMinHeight + (Inset * 2) + (RimThickness * 2) + IndicatorReserve;
 }

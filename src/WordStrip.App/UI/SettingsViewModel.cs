@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using WordStrip.App.UI.Theming;
+using WordStrip.Core.Presentation;
 using WordStrip.Core.Personal;
 using WordStrip.Core.Platform;
 using WordStrip.Core.Prediction.Neural;
@@ -340,7 +341,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     public IReadOnlyList<ThemeChoice> Themes { get; } =
-        ThemeCatalog.All.Select(t => new ThemeChoice(t.Id, t.Name, t.Description)).ToList();
+        ThemeCatalog.All.Select(t => new ThemeChoice(t.Id, t.Name, t.Personality)).ToList();
 
     public ThemeChoice? SelectedTheme
     {
@@ -399,6 +400,67 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public string GlassTintPercent => $"{_settings.GlassTint * 100:0}%";
 
+    /// <summary>
+    /// How dense the bar is. Four choices rather than a slider: three fixed densities, each authored, and
+    /// automatic, which sizes the bar from the text being written.
+    /// </summary>
+    public BarSize BarSize
+    {
+        get => _settings.BarSize;
+        set
+        {
+            if (_settings.BarSize == value) return;
+            _settings.BarSize = value;
+            Persist();
+            NotifyAppearance();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BarSizeAutomatic));
+            OnPropertyChanged(nameof(BarSizeCompact));
+            OnPropertyChanged(nameof(BarSizeStandard));
+            OnPropertyChanged(nameof(BarSizeComfortable));
+            OnPropertyChanged(nameof(BarSizeSummary));
+            OnPropertyChanged(nameof(BarSizeDetail));
+        }
+    }
+
+    public bool BarSizeAutomatic { get => BarSize == BarSize.Automatic; set { if (value) BarSize = BarSize.Automatic; } }
+    public bool BarSizeCompact { get => BarSize == BarSize.Compact; set { if (value) BarSize = BarSize.Compact; } }
+    public bool BarSizeStandard { get => BarSize == BarSize.Standard; set { if (value) BarSize = BarSize.Standard; } }
+    public bool BarSizeComfortable { get => BarSize == BarSize.Comfortable; set { if (value) BarSize = BarSize.Comfortable; } }
+
+    private DensityMetrics _optical = OpticalSizing.Standard;
+    private HostTextMetrics _hostText = HostTextMetrics.Unknown;
+
+    /// <summary>
+    /// What the bar is actually doing right now, reported by the bar itself. Automatic sizing is a claim
+    /// about the user's own screen, so the setting shows the answer it arrived at rather than asking them
+    /// to take it on trust.
+    /// </summary>
+    public void ReportOpticalSize(DensityMetrics optical, HostTextMetrics host)
+    {
+        _optical = optical;
+        _hostText = host;
+        OnPropertyChanged(nameof(BarSizeSummary));
+        OnPropertyChanged(nameof(BarSizeDetail));
+    }
+
+    public string BarSizeSummary => BarSize == BarSize.Automatic
+        ? "Adapting to the text you are writing."
+        : $"Fixed at the {BarSize.ToString().ToLowerInvariant()} density, whatever the text.";
+
+    public string BarSizeDetail
+    {
+        get
+        {
+            var density = _optical.NearestDensity.ToString().ToLowerInvariant();
+            var height = $"{_optical.BarHeight:F0} px tall, {density} density";
+
+            return BarSize == BarSize.Automatic && _hostText.IsKnown
+                ? $"{height} · text about {_hostText.LineHeight:F0} px per line"
+                : height;
+        }
+    }
+
     public double MinBarScale => AppSettings.MinBarScale;
     public double MaxBarScale => AppSettings.MaxBarScale;
 
@@ -416,23 +478,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Describes the thickness in the terms the user cares about rather than as a raw multiplier.</summary>
-    public string BarScaleLabel
-    {
-        get
-        {
-            var theme = ThemeCatalog.Get(_settings.Theme);
-            var height = GlassMetrics.ForScale(_settings.BarScale, theme.CornerRadius, theme.ShowIndicator).ApproximateBarHeight;
-            var name = _settings.BarScale switch
-            {
-                < 0.85 => "Thin",
-                < 1.1 => "Standard",
-                < 1.28 => "Roomy",
-                _ => "Large",
-            };
-            return $"{name} · {height:0} px";
-        }
-    }
+    /// <summary>
+    /// The old thickness slider's label, kept because the setting itself is kept: a user who had moved it
+    /// gets that size as a fixed density, and nothing in their file is thrown away. Nothing in the current
+    /// interface shows it.
+    /// </summary>
+    public string BarScaleLabel => $"{_settings.BarScale:0.00}x";
 
     // --- Light or dark ------------------------------------------------------------------------------
 

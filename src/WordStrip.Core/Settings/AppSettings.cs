@@ -78,7 +78,17 @@ public sealed class AppSettings
     }
 
     /// <summary>Which visual personality the bar wears. Purely presentational — behaviour is identical in all.</summary>
-    public BarTheme Theme { get; set; } = BarTheme.FluentAcrylic;
+    public BarTheme Theme { get; set; } = BarTheme.FluentSurface;
+
+    /// <summary>
+    /// How dense the bar is. <see cref="BarSize.Automatic"/> sizes it from the height of the text being
+    /// written, which is the only setting that is right in both an eight-point note and a heading; the other
+    /// three are fixed densities for anyone who would rather decide once.
+    ///
+    /// <para><see cref="BarScale"/> is what this replaced. It is still honoured — a fixed density is applied
+    /// on top of it — so a user who had moved that slider keeps roughly the size they chose.</para>
+    /// </summary>
+    public BarSize BarSize { get; set; } = BarSize.Automatic;
 
     /// <summary>
     /// Whether the strip adapts its palette to the backdrop, or is pinned to light or dark.

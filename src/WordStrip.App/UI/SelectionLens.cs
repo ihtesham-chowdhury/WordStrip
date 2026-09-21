@@ -25,6 +25,22 @@ public sealed class SelectionLens : FrameworkElement
     private static FrameworkPropertyMetadata RenderOnly(double defaultValue) =>
         new(defaultValue, FrameworkPropertyMetadataOptions.AffectsRender);
 
+    /// <summary>
+    /// Which selection language to draw. The themes differ here more than anywhere else, and all four
+    /// shapes are the same two rectangles underneath — a surface and a mark — so one element draws them all
+    /// rather than the bar carrying four.
+    /// </summary>
+    public static readonly DependencyProperty SelectionProperty =
+        DependencyProperty.Register(
+            nameof(Selection), typeof(Theming.SelectionStyle), typeof(SelectionLens),
+            new FrameworkPropertyMetadata(Theming.SelectionStyle.NativeTonal, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public Theming.SelectionStyle Selection
+    {
+        get => (Theming.SelectionStyle)GetValue(SelectionProperty);
+        set => SetValue(SelectionProperty, value);
+    }
+
     public static readonly DependencyProperty LensXProperty =
         DependencyProperty.Register(nameof(LensX), typeof(double), typeof(SelectionLens), RenderOnly(0));
 
@@ -96,6 +112,28 @@ public sealed class SelectionLens : FrameworkElement
         // appeared on the first Tab or when Space was armed, only once a later Tab moved it.
         if (LensWidth <= 0 || LensHeight <= 0) return;
 
+        switch (Selection)
+        {
+            case Theming.SelectionStyle.Underline:
+                DrawUnderline(drawingContext);
+                return;
+
+            case Theming.SelectionStyle.BlockCursor:
+                DrawBlock(drawingContext);
+                return;
+
+            default:
+                DrawSurface(drawingContext);
+                return;
+        }
+    }
+
+    /// <summary>
+    /// A surface behind the word, optionally with a mark beneath it. Covers the tonal, capsule, raised and
+    /// filled languages: they differ in colour, radius and rim, all of which arrive as properties.
+    /// </summary>
+    private void DrawSurface(DrawingContext drawingContext)
+    {
         var pen = Rim is null ? null : new Pen(Rim, 1);
         pen?.Freeze();
 
@@ -112,16 +150,51 @@ public sealed class SelectionLens : FrameworkElement
 
         if (Indicator is null || IndicatorThickness <= 0) return;
 
-        // Centred under the selected word, a fraction of its width — long enough to read as a position
+        // Centred under the selected word, a fraction of its width - long enough to read as a position
         // marker, short enough not to compete with the word above it.
         var indicatorWidth = Math.Max(8, LensWidth * IndicatorWidthFactor);
         var indicatorRect = new Rect(
-            LensX + (LensWidth - indicatorWidth) / 2,
+            LensX + ((LensWidth - indicatorWidth) / 2),
             LensY + LensHeight + IndicatorGap,
             indicatorWidth,
             IndicatorThickness);
 
         var indicatorRadius = IndicatorThickness / 2;
         drawingContext.DrawRoundedRectangle(Indicator, null, indicatorRect, indicatorRadius, indicatorRadius);
+    }
+
+    /// <summary>
+    /// An ink underline and nothing else. The editorial selection: it marks the word the way a pen would,
+    /// without turning it into a button. Square ends, because a rounded rule reads as a pill again.
+    /// </summary>
+    private void DrawUnderline(DrawingContext drawingContext)
+    {
+        if (Indicator is null || IndicatorThickness <= 0) return;
+
+        var width = Math.Max(8, LensWidth * IndicatorWidthFactor);
+        drawingContext.DrawRectangle(
+            Indicator,
+            null,
+            new Rect(
+                LensX + ((LensWidth - width) / 2),
+                LensY + LensHeight + IndicatorGap,
+                width,
+                IndicatorThickness));
+    }
+
+    /// <summary>
+    /// A solid block the size of the word, with the text knocked out of it by the theme's selected-text
+    /// colour. This is what a terminal cursor is, and it is the reason the terminal theme needs no shadow,
+    /// no rim and no mark: the block is unmistakable on its own.
+    /// </summary>
+    private void DrawBlock(DrawingContext drawingContext)
+    {
+        var radius = Math.Min(CornerRadius, 2);
+        drawingContext.DrawRoundedRectangle(
+            Fill,
+            null,
+            new Rect(LensX, LensY, LensWidth, LensHeight),
+            radius,
+            radius);
     }
 }

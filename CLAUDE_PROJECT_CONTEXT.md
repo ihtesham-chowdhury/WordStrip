@@ -1156,9 +1156,25 @@ predicts or how keys are routed. `docs/visual-polish-plan.md` holds the audit an
 | Settings palettes | `UI/Design/Palette.{Light,Dark,HighContrast}.xaml` | Swapped as one dictionary at window construction; every style reads them through **DynamicResource**. All three must define the same keys — `tests\regression\Verify-Palettes.ps1` checks that, because two of the three cannot be seen without changing the machine's system settings. |
 | Settings controls | `UI/Design/Controls.xaml` | Full templates, not property tweaks. A `ListBoxItem` style may **not** be `BasedOn` a `RadioButton` style (instant crash), and a style key that collides with a palette brush key wins over it — "Ws.Card" as both a Border style and a brush handed a Border a Style where it wanted a Brush. |
 | Settings window | `UI/SettingsWindow.xaml(.cs)` | Seven pages behind a navigation rail; no Apply, no Done. The rail raises `SelectionChanged` **during** `InitializeComponent`, before the pages exist as fields, so `ShowSection` guards on null. Theme gallery, preview strips, status rows and keycaps are built in code-behind, because they are drawn with the bar's own renderers. |
+| Bar sizing | `Core/Presentation/OpticalSizing.cs`, `OpticalSizer.cs` | Density from the caret's height, with hysteresis. `GlassMetrics.For(density, theme)` turns it into the numbers the renderers use; `AppSettings.BarScale` is legacy and only feeds migration. |
 | Bar placement | `Core/Presentation/BarPlacement.cs`, `Interop/MonitorLayout.cs` | Pure arithmetic in the **target monitor's physical pixels**, moved with `SetWindowPos`. `SystemParameters.WorkArea` must not come back: it is the primary display's rectangle at the primary display's scale. |
 | Contrast floor | `Core/Presentation/SurfaceSeparation.cs` | Minimum 0.12 composited luminance difference from the measured backdrop. It is a safety net: every theme is authored to clear it unaided, and a test asserts the rescue path never runs for an authored theme. |
 | Selection states | `SuggestionBarWindow.ApplySelectionStrength` | Armed (Space would commit) draws the selection surface at 0.62 without the indicator; a Tab cycle draws it at full strength with it. `SelectionLens.OnRender` must not skip drawing at zero opacity — the lens is positioned while transparent, and Opacity never re-runs OnRender. |
+
+### Themes and optical sizing (2026-09-22)
+
+Engine locked again for this phase. `docs/themes-and-optical-sizing.md` has the reasoning; the rules that
+will bite someone later are here.
+
+| Rule | Why |
+|---|---|
+| **`BarTheme` numbers are a storage format. Never reuse one.** | The theme is persisted as an integer. The three merged themes stay in the enum as `Legacy…` members and `AppSettingsStore.Migrate` maps them forward; reusing 1, 4 or 5 would silently give an old user a theme they never chose. |
+| Six themes, and every pair must differ in **three** dimensions, two of them structural | `tests\regression\Verify-ThemeIdentity.ps1` reads the catalogue and fails otherwise. This is the grayscale test from the brief, automated — colour alone does not survive a grey screenshot or a colour-blind user. |
+| Densities are **authored, not scaled** | `OpticalSizing.Compact/Standard/Comfortable` are three designs. Automatic interpolates with a different exponent per property (type 0.72, padding 1.25, shadow 1.4, floors on radii and gaps). `OpticalSizingTests` asserts the *relationships*, so a retune cannot turn it back into a multiplier. |
+| The caret is the only host measurement worth trusting | No host reports a font size usefully. `HostTextMetrics.LineHeight` is `CaretHeight * 1.15`, and the caret arrives free with every update. |
+| Automatic sizing must not twitch | `OpticalSizer` requires a 12% change in caret height *and* a 3-unit change in resulting height. A lost caret changes nothing. Re-applying appearance re-renders the last update, so `AdaptToTextSize` guards against re-entry. |
+| A theme may lean on density and motion, never override the user | `DensityBias` applies only to automatic sizing; `MotionFactor` divides the user's speed and is clamped just below "off", so only a theme declaring itself instant (factor 0) or the user choosing Off actually disables animation. |
+| `SelectionLens.Selection`, not `Style` | `FrameworkElement.Style` already exists; naming the property `Style` compiles with a warning and shadows it. |
 
 ### Testing expectations
 

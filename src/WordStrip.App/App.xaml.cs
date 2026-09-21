@@ -376,6 +376,20 @@ public partial class App : System.Windows.Application
         if (_neuralModelStore is not null) viewModel.AttachNeuralModel(_neuralModelStore);
 
         _settingsWindow = new SettingsWindow(viewModel, _settings);
+
+        // Automatic sizing is a claim about the user's own screen, so Settings shows what the bar actually
+        // settled on rather than a description of the idea. The bar reports it now and again whenever it
+        // changes; the handler is dropped with the window it belongs to.
+        if (_barWindow is { } bar)
+        {
+            var window = _settingsWindow;
+            void Report(object? sender, EventArgs args) => window.ReportOpticalSize(bar.CurrentDensity, bar.CurrentHostText);
+
+            bar.OpticalSizeChanged += Report;
+            window.Closed += (_, _) => bar.OpticalSizeChanged -= Report;
+            Report(this, EventArgs.Empty);
+        }
+
         _settingsWindow.Show();
     }
 

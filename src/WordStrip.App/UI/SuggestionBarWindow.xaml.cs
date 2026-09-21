@@ -33,7 +33,8 @@ public partial class SuggestionBarWindow : Window
 
     private ThemeDefinition _theme = ThemeCatalog.All[0];
     private ThemeBrushes _brushes = ThemeBrushes.Build(ThemeCatalog.All[0], GlassAppearance.OverLight, 0.62, true, false);
-    private GlassMetrics _metrics = GlassMetrics.ForScale(1.0, ThemeCatalog.All[0].CornerRadius, true);
+    private readonly OpticalSizer _sizer = new();
+    private GlassMetrics _metrics = GlassMetrics.For(OpticalSizing.Standard, ThemeCatalog.All[0]);
     private MotionProfile _motion = MotionProfile.ForSpeed(1.0);
     private SolidColorBrush _restingTextBrush = new(Colors.White);
     private SolidColorBrush _selectedTextBrush = new(Colors.Black);
@@ -45,6 +46,12 @@ public partial class SuggestionBarWindow : Window
 
     /// <summary>Whether the current selection is a Tab cycle (the user driving) rather than Space being armed.</summary>
     private bool _selectionIsActive;
+
+    /// <summary>What the text around the caret measures, in device-independent units. Drives automatic sizing.</summary>
+    private HostTextMetrics _hostText = HostTextMetrics.Unknown;
+
+    /// <summary>Set while a size change is being applied, so the re-render it causes cannot re-enter it.</summary>
+    private bool _resizing;
 
     private CaretRect? _caret;
     private bool _isRevealed;
@@ -67,6 +74,15 @@ public partial class SuggestionBarWindow : Window
 
     /// <summary>Raised when a chip is clicked directly with the mouse (bypassing Tab-cycling).</summary>
     public event EventHandler<Suggestion>? SuggestionClicked;
+
+    /// <summary>Raised when automatic sizing settled on a different size, so Settings can show what it chose.</summary>
+    public event EventHandler? OpticalSizeChanged;
+
+    /// <summary>The density the bar is currently drawn at.</summary>
+    public DensityMetrics CurrentDensity => _sizer.Current;
+
+    /// <summary>What the text around the caret last measured.</summary>
+    public HostTextMetrics CurrentHostText => _hostText;
 
     public SuggestionBarWindow(AppSettings settings)
     {
@@ -123,6 +139,7 @@ public partial class SuggestionBarWindow : Window
     {
         _lastUpdate = update;
         _caret = update.Caret;
+        AdaptToTextSize();
 
         if (update.Suggestions.Count == 0)
         {
@@ -321,6 +338,8 @@ public partial class SuggestionBarWindow : Window
         HoverBrush = new SolidColorBrush(_brushes.HoverOverlay),
         Foreground = _restingTextBrush,
         CollapseWhenEmpty = !_settings.FixedBarWidth,
+        FontFamily = _theme.FontFamily,
+        PrimaryWeight = _theme.PrimaryWeight,
     };
 
     /// <summary>
@@ -431,8 +450,24 @@ public partial class SuggestionBarWindow : Window
     public void ApplyAppearance()
     {
         _theme = ThemeCatalog.Get(_settings.Theme);
-        _metrics = GlassMetrics.ForScale(_settings.BarScale, _theme.CornerRadius, _theme.ShowIndicator);
-        _motion = MotionProfile.ForSpeed(_settings.MotionSpeed);
+
+        // The size comes from the text being written, not from a slider. The sizer holds the current answer
+        // and only changes it when the host's text changes meaningfully; asking it here picks up a change of
+        // setting or theme at once.
+        _sizer.Update(_settings.BarSize, _hostText, _theme.DensityBias);
+        _metrics = GlassMetrics.For(_sizer.Current, _theme);
+
+        // Motion is part of a theme's identity: a terminal settles instantly, glass takes a moment. The
+        // theme divides the user's speed rather than replacing it, and the result is held just below the
+        // "off" end of the range - only a theme declaring itself instant (factor 0), or the user choosing
+        // Off, may actually switch animation off.
+        var instant = _settings.MotionSpeed >= AppSettings.MaxMotionSpeed || _theme.MotionFactor <= 0;
+        _motion = MotionProfile.ForSpeed(instant
+            ? AppSettings.MaxMotionSpeed
+            : Math.Clamp(
+                _settings.MotionSpeed / _theme.MotionFactor,
+                AppSettings.MinMotionSpeed,
+                AppSettings.MaxMotionSpeed - 0.01));
 
         var edge = _metrics.Inset + _metrics.RimThickness;
         // Extra room at the bottom for the position indicator, which sits below the chips.
@@ -440,6 +475,7 @@ public partial class SuggestionBarWindow : Window
 
         Plate.RimThickness = _metrics.RimThickness;
         Plate.CornerRadius = _metrics.PlateRadius;
+        Lens.Selection = _theme.Selection;
         Lens.CornerRadius = _metrics.ChipRadius;
         Lens.IndicatorThickness = _metrics.IndicatorThickness;
         Lens.IndicatorWidthFactor = _metrics.IndicatorWidthFactor;
@@ -516,7 +552,9 @@ public partial class SuggestionBarWindow : Window
     /// apart from each other.</para>
     /// </summary>
     private double PreferredSlotWidth() =>
-        (_metrics.FontSize * 4.2) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2);
+        Math.Max(
+            _metrics.MinSlotWidth,
+            (_metrics.FontSize * 4.2) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2));
 
     /// <summary>
     /// How many slots the strip can carry: what the user asked for, capped by how many can still be read.
@@ -901,6 +939,44 @@ public partial class SuggestionBarWindow : Window
     }
 
     // --- Placement ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Sizes the bar from the text it is about to sit beside.
+    ///
+    /// <para>The caret's height is the one measurement every host gives, and it arrives with each update at
+    /// no cost. <see cref="OpticalSizer"/> decides whether it is worth acting on; it says no almost every
+    /// time, which is what keeps this off the typing path. When it does say yes, the whole appearance is
+    /// re-applied, which is the same work a change of theme does.</para>
+    /// </summary>
+    private void AdaptToTextSize()
+    {
+        // Re-applying the appearance renders the last update again, which comes back through here. The
+        // sizer would say no the second time, but the guard states the intent rather than relying on it.
+        if (_resizing || _settings.BarSize != BarSize.Automatic) return;
+
+        // Physical pixels from the host, device-independent units here: the caret of a 10-point font on a
+        // 150% display is 20 physical pixels and about 13 units, and it is the units the bar is laid out in.
+        var scale = _monitor.Scale <= 0 ? 1.0 : _monitor.Scale;
+        var measured = _caret is { } caret && caret.Height > 0
+            ? new HostTextMetrics(caret.Height / scale, scale)
+            : HostTextMetrics.Unknown;
+
+        _hostText = measured.IsKnown ? measured : _hostText;
+
+        if (!_sizer.Update(_settings.BarSize, measured, _theme.DensityBias)) return;
+
+        _resizing = true;
+        try
+        {
+            ApplyAppearance();
+            OpticalLog.Write(_sizer, _metrics, measured);
+            OpticalSizeChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            _resizing = false;
+        }
+    }
 
     /// <summary>
     /// The display the bar belongs on: the one holding the caret when we know where it is, otherwise the one

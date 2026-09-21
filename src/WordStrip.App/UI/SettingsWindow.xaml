@@ -178,26 +178,40 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="Shape and size" Style="{StaticResource Ws.SectionTitle}" />
+                    <TextBlock Text="Bar size" Style="{StaticResource Ws.SectionTitle}" />
                     <Border Style="{StaticResource Ws.CardPanel}">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,2">
-                                <TextBlock Text="{Binding BarScaleLabel}" Width="120" DockPanel.Dock="Right" Style="{StaticResource Ws.Value}" />
-                                <TextBlock Text="Bar thickness" Style="{StaticResource Ws.Label}" />
-                            </DockPanel>
-                            <Slider Minimum="{Binding MinBarScale}" Maximum="{Binding MaxBarScale}"
-                                    Value="{Binding BarScale}" TickFrequency="0.05" IsSnapToTickEnabled="True"
-                                    AutomationProperties.Name="Bar thickness" />
-                            <TextBlock Style="{StaticResource Ws.Caption}" Margin="0,0,0,18"
-                                       Text="A thinner bar gets in the way less, which matters most when it follows the cursor." />
+                            <Border Style="{StaticResource Ws.SegmentGroup}" Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Style="{StaticResource Ws.Segment}" GroupName="BarSize"
+                                                 Content="Automatic" IsChecked="{Binding BarSizeAutomatic}" />
+                                    <RadioButton Style="{StaticResource Ws.Segment}" GroupName="BarSize"
+                                                 Content="Compact" IsChecked="{Binding BarSizeCompact}" />
+                                    <RadioButton Style="{StaticResource Ws.Segment}" GroupName="BarSize"
+                                                 Content="Standard" IsChecked="{Binding BarSizeStandard}" />
+                                    <RadioButton Style="{StaticResource Ws.Segment}" GroupName="BarSize"
+                                                 Content="Comfortable" IsChecked="{Binding BarSizeComfortable}" />
+                                </StackPanel>
+                            </Border>
 
+                            <TextBlock Text="{Binding BarSizeSummary}" Style="{StaticResource Ws.Label}" />
+                            <TextBlock Text="{Binding BarSizeDetail}" Style="{StaticResource Ws.Caption}" Margin="0,4,0,0" />
+
+                            <TextBlock Style="{StaticResource Ws.Caption}" Margin="0,12,0,0"
+                                       Text="Automatic measures the line you are writing on: small notes get a compact bar, a document gets the standard one, and large or scaled-up text gets a roomier one. It settles on a size and stays there rather than resizing as you type." />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="Width" Style="{StaticResource Ws.SectionTitle}" />
+                    <Border Style="{StaticResource Ws.CardPanel}">
+                        <StackPanel>
                             <DockPanel Margin="0,0,0,4">
                                 <CheckBox DockPanel.Dock="Right" IsChecked="{Binding FixedBarWidth}"
                                           AutomationProperties.Name="Keep the bar one width" />
                                 <TextBlock Text="Keep the bar one width" Style="{StaticResource Ws.Label}" />
                             </DockPanel>
                             <TextBlock Style="{StaticResource Ws.Caption}"
-                                       Text="Like a phone keyboard: the bar keeps one size while you type instead of resizing around the words." />
+                                       Text="Like a phone keyboard: the bar keeps one width while you type instead of resizing around the words. Its width comes from how many words you show, not from how tall it is." />
 
                             <StackPanel Margin="0,16,0,0"
                                         Visibility="{Binding FixedBarWidth, Converter={StaticResource BoolToVisibility}}">
@@ -261,7 +275,20 @@
                 <Border Grid.Column="1" Width="310" Background="{DynamicResource Ws.Rail}"
                         BorderBrush="{DynamicResource Ws.Divider}" BorderThickness="1,0,0,0">
                     <StackPanel Margin="20,26,20,20" x:Name="PreviewColumn">
-                        <TextBlock Text="Preview" Style="{StaticResource Ws.SectionTitle}" Margin="0,0,0,10" />
+                        <TextBlock Text="Preview" Style="{StaticResource Ws.SectionTitle}" Margin="0,0,0,8" />
+
+                        <Border Style="{StaticResource Ws.SegmentGroup}" Margin="0,0,0,12">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource Ws.Segment}" GroupName="PreviewDensity" MinWidth="0"
+                                             Padding="9,5" Content="Live" IsChecked="True" Tag="Live" Checked="OnPreviewDensityChanged" />
+                                <RadioButton Style="{StaticResource Ws.Segment}" GroupName="PreviewDensity" MinWidth="0"
+                                             Padding="9,5" Content="Compact" Tag="Compact" Checked="OnPreviewDensityChanged" />
+                                <RadioButton Style="{StaticResource Ws.Segment}" GroupName="PreviewDensity" MinWidth="0"
+                                             Padding="9,5" Content="Standard" Tag="Standard" Checked="OnPreviewDensityChanged" />
+                                <RadioButton Style="{StaticResource Ws.Segment}" GroupName="PreviewDensity" MinWidth="0"
+                                             Padding="9,5" Content="Roomy" Tag="Comfortable" Checked="OnPreviewDensityChanged" />
+                            </StackPanel>
+                        </Border>
 
                         <TextBlock Text="Over a light page" Style="{StaticResource Ws.Caption}" Margin="0,0,0,6" />
                         <Border CornerRadius="10" ClipToBounds="True" Margin="0,0,0,16"
@@ -283,6 +310,7 @@
 
                         <TextBlock Style="{StaticResource Ws.Caption}"
                                    Text="Each pair shows the bar while you are typing, and after Tab has taken a suggestion." />
+                        <TextBlock x:Name="PreviewDensityNote" Style="{StaticResource Ws.Caption}" Margin="0,6,0,0" />
                     </StackPanel>
                 </Border>
             </Grid>

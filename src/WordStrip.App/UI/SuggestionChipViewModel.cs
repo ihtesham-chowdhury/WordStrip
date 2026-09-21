@@ -86,6 +86,15 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
     /// <summary>Theme-provided hover tint. Bound rather than baked into the template so themes can differ.</summary>
     public required Brush HoverBrush { get; init; }
 
+    /// <summary>
+    /// The strip's typeface, from the theme. This is the bar's own voice and never touches the document
+    /// being typed into: the terminal theme is monospaced, the other five speak in the system font.
+    /// </summary>
+    public required string FontFamily { get; init; }
+
+    /// <summary>The first slot's weight, from the theme. Alternates are drawn one step lighter.</summary>
+    public required FontWeight PrimaryWeight { get; init; }
+
     public Thickness Padding => new(Metrics.ChipPaddingX, Metrics.ChipPaddingY, Metrics.ChipPaddingX, Metrics.ChipPaddingY);
     public Thickness Margin => new(Metrics.ChipMarginX, 0, Metrics.ChipMarginX, 0);
     public CornerRadius CornerRadius => new(Metrics.ChipRadius);
@@ -97,7 +106,7 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
     /// re-measure and shift inside its slot every time the selection moved, and the selection surface
     /// already says which word is taken. The first slot is the likely answer, so it carries the weight.
     /// </summary>
-    public FontWeight FontWeight => _isPrimary && !_isEmoji ? FontWeights.SemiBold : FontWeights.Normal;
+    public FontWeight FontWeight => _isPrimary && !_isEmoji ? PrimaryWeight : FontWeights.Normal;
 
     public double TextOpacity => _isSelected || (_isPrimary && !_isEmoji) ? 1.0 : DesignTokens.Type.AlternateOpacity;
 

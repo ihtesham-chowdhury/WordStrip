@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using WordStrip.App.UI.Theming;
+using WordStrip.Core.Presentation;
 using WordStrip.Core.Settings;
 using Brushes = System.Windows.Media.Brushes;
 using Colors = System.Windows.Media.Colors;
@@ -21,6 +22,12 @@ public partial class SettingsWindow : Window
     private static readonly string[] PreviewWords = { "is", "issues", "issue", "island", "islands", "isolated", "issued" };
 
     private readonly AppSettings _settings;
+
+    /// <summary>
+    /// Which density the preview is drawn at. "Live" means whatever the bar itself has settled on, which is
+    /// the honest default; the other three let the user see a density without committing to it.
+    /// </summary>
+    private BarSize? _previewDensity;
 
     /// <summary>The gallery's tiles, kept so the selected one can be marked without rebuilding them all.</summary>
     private readonly List<(BarTheme Id, Button Tile, TextBlock Check)> _themeTiles = new();
@@ -67,6 +74,25 @@ public partial class SettingsWindow : Window
     /// application the user is in and a theme that only works over one of them isn't finished. Seeing both
     /// side by side is also the fastest way to judge whether a theme is actually legible.</para>
     /// </summary>
+    /// <summary>What the bar itself is currently drawn at, so "Live" in the preview means what it says.</summary>
+    private DensityMetrics _liveDensity = OpticalSizing.Standard;
+
+    /// <summary>Called by the app when the bar re-sizes itself, and once as the window opens.</summary>
+    public void ReportOpticalSize(DensityMetrics density, HostTextMetrics host)
+    {
+        _liveDensity = density;
+        ViewModel.ReportOpticalSize(density, host);
+        RebuildPreview();
+    }
+
+    private void OnPreviewDensityChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+
+        _previewDensity = tag == "Live" ? null : Enum.Parse<BarSize>(tag);
+        RebuildPreview();
+    }
+
     private void RebuildPreview()
     {
         var theme = ThemeCatalog.Get(_settings.Theme);
@@ -80,6 +106,16 @@ public partial class SettingsWindow : Window
         PreviewDarkActive.Content = BuildStrip(theme, GlassAppearance.OverDark, selected: true);
 
         UpdateGallerySelection();
+
+        if (PreviewDensityNote is not null)
+        {
+            var size = _previewDensity ?? _settings.BarSize;
+            var optical = size == BarSize.Automatic ? _liveDensity : OpticalSizing.For(size, HostTextMetrics.Unknown);
+
+            PreviewDensityNote.Text = _previewDensity is null
+                ? $"Shown at the size the bar is using now: {optical.BarHeight:F0} px."
+                : $"Shown at {optical.BarHeight:F0} px. This is a preview only — it does not change the setting.";
+        }
     }
 
     /// <param name="selected">
@@ -92,7 +128,7 @@ public partial class SettingsWindow : Window
         ThemeDefinition theme,
         GlassAppearance appearance,
         bool selected = true,
-        double? scale = null,
+        BarSize? density = null,
         int? slots = null)
     {
         // The preview's own cards are the backdrop, so their luminance is known exactly: the separation
@@ -104,7 +140,13 @@ public partial class SettingsWindow : Window
             highContrast: SystemAppearance.HighContrast,
             backdropLuminance: appearance == GlassAppearance.OverDark ? 0.10 : 1.0);
 
-        var metrics = GlassMetrics.ForScale(scale ?? _settings.BarScale, theme.CornerRadius, theme.ShowIndicator);
+        // The same metrics pipeline the bar uses: an optical density, then the theme's geometry over it.
+        var size = density ?? _previewDensity ?? _settings.BarSize;
+        var optical = size == BarSize.Automatic
+            ? _liveDensity
+            : OpticalSizing.For(size, HostTextMetrics.Unknown);
+
+        var metrics = GlassMetrics.For(optical, theme);
 
         var count = slots ?? Math.Clamp(_settings.SuggestionCount, AppSettings.MinSuggestionCount, AppSettings.MaxSuggestionCount);
         var chips = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
@@ -121,11 +163,11 @@ public partial class SettingsWindow : Window
                 Child = new TextBlock
                 {
                     Text = PreviewWords[i],
-                    FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"),
+                    FontFamily = new FontFamily(theme.FontFamily),
                     FontSize = metrics.FontSize,
                     // The same rule the bar follows: the first slot carries the weight, and the selection
                     // never changes it, so nothing re-measures when the selection moves.
-                    FontWeight = isFirst ? FontWeights.SemiBold : FontWeights.Normal,
+                    FontWeight = isFirst ? theme.PrimaryWeight : FontWeights.Normal,
                     Opacity = isFirst ? 1.0 : Design.DesignTokens.Type.AlternateOpacity,
                     Foreground = new SolidColorBrush(isFirst && selected ? brushes.SelectedTextColor : brushes.TextColor),
                     HorizontalAlignment = HorizontalAlignment.Center,
@@ -148,6 +190,7 @@ public partial class SettingsWindow : Window
         var lens = new SelectionLens
         {
             Visibility = selected ? Visibility.Visible : Visibility.Collapsed,
+            Selection = theme.Selection,
             Fill = brushes.Pill,
             Rim = brushes.PillRim,
             Indicator = brushes.ShowIndicator ? brushes.Indicator : null,
@@ -356,7 +399,7 @@ public partial class SettingsWindow : Window
                     theme,
                     overDark ? GlassAppearance.OverDark : GlassAppearance.OverLight,
                     selected: true,
-                    scale: 0.72,
+                    density: BarSize.Compact,
                     slots: 3),
             };
 
@@ -424,7 +467,7 @@ public partial class SettingsWindow : Window
     /// on a white tile, so each one is shown where it belongs.
     /// </summary>
     private static bool IsDarkTile(ThemeDefinition theme) =>
-        theme.Id is BarTheme.RaycastFloating or BarTheme.FluentDepth;
+        theme.Id is BarTheme.Command or BarTheme.TerminalMono;
 
     private void UpdateGallerySelection()
     {

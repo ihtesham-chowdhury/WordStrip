@@ -54,6 +54,9 @@ public sealed class ThemeBrushes
     public required double ShadowDepth { get; init; }
     public required bool ShowIndicator { get; init; }
 
+    /// <summary>The theme's selection language, which the lens draws and the preview mirrors.</summary>
+    public required SelectionStyle Selection { get; init; }
+
     /// <param name="backdropLuminance">
     /// What the screen behind the bar actually measured, 0-1, or null when nothing was sampled — which is
     /// the case whenever the user has pinned light or dark, since that setting means "stop changing".
@@ -99,8 +102,8 @@ public sealed class ThemeBrushes
                 (1.00, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity * 0.62)),
             // Quiet enough to group the slots without being read as punctuation between the words. At 0.22
             // the strip scanned as "looking | looked | looks"; the line should be structure the eye uses and
-            // does not notice.
-            Divider = Solid(v.Text, 0.10),
+            // does not notice. Scaled per theme, because two of the six use spacing alone and set it to zero.
+            Divider = Solid(v.Text, 0.10 * theme.DividerStrength),
             Bezel = v.BezelStrength <= 0 || !allowTransparency
                 ? Brushes.Transparent
                 : VerticalGradient(
@@ -118,6 +121,7 @@ public sealed class ThemeBrushes
             ShadowBlur = v.ShadowBlur,
             ShadowDepth = v.ShadowDepth,
             ShowIndicator = theme.ShowIndicator,
+            Selection = theme.Selection,
         };
     }
 
@@ -142,6 +146,7 @@ public sealed class ThemeBrushes
         ShadowBlur = 0,
         ShadowDepth = 0,
         ShowIndicator = true,
+        Selection = SelectionStyle.BlockCursor,
     };
 
     private static Brush Solid(Color color, double opacity)
