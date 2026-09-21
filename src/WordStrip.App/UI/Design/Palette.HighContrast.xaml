@@ -1,0 +1,52 @@
+<!--
+    The Settings window under a High Contrast theme.
+
+    Under High Contrast the user has told Windows exactly which colours to use, and that instruction outranks
+    any palette of ours — the same rule the bar already follows in ThemeBrushes. So every key here is taken
+    from the system rather than authored: the window keeps its layout, spacing and templates, and gives up
+    its colours entirely.
+
+    Read once, as the window is built. A High Contrast theme is something people turn on and leave on, and
+    the alternative — watching for the change at runtime — buys a case that effectively does not happen.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework">
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="Ws.Window" Color="{x:Static sys:SystemColors.WindowColor}" />
+    <SolidColorBrush x:Key="Ws.Rail" Color="{x:Static sys:SystemColors.ControlColor}" />
+    <SolidColorBrush x:Key="Ws.Card" Color="{x:Static sys:SystemColors.WindowColor}" />
+    <SolidColorBrush x:Key="Ws.Card.Border" Color="{x:Static sys:SystemColors.ActiveBorderColor}" />
+    <SolidColorBrush x:Key="Ws.Divider" Color="{x:Static sys:SystemColors.ActiveBorderColor}" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="Ws.Text" Color="{x:Static sys:SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Ws.Text.Muted" Color="{x:Static sys:SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Ws.Text.Disabled" Color="{x:Static sys:SystemColors.GrayTextColor}" />
+
+    <!-- Accent: the system's own highlight, so "selected" means what it means everywhere else. -->
+    <SolidColorBrush x:Key="Ws.Accent" Color="{x:Static sys:SystemColors.HighlightColor}" />
+    <SolidColorBrush x:Key="Ws.Accent.Hover" Color="{x:Static sys:SystemColors.HighlightColor}" />
+    <SolidColorBrush x:Key="Ws.Accent.Text" Color="{x:Static sys:SystemColors.HighlightTextColor}" />
+    <SolidColorBrush x:Key="Ws.Accent.Soft" Color="{x:Static sys:SystemColors.HighlightColor}" />
+
+    <!-- Controls -->
+    <SolidColorBrush x:Key="Ws.Control" Color="{x:Static sys:SystemColors.ControlColor}" />
+    <SolidColorBrush x:Key="Ws.Control.Border" Color="{x:Static sys:SystemColors.ActiveBorderColor}" />
+    <SolidColorBrush x:Key="Ws.Control.Hover" Color="{x:Static sys:SystemColors.ControlLightColor}" />
+    <SolidColorBrush x:Key="Ws.Control.Pressed" Color="{x:Static sys:SystemColors.ControlDarkColor}" />
+    <SolidColorBrush x:Key="Ws.Control.Disabled" Color="{x:Static sys:SystemColors.ControlColor}" />
+    <SolidColorBrush x:Key="Ws.Track" Color="{x:Static sys:SystemColors.ControlDarkColor}" />
+    <SolidColorBrush x:Key="Ws.Toggle.Off" Color="{x:Static sys:SystemColors.ControlDarkColor}" />
+    <SolidColorBrush x:Key="Ws.Toggle.Knob" Color="{x:Static sys:SystemColors.WindowColor}" />
+    <SolidColorBrush x:Key="Ws.Scroll.Thumb" Color="{x:Static sys:SystemColors.ControlDarkColor}" />
+
+    <!-- States -->
+    <SolidColorBrush x:Key="Ws.Focus" Color="{x:Static sys:SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Ws.Warning" Color="{x:Static sys:SystemColors.WindowTextColor}" />
+    <SolidColorBrush x:Key="Ws.Warning.Bg" Color="{x:Static sys:SystemColors.ControlColor}" />
+    <SolidColorBrush x:Key="Ws.Info.Bg" Color="{x:Static sys:SystemColors.ControlColor}" />
+    <SolidColorBrush x:Key="Ws.Good" Color="{x:Static sys:SystemColors.WindowTextColor}" />
+
+</ResourceDictionary>

@@ -1140,8 +1140,25 @@ e6c44a8 Phase 5: multi-word phrases, plus emoji suggestions
 - Respect Windows accessibility: transparency-off / High Contrast → solid surfaces; animations-off → instant
   transitions.
 - Motion is spring-based; animations omit `From` so re-triggering continues from the current position.
+- Every animation asks `UseMotion` first. XAML storyboards cannot, so the bar's chip hover is a plain setter:
+  it was the one piece of motion that ran regardless of the user's "animation effects" setting.
 - Anything that costs the user something — disk space, a download, a record of their typing — states the cost
   before it happens and defaults to off.
+
+### The visual layer, after the polish phase (2026-09-21)
+
+The engine, insertion and interaction model were frozen for this phase; nothing below changed what WordStrip
+predicts or how keys are routed. `docs/visual-polish-plan.md` holds the audit and the phase list.
+
+| Piece | Where | What to know |
+|---|---|---|
+| Design tokens | `UI/Design/DesignTokens.cs` | Type, spacing, radii, control metrics, focus ring, plain durations. Theme colour still belongs to `ThemeCatalog`; bar sizes to `GlassMetrics`. |
+| Settings palettes | `UI/Design/Palette.{Light,Dark,HighContrast}.xaml` | Swapped as one dictionary at window construction; every style reads them through **DynamicResource**. All three must define the same keys — `tests\regression\Verify-Palettes.ps1` checks that, because two of the three cannot be seen without changing the machine's system settings. |
+| Settings controls | `UI/Design/Controls.xaml` | Full templates, not property tweaks. A `ListBoxItem` style may **not** be `BasedOn` a `RadioButton` style (instant crash), and a style key that collides with a palette brush key wins over it — "Ws.Card" as both a Border style and a brush handed a Border a Style where it wanted a Brush. |
+| Settings window | `UI/SettingsWindow.xaml(.cs)` | Seven pages behind a navigation rail; no Apply, no Done. The rail raises `SelectionChanged` **during** `InitializeComponent`, before the pages exist as fields, so `ShowSection` guards on null. Theme gallery, preview strips, status rows and keycaps are built in code-behind, because they are drawn with the bar's own renderers. |
+| Bar placement | `Core/Presentation/BarPlacement.cs`, `Interop/MonitorLayout.cs` | Pure arithmetic in the **target monitor's physical pixels**, moved with `SetWindowPos`. `SystemParameters.WorkArea` must not come back: it is the primary display's rectangle at the primary display's scale. |
+| Contrast floor | `Core/Presentation/SurfaceSeparation.cs` | Minimum 0.12 composited luminance difference from the measured backdrop. It is a safety net: every theme is authored to clear it unaided, and a test asserts the rescue path never runs for an authored theme. |
+| Selection states | `SuggestionBarWindow.ApplySelectionStrength` | Armed (Space would commit) draws the selection surface at 0.62 without the indicator; a Tab cycle draws it at full strength with it. `SelectionLens.OnRender` must not skip drawing at zero opacity — the lens is positioned while transparent, and Opacity never re-runs OnRender. |
 
 ### Testing expectations
 

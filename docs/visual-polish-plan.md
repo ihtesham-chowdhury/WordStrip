@@ -41,7 +41,7 @@ does not match either Windows or the bar.
 
 Phases run in order; each ends with build, unit tests, real-typing regression, and a screenshot pass.
 
-Status: A to G are done. H next (accessibility, reduced motion, high-DPI polish).
+Status: all phases (A to H) are done.
 
 - **A — Tokens.** One small token layer (`UI/Design/DesignTokens.cs` + `Tokens.xaml`): typography, geometry,
   motion, control metrics, focus. No new framework; it exists so B–G stop inventing numbers.
@@ -81,7 +81,13 @@ Status: A to G are done. H next (accessibility, reduced motion, high-DPI polish)
   applications it actually covers, which is the honest answer since the two input paths differ. The word
   list shows its count, reveals Remove on the row being pointed at (still keyboard-reachable), and says what
   to do when empty. Learning leads with a state and a number, with what-is-stored behind an expander.
-- **H — Accessibility, reduced motion, regression and high-DPI polish.**
+- **H — Accessibility, reduced motion, regression and high-DPI polish.** Done. The bar's chip hover was the
+  one animation that ran regardless of Windows' "animation effects" setting, because a XAML storyboard cannot
+  ask; it is now a plain setter. `Palette.HighContrast.xaml` takes every colour from `SystemColors`, so under
+  High Contrast the window keeps its layout and gives up its palette — matching what `ThemeBrushes` already
+  did for the bar. `testsegression\Verify-Palettes.ps1` checks all three palettes parse and define the
+  same keys, which is the only way to catch a missing key in a mode this machine cannot display. Keyboard
+  focus verified by driving the whole window from the keyboard; layout checked at the minimum window size.
 
 ### Decisions taken during the audit
 

@@ -461,17 +461,26 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void ApplyPalette()
     {
-        if (!SystemAppearance.AppsUseDarkTheme) return;
+        // High Contrast outranks everything: the user has told Windows which colours to use, so the window
+        // keeps its layout and templates and gives up its palette. Otherwise, follow the system's app mode.
+        var palette =
+            SystemAppearance.HighContrast ? "Palette.HighContrast.xaml"
+            : SystemAppearance.AppsUseDarkTheme ? "Palette.Dark.xaml"
+            : null;
 
-        var dark = new ResourceDictionary { Source = new Uri("UI/Design/Palette.Dark.xaml", UriKind.Relative) };
+        if (palette is null) return;
+
+        var replacement = new ResourceDictionary { Source = new Uri($"UI/Design/{palette}", UriKind.Relative) };
         var merged = Resources.MergedDictionaries;
 
         for (var i = 0; i < merged.Count; i++)
         {
             if (merged[i].Source?.OriginalString.EndsWith("Palette.Light.xaml", StringComparison.Ordinal) != true) continue;
-            merged[i] = dark;
+            merged[i] = replacement;
             break;
         }
+
+        if (SystemAppearance.HighContrast) return;
 
         // The title bar is drawn by Windows, not by WPF, so it has to be told separately or a dark window
         // keeps a white caption.

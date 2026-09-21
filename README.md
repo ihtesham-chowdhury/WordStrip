@@ -35,9 +35,9 @@ Everything runs locally. No network calls, no telemetry, no cloud model.
 
 ## Status
 
-Working preview, 0.13.3. Verified two ways:
+Working preview, 0.13.3, after the visual polish phase. Verified two ways:
 
-- **500+ unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
+- **520+ unit tests** over the prediction primitives, the language model, phrase generation, emoji matching,
   personal vocabulary and learning, text injection, the typing-history rules, and the interaction model end
   to end — driven against an in-memory text field whose injector refuses to replace text that isn't there.
 - **An end-to-end regression** (`tests\regression\Verify-PersistentBar.ps1`) that drives a real Win32
