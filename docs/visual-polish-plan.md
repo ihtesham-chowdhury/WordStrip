@@ -41,12 +41,19 @@ does not match either Windows or the bar.
 
 Phases run in order; each ends with build, unit tests, real-typing regression, and a screenshot pass.
 
+Status: A, B and C are done. D next.
+
 - **A — Tokens.** One small token layer (`UI/Design/DesignTokens.cs` + `Tokens.xaml`): typography, geometry,
   motion, control metrics, focus. No new framework; it exists so B–G stop inventing numbers.
 - **B — Bar.** Typography hierarchy by weight rather than opacity; weight independent of selection; quiet
   dividers; two selection states (armed = quiet pill, active = pill + indicator).
-- **C — Placement, DPI, multi-monitor.** Caret-anchored placement with work-area clamping; per-monitor DPI
-  checks at 100/125/150/175/200%.
+- **C — Placement, DPI, multi-monitor.** Done. Placement arithmetic moved to `Core/Presentation/BarPlacement.cs`
+  (pure, unit-tested) and the window now positions itself with `SetWindowPos` in the target monitor's own
+  physical pixels, chosen by `Interop/MonitorLayout.cs` from the caret. `SystemParameters.WorkArea` is gone
+  from the bar: it is the primary display's rectangle at the primary display's scale, which is the wrong
+  answer on any second monitor. Text rendering declared Grayscale after measuring that a layered window was
+  never subpixel-rendering anyway. Verified at 150% on one display; 125/175/200% and a genuine mixed-DPI
+  pair still need a machine with those displays.
 - **D — Seven themes.** Tune each variant's tokens, including a minimum perceptual separation floor over
   white and near-black. No theme removed, no theme ranked.
 - **E — Settings structure.** Navigation rail, section pages, live-apply, no footer.

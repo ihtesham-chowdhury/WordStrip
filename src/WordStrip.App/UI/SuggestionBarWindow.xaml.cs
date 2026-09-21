@@ -5,10 +5,12 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using WordStrip.App.Interop;
+using static WordStrip.App.Interop.DwmNativeMethods;
 using WordStrip.App.UI.Design;
 using WordStrip.App.UI.Theming;
 using WordStrip.Core.Automation;
 using WordStrip.Core.Prediction;
+using WordStrip.Core.Presentation;
 using WordStrip.Core.Settings;
 using WordStrip.Core.Suggestions;
 using Point = System.Windows.Point;
@@ -51,6 +53,9 @@ public partial class SuggestionBarWindow : Window
     private System.Windows.Threading.DispatcherTimer? _probePauseTimer;
     private bool _probeInFlight;
     private SlotPanel? _slots;
+
+    /// <summary>The display the bar was last placed on. Refreshed by Reposition; read by the width ceilings.</summary>
+    private MonitorLayout _monitor = MonitorLayout.Primary();
     private double _heldWidth;
     private System.Windows.Threading.DispatcherTimer? _relaxTimer;
 
@@ -476,9 +481,10 @@ public partial class SuggestionBarWindow : Window
 
         RootHost.Width = double.NaN;
 
-        // Device-independent units, which is what WPF lays out in — the work area is already in those, so no
-        // DPI conversion belongs here.
-        RootHost.MaxWidth = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction);
+        // Device-independent units, which is what WPF lays out in. The work area comes from the display the
+        // bar is on rather than from the primary one, so a second monitor of a different width or scale gets
+        // a ceiling that means the same thing there as here.
+        RootHost.MaxWidth = Math.Round(_monitor.WorkWidthDip * _settings.BarWidthFraction);
 
         // Stretch vs Center makes no visible difference once RootHost sizes to its own content rather than to
         // a fixed pixel width — there is no leftover space for either to distribute. Left as Stretch so
@@ -514,7 +520,7 @@ public partial class SuggestionBarWindow : Window
 
         if (!_settings.FixedBarWidth) return requested;
 
-        var usable = Math.Round(SystemParameters.WorkArea.Width * _settings.BarWidthFraction)
+        var usable = Math.Round(_monitor.WorkWidthDip * _settings.BarWidthFraction)
                      - ((_metrics.Inset + _metrics.RimThickness) * 2);
 
         var fits = (int)Math.Floor(usable / Math.Max(1, PreferredSlotWidth()));
@@ -882,57 +888,63 @@ public partial class SuggestionBarWindow : Window
 
     // --- Placement ----------------------------------------------------------------------------------
 
+    /// <summary>
+    /// The display the bar belongs on: the one holding the caret when we know where it is, otherwise the one
+    /// holding the window the user is typing into. Never the primary monitor by assumption — that is how a
+    /// bar ends up on the left-hand screen while its user types on the right-hand one.
+    /// </summary>
+    private MonitorLayout TargetMonitor() =>
+        _caret is { } caret
+            ? MonitorLayout.ForPoint((caret.Left + caret.Right) / 2, (caret.Top + caret.Bottom) / 2)
+            : MonitorLayout.ForForegroundWindow();
+
+    /// <summary>
+    /// Places the bar, in the target monitor's own physical pixels.
+    ///
+    /// <para>Whole pixels are the point. Positioning through WPF's Left/Top converts from device-independent
+    /// units using one scale factor, which is the wrong one as soon as a second display is scaled
+    /// differently, and lands the window on a fractional pixel — a soft rim and blurred text for as long as
+    /// it sits there.</para>
+    /// </summary>
     private void Reposition()
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
 
-        var workArea = SystemParameters.WorkArea;
-        var gap = _metrics.EdgeGap;
-        double left, top;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd == 0) return;  // no HWND yet; Show() repositions once there is one
+        if (!GetWindowRect(hwnd, out var current)) return;
 
-        switch (_settings.BarPosition)
-        {
-            case BarPosition.TopCenter:
-                left = workArea.Left + (workArea.Width - ActualWidth) / 2;
-                top = workArea.Top + gap;
-                break;
+        var width = current.Right - current.Left;
+        var height = current.Bottom - current.Top;
+        if (width <= 0 || height <= 0) return;
 
-            case BarPosition.NearCaret when _caret is { } caret:
-                (left, top) = ComputeNearCaret(caret, workArea);
-                break;
+        var monitor = TargetMonitor();
+        _monitor = monitor;
 
-            default:
-                left = workArea.Left + (workArea.Width - ActualWidth) / 2;
-                top = workArea.Bottom - ActualHeight - gap;
-                break;
-        }
+        var (left, top) = BarPlacement.Place(
+            _settings.BarPosition,
+            new PixelRect(monitor.WorkLeft, monitor.WorkTop, monitor.WorkWidth, monitor.WorkHeight),
+            new PixelRect(current.Left, current.Top, width, height),
+            edgeGap: (int)Math.Round(_metrics.EdgeGap * monitor.Scale),
+            caretGap: (int)Math.Round(Math.Max(6, _metrics.EdgeGap * 0.6) * monitor.Scale),
+            _caret);
 
         // Moving a top-level window is a compositor operation, not a cheap property set. Re-applying the
         // same position on every keystroke produced visible jitter, so only move when it actually changed.
-        var moved = false;
-        if (Math.Abs(Left - left) > 0.5) { Left = left; moved = true; }
-        if (Math.Abs(Top - top) > 0.5) { Top = top; moved = true; }
-        if (moved) FrameProbe.CountMove();
+        if (current.Left == left && current.Top == top) return;
+
+        SetWindowPos(hwnd, 0, left, top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        FrameProbe.CountMove();
     }
 
-    private (double Left, double Top) ComputeNearCaret(CaretRect caret, Rect workArea)
+    /// <summary>
+    /// The window moved to a display with a different scale factor. WPF has already re-laid the bar out at
+    /// the new scale by the time this runs, but its position was computed for the old one, so it is placed
+    /// again once that layout has settled.
+    /// </summary>
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
-        // Caret coordinates are physical pixels; WPF positions windows in device-independent units.
-        var scale = GetDpiScale();
-        var caretLeft = caret.Left / scale;
-        var caretTop = caret.Top / scale;
-        var caretBottom = caret.Bottom / scale;
-        var caretGap = Math.Max(6, _metrics.EdgeGap * 0.6);
-
-        var left = caretLeft - ActualWidth / 2;
-        var top = caretBottom + caretGap;
-
-        // Flip above the caret rather than hang off the bottom of the screen.
-        if (top + ActualHeight > workArea.Bottom)
-            top = caretTop - ActualHeight - caretGap;
-
-        return (
-            Math.Clamp(left, workArea.Left + 4, Math.Max(workArea.Left + 4, workArea.Right - ActualWidth - 4)),
-            Math.Clamp(top, workArea.Top + 4, Math.Max(workArea.Top + 4, workArea.Bottom - ActualHeight - 4)));
+        base.OnDpiChanged(oldDpi, newDpi);
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(Reposition));
     }
 }

@@ -14,7 +14,19 @@
         WindowStartupLocation="Manual"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Ideal"
-        TextOptions.TextRenderingMode="ClearType">
+        TextOptions.TextRenderingMode="Grayscale">
+
+    <!-- Text rendering, set on the window above.
+
+         Ideal formatting because the strip's font size is derived from a scale factor and is rarely a whole
+         number; Display formatting snaps such sizes to the pixel grid, and the words then change width
+         between one bar thickness and the next.
+
+         Grayscale rather than ClearType because this is a per-pixel-alpha layered window: WPF cannot
+         subpixel-render onto one and silently falls back. Measured on a capture of the real bar over a
+         neutral dark theme — the largest difference between a glyph pixel's colour channels was 11 of 255,
+         so nothing was being subpixel-rendered. Declaring ClearType described something that never
+         happened. -->
 
     <Grid x:Name="RootHost"
           Opacity="0"

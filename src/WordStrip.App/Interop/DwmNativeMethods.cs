@@ -40,6 +40,25 @@ internal static class DwmNativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern int SetWindowLong(nint hWnd, int nIndex, int dwNewLong);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(nint hWnd, out RECT rect);
+
+    /// <summary>
+    /// Moves the window in physical pixels. The bar is positioned this way rather than through WPF's
+    /// Left/Top so that the coordinates are the monitor's own pixels: a window straddling two displays with
+    /// different scale factors has no single conversion from device-independent units, and a position that
+    /// lands on a fractional pixel shows as a soft edge and a blurred rim.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(nint hWnd, nint insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
+
     public const int GWL_EXSTYLE = -20;
     public const int WS_EX_NOACTIVATE = 0x08000000;
     public const int WS_EX_TOOLWINDOW = 0x00000080;
