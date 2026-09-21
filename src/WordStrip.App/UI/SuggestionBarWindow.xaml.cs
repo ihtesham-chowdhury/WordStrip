@@ -50,6 +50,12 @@ public partial class SuggestionBarWindow : Window
     private bool _isRevealed;
     private DateTime _lastCycleAt = DateTime.MinValue;
     private GlassAppearance _appearance = GlassAppearance.OverLight;
+
+    /// <summary>
+    /// The backdrop's measured luminance, 0-1, or null when it has not been sampled — which is the whole
+    /// time the user has pinned light or dark, because that setting turns the probe off.
+    /// </summary>
+    private double? _backdropLuminance;
     private System.Windows.Threading.DispatcherTimer? _probePauseTimer;
     private bool _probeInFlight;
     private SlotPanel? _slots;
@@ -255,7 +261,14 @@ public partial class SuggestionBarWindow : Window
             _ => _appearance,
         };
 
-        if (next == _appearance) return;
+        // The variant is one decision; how far the surface has to stand off this particular backdrop is
+        // another, and it changes within a variant - a white page and a light grey editor are both "light"
+        // and need different amounts of separation. Retinting for a small drift would undo the hysteresis,
+        // so only a real change in brightness counts.
+        var brightnessMoved = _backdropLuminance is not { } previous || Math.Abs(previous - luminance.Value) > 0.05;
+        _backdropLuminance = luminance;
+
+        if (next == _appearance && !brightnessMoved) return;
 
         _appearance = next;
         ApplyPalette();
@@ -636,7 +649,8 @@ public partial class SuggestionBarWindow : Window
         _brushes = ThemeBrushes.Build(
             _theme, _appearance, _settings.GlassTint,
             allowTransparency: SystemAppearance.TransparencyEnabled,
-            highContrast: SystemAppearance.HighContrast);
+            highContrast: SystemAppearance.HighContrast,
+            backdropLuminance: _backdropLuminance);
 
         _restingTextBrush = new SolidColorBrush(_brushes.TextColor);
         _selectedTextBrush = new SolidColorBrush(_brushes.SelectedTextColor);

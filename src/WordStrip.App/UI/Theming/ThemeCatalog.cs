@@ -41,9 +41,9 @@ public static class ThemeCatalog
         ShowIndicator = true,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xF3, 0xF4, 0xF7), SurfaceOpacity = 0.82,
+            Surface = Rgb(0xD0, 0xD4, 0xDD), SurfaceOpacity = 0.84,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.70,
-            SheenStrength = 0.35, BezelStrength = 0.22,
+            SheenStrength = 0.26, BezelStrength = 0.18,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.98,
             SelectedBorder = Rgb(0x00, 0x00, 0x00), SelectedBorderOpacity = 0.10,
             Text = Rgb(0x2B, 0x2F, 0x38), SelectedText = Rgb(0x10, 0x13, 0x18),
@@ -53,9 +53,9 @@ public static class ThemeCatalog
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x2C, 0x2E, 0x33), SurfaceOpacity = 0.80,
+            Surface = Rgb(0x3B, 0x3E, 0x45), SurfaceOpacity = 0.80,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.16,
-            SheenStrength = 0.30, BezelStrength = 0.24,
+            SheenStrength = 0.22, BezelStrength = 0.20,
             SelectedSurface = Rgb(0x5A, 0x5E, 0x68), SelectedOpacity = 0.95,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.24,
             Text = Rgb(0xEC, 0xEE, 0xF2), SelectedText = Rgb(0xFF, 0xFF, 0xFF),
@@ -77,26 +77,26 @@ public static class ThemeCatalog
         ShowIndicator = true,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xF7, 0xF7, 0xF9), SurfaceOpacity = 0.94,
+            Surface = Rgb(0xD8, 0xD8, 0xDD), SurfaceOpacity = 0.95,
             Border = Rgb(0x1B, 0x1D, 0x22), BorderOpacity = 0.10,
-            SheenStrength = 0.10, BezelStrength = 0.0,
+            SheenStrength = 0.05, BezelStrength = 0.0,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 1.0,
             SelectedBorder = Rgb(0x1B, 0x1D, 0x22), SelectedBorderOpacity = 0.14,
             Text = Rgb(0x33, 0x36, 0x3D), SelectedText = Rgb(0x14, 0x16, 0x1A),
             Indicator = Rgb(0x0F, 0x6C, 0xBD),
-            ShadowOpacity = 0.14, ShadowBlur = 12, ShadowDepth = 2,
+            ShadowOpacity = 0.12, ShadowBlur = 12, ShadowDepth = 2,
             HoverBrightness = 0.04,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x25, 0x27, 0x2B), SurfaceOpacity = 0.94,
+            Surface = Rgb(0x35, 0x38, 0x40), SurfaceOpacity = 0.95,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.12,
-            SheenStrength = 0.08, BezelStrength = 0.0,
+            SheenStrength = 0.04, BezelStrength = 0.0,
             SelectedSurface = Rgb(0x44, 0x47, 0x4E), SelectedOpacity = 1.0,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.18,
             Text = Rgb(0xE4, 0xE6, 0xEA), SelectedText = Rgb(0xFF, 0xFF, 0xFF),
             Indicator = Rgb(0x60, 0xB4, 0xFF),
-            ShadowOpacity = 0.34, ShadowBlur = 14, ShadowDepth = 3,
+            ShadowOpacity = 0.30, ShadowBlur = 14, ShadowDepth = 3,
             HoverBrightness = 0.06,
         },
     };
@@ -115,24 +115,24 @@ public static class ThemeCatalog
         {
             Surface = Rgb(0x3A, 0x3F, 0x49), SurfaceOpacity = 0.90,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.26,
-            SheenStrength = 0.45, BezelStrength = 0.38,
+            SheenStrength = 0.32, BezelStrength = 0.26,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.97,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.55,
             Text = Rgb(0xE9, 0xEC, 0xF1), SelectedText = Rgb(0x14, 0x17, 0x1D),
             Indicator = Rgb(0x4C, 0xA0, 0xFF),
-            ShadowOpacity = 0.38, ShadowBlur = 22, ShadowDepth = 5,
+            ShadowOpacity = 0.30, ShadowBlur = 20, ShadowDepth = 4,
             HoverBrightness = 0.08,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x33, 0x38, 0x42), SurfaceOpacity = 0.88,
+            Surface = Rgb(0x38, 0x3D, 0x47), SurfaceOpacity = 0.88,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.22,
-            SheenStrength = 0.40, BezelStrength = 0.36,
+            SheenStrength = 0.30, BezelStrength = 0.24,
             SelectedSurface = Rgb(0xF2, 0xF5, 0xFA), SelectedOpacity = 0.96,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.50,
             Text = Rgb(0xE9, 0xEC, 0xF1), SelectedText = Rgb(0x14, 0x17, 0x1D),
             Indicator = Rgb(0x60, 0xB4, 0xFF),
-            ShadowOpacity = 0.48, ShadowBlur = 24, ShadowDepth = 6,
+            ShadowOpacity = 0.40, ShadowBlur = 22, ShadowDepth = 5,
             HoverBrightness = 0.08,
         },
     };
@@ -149,26 +149,26 @@ public static class ThemeCatalog
         ShowIndicator = false,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xFB, 0xFB, 0xFD), SurfaceOpacity = 0.78,
+            Surface = Rgb(0xD4, 0xD4, 0xDC), SurfaceOpacity = 0.80,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.85,
-            SheenStrength = 0.28, BezelStrength = 0.16,
+            SheenStrength = 0.22, BezelStrength = 0.12,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 1.0,
             SelectedBorder = Rgb(0x00, 0x00, 0x00), SelectedBorderOpacity = 0.08,
             Text = Rgb(0x3C, 0x3C, 0x43), SelectedText = Rgb(0x00, 0x00, 0x00),
             Indicator = Rgb(0x00, 0x7A, 0xFF),
-            ShadowOpacity = 0.16, ShadowBlur = 20, ShadowDepth = 4,
+            ShadowOpacity = 0.14, ShadowBlur = 20, ShadowDepth = 4,
             HoverBrightness = 0.04,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x3A, 0x3A, 0x3E), SurfaceOpacity = 0.74,
+            Surface = Rgb(0x3F, 0x3F, 0x45), SurfaceOpacity = 0.76,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.22,
-            SheenStrength = 0.26, BezelStrength = 0.18,
+            SheenStrength = 0.20, BezelStrength = 0.14,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.96,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.30,
             Text = Rgb(0xF2, 0xF2, 0xF7), SelectedText = Rgb(0x00, 0x00, 0x00),
             Indicator = Rgb(0x0A, 0x84, 0xFF),
-            ShadowOpacity = 0.40, ShadowBlur = 24, ShadowDepth = 5,
+            ShadowOpacity = 0.34, ShadowBlur = 24, ShadowDepth = 5,
             HoverBrightness = 0.06,
         },
     };
@@ -185,7 +185,7 @@ public static class ThemeCatalog
         ShowIndicator = true,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0x1A, 0x1B, 0x1E), SurfaceOpacity = 0.96,
+            Surface = Rgb(0x20, 0x22, 0x26), SurfaceOpacity = 0.96,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.12,
             SheenStrength = 0.0, BezelStrength = 0.10,
             SelectedSurface = Rgb(0x3A, 0x3C, 0x42), SelectedOpacity = 1.0,
@@ -197,7 +197,7 @@ public static class ThemeCatalog
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x16, 0x17, 0x1A), SurfaceOpacity = 0.97,
+            Surface = Rgb(0x33, 0x35, 0x3B), SurfaceOpacity = 0.97,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.14,
             SheenStrength = 0.0, BezelStrength = 0.12,
             SelectedSurface = Rgb(0x3E, 0x41, 0x48), SelectedOpacity = 1.0,
@@ -221,26 +221,26 @@ public static class ThemeCatalog
         ShowIndicator = false,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xFF, 0xFF, 0xFF), SurfaceOpacity = 0.62,
+            Surface = Rgb(0xD0, 0xD5, 0xE0), SurfaceOpacity = 0.82,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.90,
-            SheenStrength = 0.40, BezelStrength = 0.30,
+            SheenStrength = 0.28, BezelStrength = 0.20,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.94,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.95,
             Text = Rgb(0x2E, 0x31, 0x38), SelectedText = Rgb(0x11, 0x13, 0x18),
             Indicator = Rgb(0x4C, 0x8D, 0xFF),
-            ShadowOpacity = 0.26, ShadowBlur = 34, ShadowDepth = 8,
+            ShadowOpacity = 0.20, ShadowBlur = 26, ShadowDepth = 6,
             HoverBrightness = 0.05,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0xE8, 0xEC, 0xF4), SurfaceOpacity = 0.26,
+            Surface = Rgb(0xE8, 0xEC, 0xF4), SurfaceOpacity = 0.48,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.42,
-            SheenStrength = 0.38, BezelStrength = 0.30,
+            SheenStrength = 0.26, BezelStrength = 0.20,
             SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.90,
             SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.70,
             Text = Rgb(0xF4, 0xF6, 0xFA), SelectedText = Rgb(0x14, 0x17, 0x1D),
             Indicator = Rgb(0x7F, 0xB4, 0xFF),
-            ShadowOpacity = 0.50, ShadowBlur = 38, ShadowDepth = 9,
+            ShadowOpacity = 0.38, ShadowBlur = 28, ShadowDepth = 7,
             HoverBrightness = 0.07,
         },
     };
@@ -257,26 +257,26 @@ public static class ThemeCatalog
         ShowIndicator = true,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xEE, 0xEB, 0xF4), SurfaceOpacity = 0.97,
+            Surface = Rgb(0xDA, 0xD5, 0xE6), SurfaceOpacity = 0.98,
             Border = Rgb(0x6A, 0x5A, 0x84), BorderOpacity = 0.14,
             SheenStrength = 0.0, BezelStrength = 0.0,
             SelectedSurface = Rgb(0xE5, 0xDE, 0xFF), SelectedOpacity = 1.0,
             SelectedBorder = Rgb(0x65, 0x50, 0xA6), SelectedBorderOpacity = 0.22,
             Text = Rgb(0x48, 0x45, 0x4E), SelectedText = Rgb(0x21, 0x00, 0x5D),
             Indicator = Rgb(0x65, 0x50, 0xA6),
-            ShadowOpacity = 0.18, ShadowBlur = 14, ShadowDepth = 3,
+            ShadowOpacity = 0.16, ShadowBlur = 12, ShadowDepth = 3,
             HoverBrightness = 0.05,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x2B, 0x28, 0x30), SurfaceOpacity = 0.97,
+            Surface = Rgb(0x36, 0x32, 0x3F), SurfaceOpacity = 0.98,
             Border = Rgb(0xCF, 0xBC, 0xFF), BorderOpacity = 0.18,
             SheenStrength = 0.0, BezelStrength = 0.0,
             SelectedSurface = Rgb(0x4F, 0x37, 0x8B), SelectedOpacity = 1.0,
             SelectedBorder = Rgb(0xCF, 0xBC, 0xFF), SelectedBorderOpacity = 0.34,
             Text = Rgb(0xCA, 0xC4, 0xD0), SelectedText = Rgb(0xEA, 0xDD, 0xFF),
             Indicator = Rgb(0xCF, 0xBC, 0xFF),
-            ShadowOpacity = 0.40, ShadowBlur = 16, ShadowDepth = 4,
+            ShadowOpacity = 0.34, ShadowBlur = 14, ShadowDepth = 4,
             HoverBrightness = 0.07,
         },
     };

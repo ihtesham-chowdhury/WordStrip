@@ -41,7 +41,7 @@ does not match either Windows or the bar.
 
 Phases run in order; each ends with build, unit tests, real-typing regression, and a screenshot pass.
 
-Status: A, B and C are done. D next.
+Status: A, B, C and D are done. E next (the Settings rewrite).
 
 - **A — Tokens.** One small token layer (`UI/Design/DesignTokens.cs` + `Tokens.xaml`): typography, geometry,
   motion, control metrics, focus. No new framework; it exists so B–G stop inventing numbers.
@@ -54,8 +54,13 @@ Status: A, B and C are done. D next.
   answer on any second monitor. Text rendering declared Grayscale after measuring that a layered window was
   never subpixel-rendering anyway. Verified at 150% on one display; 125/175/200% and a genuine mixed-DPI
   pair still need a machine with those displays.
-- **D — Seven themes.** Tune each variant's tokens, including a minimum perceptual separation floor over
-  white and near-black. No theme removed, no theme ranked.
+- **D — Seven themes.** Done. `Core/Presentation/SurfaceSeparation.cs` enforces a floor of 0.12 on the
+  *composited* luminance of the bar against the measured backdrop, raising opacity first and moving the
+  surface's colour (hue kept) only if that is not enough; `BackgroundProbe`'s measurement is now carried into
+  the palette rather than only deciding light-versus-dark. Measuring every variant against the backdrop it
+  was authored for found nine of the fourteen below the floor — a pale theme over a white page was not a
+  surface at all — so all seven themes were re-authored to clear it themselves, with sheen, bezel and shadow
+  pulled back per theme. A test asserts the rescue path never runs for an authored theme.
 - **E — Settings structure.** Navigation rail, section pages, live-apply, no footer.
 - **F — Theme gallery and sticky live preview** on the Appearance page.
 - **G — Personal vocabulary, learning/privacy, model status, integrations pages.**

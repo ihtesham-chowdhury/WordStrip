@@ -59,10 +59,14 @@ public partial class SettingsWindow : Window
 
     private UIElement BuildStrip(ThemeDefinition theme, GlassAppearance appearance)
     {
+        // The preview's own cards are the backdrop, so their luminance is known exactly: the separation
+        // floor is applied here too, and the preview shows what the bar will actually do over a white page
+        // and over a dark editor rather than the theme's unadjusted colours.
         var brushes = ThemeBrushes.Build(
             theme, appearance, _settings.GlassTint,
             allowTransparency: SystemAppearance.TransparencyEnabled,
-            highContrast: SystemAppearance.HighContrast);
+            highContrast: SystemAppearance.HighContrast,
+            backdropLuminance: appearance == GlassAppearance.OverDark ? 0.10 : 1.0);
 
         var metrics = GlassMetrics.ForScale(_settings.BarScale, theme.CornerRadius, theme.ShowIndicator);
 

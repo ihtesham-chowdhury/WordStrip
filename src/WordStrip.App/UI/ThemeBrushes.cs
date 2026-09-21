@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using WordStrip.App.UI.Theming;
+using WordStrip.Core.Presentation;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
@@ -53,12 +54,19 @@ public sealed class ThemeBrushes
     public required double ShadowDepth { get; init; }
     public required bool ShowIndicator { get; init; }
 
+    /// <param name="backdropLuminance">
+    /// What the screen behind the bar actually measured, 0-1, or null when nothing was sampled — which is
+    /// the case whenever the user has pinned light or dark, since that setting means "stop changing".
+    /// Supplied so a theme can be held clear of the surface it is sitting on; see
+    /// <see cref="SurfaceSeparation"/>.
+    /// </param>
     public static ThemeBrushes Build(
         ThemeDefinition theme,
         GlassAppearance appearance,
         double thickness,
         bool allowTransparency,
-        bool highContrast)
+        bool highContrast,
+        double? backdropLuminance = null)
     {
         if (highContrast) return HighContrast();
 
@@ -70,9 +78,14 @@ public sealed class ThemeBrushes
             ? Math.Clamp(v.SurfaceOpacity * (0.55 + thickness * 0.75), 0.10, 1.0)
             : 1.0;
 
+        // The floor runs last, over the thickness the user chose: a theme thinned until it stopped being a
+        // surface is exactly the case it exists for.
+        var tint = SurfaceSeparation.Ensure(
+            new SurfaceTint(v.Surface.R, v.Surface.G, v.Surface.B, surfaceOpacity), backdropLuminance);
+
         return new ThemeBrushes
         {
-            Scrim = Solid(v.Surface, surfaceOpacity),
+            Scrim = Solid(Color.FromRgb(tint.R, tint.G, tint.B), tint.Alpha),
             Sheen = v.SheenStrength <= 0 || !allowTransparency
                 ? Brushes.Transparent
                 : VerticalGradient(
