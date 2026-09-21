@@ -89,7 +89,7 @@ public sealed class SlotPanel : Panel
     /// <summary>How far the divider stops short of the strip's top and bottom, as a fraction of the height.</summary>
     public static readonly DependencyProperty DividerInsetProperty = DependencyProperty.Register(
         nameof(DividerInset), typeof(double), typeof(SlotPanel),
-        new FrameworkPropertyMetadata(0.22, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(0.30, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public bool UseSlots
     {

@@ -84,7 +84,10 @@ public sealed class ThemeBrushes
                 (0.00, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity),
                 (0.55, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity * 0.45),
                 (1.00, v.Border.R, v.Border.G, v.Border.B, v.BorderOpacity * 0.62)),
-            Divider = Solid(v.Text, 0.22),
+            // Quiet enough to group the slots without being read as punctuation between the words. At 0.22
+            // the strip scanned as "looking | looked | looks"; the line should be structure the eye uses and
+            // does not notice.
+            Divider = Solid(v.Text, 0.10),
             Bezel = v.BezelStrength <= 0 || !allowTransparency
                 ? Brushes.Transparent
                 : VerticalGradient(

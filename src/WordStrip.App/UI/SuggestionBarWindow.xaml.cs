@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using WordStrip.App.Interop;
+using WordStrip.App.UI.Design;
 using WordStrip.App.UI.Theming;
 using WordStrip.Core.Automation;
 using WordStrip.Core.Prediction;
@@ -39,6 +40,10 @@ public partial class SuggestionBarWindow : Window
 
     private IReadOnlyList<Suggestion> _currentSuggestions = Array.Empty<Suggestion>();
     private int _selectedIndex = -1;
+
+    /// <summary>Whether the current selection is a Tab cycle (the user driving) rather than Space being armed.</summary>
+    private bool _selectionIsActive;
+
     private CaretRect? _caret;
     private bool _isRevealed;
     private DateTime _lastCycleAt = DateTime.MinValue;
@@ -151,7 +156,9 @@ public partial class SuggestionBarWindow : Window
         // The highlight means "this is what your key will take". While cycling that is the candidate Tab just
         // inserted; otherwise it marks the first candidate when Space will commit it - the same selection
         // surface in every theme, because a weight change alone proved too easy to miss.
-        ApplySelection(update.SelectedIndex >= 0 ? update.SelectedIndex : update.FirstIsArmed ? 0 : -1);
+        ApplySelection(
+            update.SelectedIndex >= 0 ? update.SelectedIndex : update.FirstIsArmed ? 0 : -1,
+            active: update.SelectedIndex >= 0);
         Reposition();
         AdaptToBackground(reappearing);
         Reveal();
@@ -315,6 +322,29 @@ public partial class SuggestionBarWindow : Window
         return true;
     }
 
+    /// <summary>
+    /// How strongly the selection surface is drawn, and whether it carries the position indicator. Both come
+    /// from the same state: armed is the strip telling the user what Space would take, a cycle is the user
+    /// choosing. Applied as the lens's own opacity, so the two states share one shape and one animation.
+    /// </summary>
+    private void ApplySelectionStrength()
+    {
+        Lens.Indicator = _brushes.ShowIndicator && _selectionIsActive ? _brushes.Indicator : null;
+
+        var target = _selectionIsActive ? DesignTokens.Selection.ActiveOpacity : DesignTokens.Selection.ArmedOpacity;
+        if (Lens.Opacity <= 0.01) return;  // not on screen: MovePillTo will fade it in to the right strength
+
+        if (!UseMotion)
+        {
+            Lens.BeginAnimation(OpacityProperty, null);
+            Lens.Opacity = target;
+            return;
+        }
+
+        Lens.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(target, new Duration(TimeSpan.FromSeconds(DesignTokens.Motion.Selection))));
+    }
+
     /// <summary>Drops the highlight and returns every chip to its resting appearance.</summary>
     private void ClearSelection(bool fade = true)
     {
@@ -333,13 +363,23 @@ public partial class SuggestionBarWindow : Window
     /// Puts the selection where the controller says it is. Passive updates (index -1) clear it; an active one
     /// moves the lens, and consecutive Tabs inside the repeat threshold switch to a spring short enough to
     /// keep up, so rapid Tab presses read as one continuous glide rather than a lens that lags behind.
+    ///
+    /// <para><paramref name="active"/> separates the bar's two states. Armed — Space would commit the first
+    /// candidate — shows the same surface more quietly and without the position indicator, so the strip still
+    /// reads as information. A Tab cycle is the user driving, and gets the surface at full strength.</para>
     /// </summary>
-    private void ApplySelection(int index)
+    private void ApplySelection(int index, bool active)
     {
         if (index < 0 || index >= _currentSuggestions.Count || index >= Chips.Count)
         {
             if (_selectedIndex >= 0) ClearSelection();
             return;
+        }
+
+        if (active != _selectionIsActive)
+        {
+            _selectionIsActive = active;
+            ApplySelectionStrength();
         }
 
         if (index == _selectedIndex) return;
@@ -604,7 +644,7 @@ public partial class SuggestionBarWindow : Window
 
         Lens.Fill = _brushes.Pill;
         Lens.Rim = _brushes.PillRim;
-        Lens.Indicator = _brushes.ShowIndicator ? _brushes.Indicator : null;
+        ApplySelectionStrength();
 
         Plate.Effect = _brushes.ShadowOpacity > 0
             ? new DropShadowEffect
@@ -789,16 +829,20 @@ public partial class SuggestionBarWindow : Window
             Lens.LensX = origin.X;
             Lens.LensWidth = targetWidth;
 
+            var strength = _selectionIsActive
+                ? DesignTokens.Selection.ActiveOpacity
+                : DesignTokens.Selection.ArmedOpacity;
+
             if (UseMotion)
             {
                 Lens.BeginAnimation(OpacityProperty,
-                    new DoubleAnimation(1, new Duration(TimeSpan.FromSeconds(motion.FadeInSeconds)))
+                    new DoubleAnimation(strength, new Duration(TimeSpan.FromSeconds(motion.FadeInSeconds)))
                     { EasingFunction = Spring(motion.FadeInSeconds, 1.0, motion.FadeInSeconds) });
             }
             else
             {
                 Lens.BeginAnimation(OpacityProperty, null);
-                Lens.Opacity = 1;
+                Lens.Opacity = strength;
             }
             return;
         }

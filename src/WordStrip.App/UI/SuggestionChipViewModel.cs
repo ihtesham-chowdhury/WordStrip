@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
+using WordStrip.App.UI.Design;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 
@@ -18,9 +19,6 @@ namespace WordStrip.App.UI;
 /// </summary>
 public sealed class SuggestionChipViewModel : INotifyPropertyChanged
 {
-    /// <summary>How much alternates recede behind the first slot. Enough to rank them at a glance, not enough to hide them.</summary>
-    private const double AlternateOpacity = 0.74;
-
     private string _word = string.Empty;
     private bool _isEmoji;
     private bool _isPrimary;
@@ -94,9 +92,14 @@ public sealed class SuggestionChipViewModel : INotifyPropertyChanged
     public double MinHeight => Metrics.ChipMinHeight;
     public double FontSize => Metrics.FontSize;
 
-    public FontWeight FontWeight => _isSelected ? FontWeights.SemiBold : FontWeights.Medium;
+    /// <summary>
+    /// Weight depends on the slot, never on the selection. A selected word that also got heavier would
+    /// re-measure and shift inside its slot every time the selection moved, and the selection surface
+    /// already says which word is taken. The first slot is the likely answer, so it carries the weight.
+    /// </summary>
+    public FontWeight FontWeight => _isPrimary && !_isEmoji ? FontWeights.SemiBold : FontWeights.Normal;
 
-    public double TextOpacity => _isSelected || (_isPrimary && !_isEmoji) ? 1.0 : AlternateOpacity;
+    public double TextOpacity => _isSelected || (_isPrimary && !_isEmoji) ? 1.0 : DesignTokens.Type.AlternateOpacity;
 
     public Brush Foreground
     {
