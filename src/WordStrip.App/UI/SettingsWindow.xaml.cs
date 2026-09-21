@@ -40,8 +40,17 @@ public partial class SettingsWindow : Window
         BuildShortcutList();
         ShowSection(0);
 
-        viewModel.PropertyChanged += (_, _) => RebuildPreview();
+        viewModel.PropertyChanged += (_, _) =>
+        {
+            RebuildPreview();
+            RefreshStatusRows();
+        };
+
         RebuildPreview();
+        RefreshStatusRows();
+
+        viewModel.PersonalWords.CollectionChanged += (_, _) => RefreshEmptyWordsNote();
+        RefreshEmptyWordsNote();
 
         // TipRegistered reads the registry directly rather than a cached field, so the only thing needed to
         // keep the card honest is asking WPF to re-read it — which happens whenever the window regains
@@ -177,6 +186,143 @@ public partial class SettingsWindow : Window
         layers.SizeChanged += (_, _) => PlaceLens(lens, chips);
 
         return layers;
+    }
+
+    /// <summary>An empty list should say what to do with it rather than sit there as a blank rectangle.</summary>
+    private void RefreshEmptyWordsNote() =>
+        EmptyWordsNote.Visibility = ViewModel.PersonalWords.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    // --- Status rows --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// One state, said three ways: a shape, a word, and a colour. Never colour alone — that is unreadable
+    /// for anyone who cannot distinguish it, and invisible in a screenshot printed in grey.
+    /// </summary>
+    private UIElement StatusRow(FeatureState state, string label, string detail)
+    {
+        var (glyph, tone) = state switch
+        {
+            FeatureState.Active => ("\u25CF", "Ws.Good"),          // filled circle
+            FeatureState.Ready => ("\u25CB", "Ws.Text.Muted"),     // hollow circle
+            FeatureState.Attention => ("\u25B2", "Ws.Warning"),    // triangle
+            _ => ("\u2193", "Ws.Text.Muted"),                      // downwards arrow: not here yet
+        };
+
+        var mark = new TextBlock
+        {
+            Text = glyph,
+            FontSize = 12,
+            Foreground = (System.Windows.Media.Brush)FindResource(tone),
+            Width = 20,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 2, 0, 0),
+        };
+
+        var words = new StackPanel();
+        words.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 13.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (System.Windows.Media.Brush)FindResource("Ws.Text"),
+        });
+        words.Children.Add(new TextBlock
+        {
+            Text = detail,
+            FontSize = 12,
+            Foreground = (System.Windows.Media.Brush)FindResource("Ws.Text.Muted"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+
+        var row = new DockPanel();
+        DockPanel.SetDock(mark, Dock.Left);
+        row.Children.Add(mark);
+        row.Children.Add(words);
+
+        System.Windows.Automation.AutomationProperties.SetName(row, $"{label}. {detail}");
+        return row;
+    }
+
+    /// <summary>
+    /// Rebuilds the three status rows and the list of applications. Cheap enough to redo whenever anything
+    /// changes: it is a handful of text blocks, and the alternative is a web of bindings for text that only
+    /// ever changes when one of four booleans does.
+    /// </summary>
+    private void RefreshStatusRows()
+    {
+        var vm = ViewModel;
+
+        ModelStatus.Children.Clear();
+        ModelStatus.Children.Add(StatusRow(vm.NeuralState, vm.NeuralStateLabel, vm.NeuralStateDetail));
+
+        IntegrationStatus.Children.Clear();
+        IntegrationStatus.Children.Add(StatusRow(vm.IntegrationState, vm.IntegrationStateLabel, vm.IntegrationStateDetail));
+
+        LearningStatus.Children.Clear();
+        LearningStatus.Children.Add(StatusRow(
+            vm.PersonalLearningEnabled ? FeatureState.Active : FeatureState.Off,
+            vm.PersonalLearningEnabled ? "Learning from your writing" : "Not learning",
+            vm.LearnedHeadline.Length > 0 ? $"{vm.LearnedHeadline}. Stored on this computer only." : "Stored on this computer only."));
+
+        BuildAppSupportList();
+    }
+
+    /// <summary>
+    /// Which applications the current state actually covers. The two paths are genuinely different — the
+    /// keyboard-hook path reaches classic Windows text boxes whatever the settings say, and everything else
+    /// depends on the text service — so saying so plainly is more useful than one sentence about both.
+    /// </summary>
+    private void BuildAppSupportList()
+    {
+        AppSupportList.Children.Clear();
+
+        var serviceOn = ViewModel.IntegrationState == FeatureState.Active;
+
+        (string Name, bool Covered)[] apps =
+        {
+            ("Notepad and classic Windows text boxes", true),
+            ("Chrome, Edge and Brave", serviceOn),
+            ("Electron apps", serviceOn),
+            ("Microsoft Word", serviceOn),
+        };
+
+        foreach (var (name, covered) in apps)
+        {
+            var mark = new TextBlock
+            {
+                Text = covered ? "\u25CF" : "\u25CB",
+                FontSize = 11,
+                Width = 20,
+                Foreground = (System.Windows.Media.Brush)FindResource(covered ? "Ws.Good" : "Ws.Text.Disabled"),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var text = new TextBlock
+            {
+                Text = name,
+                FontSize = 12.5,
+                Foreground = (System.Windows.Media.Brush)FindResource(covered ? "Ws.Text" : "Ws.Text.Muted"),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var state = new TextBlock
+            {
+                Text = covered ? "Working" : "Not yet",
+                FontSize = 12,
+                Foreground = (System.Windows.Media.Brush)FindResource(covered ? "Ws.Text.Muted" : "Ws.Text.Disabled"),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            DockPanel.SetDock(mark, Dock.Left);
+            DockPanel.SetDock(state, Dock.Right);
+            row.Children.Add(mark);
+            row.Children.Add(state);
+            row.Children.Add(text);
+
+            AppSupportList.Children.Add(row);
+        }
     }
 
     // --- Theme gallery ------------------------------------------------------------------------------

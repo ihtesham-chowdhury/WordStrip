@@ -377,11 +377,11 @@
                 <StackPanel Margin="28,24,28,36" MaxWidth="640" HorizontalAlignment="Left">
                     <TextBlock Text="Your words" Style="{StaticResource Ws.PageTitle}" />
                     <TextBlock Style="{StaticResource Ws.PageSubtitle}"
-                               Text="Names, products, jargon — anything the built-in dictionary does not know. Added words are suggested as you type and are never autocorrected into something else." />
+                               Text="Names, products, jargon - anything the built-in dictionary does not know. Added words are suggested as you type and are never autocorrected into something else." />
 
                     <Border Style="{StaticResource Ws.CardPanel}">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,14">
+                            <DockPanel Margin="0,0,0,16">
                                 <Button DockPanel.Dock="Right" Content="Add" Margin="8,0,0,0" MinWidth="72"
                                         Style="{StaticResource Ws.AccentButton}"
                                         Click="OnAddPersonalWordClick" IsEnabled="{Binding CanAddPersonalWord}" />
@@ -391,36 +391,58 @@
                                          AutomationProperties.Name="Add a personal word" />
                             </DockPanel>
 
+                            <DockPanel Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                                    <Button Content="Import" Margin="0,0,8,0" MinHeight="26" Padding="10,0" FontSize="12" Click="OnImportWordsClick" />
+                                    <Button Content="Export" MinHeight="26" Padding="10,0" FontSize="12" Click="OnExportWordsClick" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding PersonalWordCountLabel}" Style="{StaticResource Ws.Label}"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </DockPanel>
+
                             <Border BorderThickness="1" BorderBrush="{DynamicResource Ws.Card.Border}" CornerRadius="8"
-                                    MinHeight="90" MaxHeight="260">
+                                    MinHeight="120" MaxHeight="320">
+                              <Grid>
+                                <TextBlock x:Name="EmptyWordsNote" Style="{StaticResource Ws.Caption}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Text="Nothing added yet. Type a word above and press Enter." />
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding PersonalWords}" Margin="6">
+                                    <ItemsControl ItemsSource="{Binding PersonalWords}" Margin="4">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <DockPanel Margin="4,3">
-                                                    <Button DockPanel.Dock="Right" Content="Remove" MinHeight="26" Padding="10,0" FontSize="12"
-                                                            Click="OnRemovePersonalWordClick" Tag="{Binding}" />
-                                                    <TextBlock Text="{Binding}" Style="{StaticResource Ws.Label}" />
-                                                </DockPanel>
+                                                <Border x:Name="Row" Background="Transparent" CornerRadius="6" Padding="10,4">
+                                                    <DockPanel>
+                                                        <Button x:Name="RemoveButton" DockPanel.Dock="Right"
+                                                                Content="Remove" Opacity="0"
+                                                                MinHeight="24" Padding="8,0" FontSize="11.5"
+                                                                Click="OnRemovePersonalWordClick" Tag="{Binding}"
+                                                                AutomationProperties.Name="Remove this word" />
+                                                        <TextBlock Text="{Binding}" Style="{StaticResource Ws.Label}" />
+                                                    </DockPanel>
+                                                </Border>
+                                                <DataTemplate.Triggers>
+                                                    <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Row" Property="Background" Value="{DynamicResource Ws.Control.Hover}" />
+                                                        <Setter TargetName="RemoveButton" Property="Opacity" Value="1" />
+                                                    </Trigger>
+                                                    <Trigger SourceName="RemoveButton" Property="IsKeyboardFocused" Value="True">
+                                                        <Setter TargetName="RemoveButton" Property="Opacity" Value="1" />
+                                                    </Trigger>
+                                                </DataTemplate.Triggers>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </ScrollViewer>
+                              </Grid>
                             </Border>
 
-                            <DockPanel Margin="0,14,0,0">
-                                <TextBlock Text="{Binding PersonalWordCountLabel}" Style="{StaticResource Ws.Caption}" VerticalAlignment="Center" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Content="Import…" Margin="0,0,8,0" Click="OnImportWordsClick" />
-                                    <Button Content="Export…" Click="OnExportWordsClick" />
-                                </StackPanel>
-                            </DockPanel>
+                            <TextBlock Style="{StaticResource Ws.Caption}" Margin="0,10,0,0"
+                                       Text="Import and export use a plain text file, one word per line." />
                         </StackPanel>
                     </Border>
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- === Learning and privacy ============================================================= -->
             <ScrollViewer x:Name="PageLearning" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="28,24,28,36" MaxWidth="640" HorizontalAlignment="Left">
                     <TextBlock Text="Learning &amp; privacy" Style="{StaticResource Ws.PageTitle}" />
@@ -435,24 +457,26 @@
                                 <TextBlock Text="Learn from what I type" Style="{StaticResource Ws.Label}" />
                             </DockPanel>
                             <TextBlock Style="{StaticResource Ws.Caption}" Margin="0,0,0,16"
-                                       Text="Off by default. When on, WordStrip counts which words you use and which tend to follow each other. It stores counts only — never sentences, documents or keystrokes — and never learns from password fields." />
+                                       Text="Off by default. When on, WordStrip leans its suggestions towards how you actually write." />
 
-                            <Border Style="{StaticResource Ws.InfoPanel}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding LearnedDataLabel}" Style="{StaticResource Ws.Caption}" Margin="0" />
+                            <StackPanel x:Name="LearningStatus" Margin="0,0,0,14" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Button Content="Clear what has been learned" Click="OnClearLearnedDataClick" />
+                            </StackPanel>
+
+                            <Expander Header="What is stored" Foreground="{DynamicResource Ws.Text.Muted}" FontSize="12.5">
+                                <StackPanel Margin="0,8,0,0">
                                     <TextBlock Style="{StaticResource Ws.Caption}"
-                                               Text="Stored locally, on this computer only." />
+                                               Text="Counts only: which words you use, and which words tend to follow each other. Never sentences, never documents, never a record of your keystrokes, and never anything typed into a password field." />
+                                    <TextBlock Text="{Binding LearnedDataLabel}" Style="{StaticResource Ws.Caption}" Margin="0,8,0,0" />
                                 </StackPanel>
-                            </Border>
-
-                            <Button Content="Clear everything WordStrip has learned" Margin="0,14,0,0"
-                                    HorizontalAlignment="Left" Click="OnClearLearnedDataClick" />
+                            </Expander>
                         </StackPanel>
                     </Border>
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- === Context model ===================================================================== -->
             <ScrollViewer x:Name="PageModel" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="28,24,28,36" MaxWidth="640" HorizontalAlignment="Left">
                     <TextBlock Text="Context model" Style="{StaticResource Ws.PageTitle}" />
@@ -466,7 +490,7 @@
                                           AutomationProperties.Name="Use the model to reorder suggestions" />
                                 <TextBlock Text="Use the model to reorder suggestions" Style="{StaticResource Ws.Label}" />
                             </DockPanel>
-                            <TextBlock Text="{Binding NeuralStatus}" Style="{StaticResource Ws.Caption}" Margin="0,0,0,14" />
+                            <StackPanel x:Name="ModelStatus" Margin="0,10,0,14" />
 
                             <!-- OneWay stated explicitly. ProgressBar.Value binds two-way by default, which
                                  throws on a read-only source property and takes the window down as it opens. -->
@@ -508,14 +532,12 @@
                                     <Button Content="Disable" MinWidth="90"
                                             IsEnabled="{Binding CanUnregisterTip}" Click="OnDisableTipClick" />
                                 </StackPanel>
-                                <StackPanel>
-                                    <!-- Mode=OneWay on both: Run.Text binds two-way by default, which throws
-                                         on a read-only source and takes the window down as it opens. -->
-                                    <TextBlock Text="{Binding TipRegisteredLabel, Mode=OneWay}" Style="{StaticResource Ws.Label}"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding TipStatus, Mode=OneWay}" Style="{StaticResource Ws.Caption}" />
-                                </StackPanel>
+                                <StackPanel x:Name="IntegrationStatus" />
                             </DockPanel>
+
+                            <TextBlock Text="{Binding TipStatus, Mode=OneWay}" Style="{StaticResource Ws.Caption}" Margin="0,0,0,12" />
+
+                            <StackPanel x:Name="AppSupportList" Margin="0,0,0,4" />
 
                             <Border Style="{StaticResource Ws.Notice}" Margin="0,0,0,0"
                                     Visibility="{Binding TipNotSelected, Converter={StaticResource BoolToVisibility}}">
@@ -527,11 +549,6 @@
                                 </DockPanel>
                             </Border>
 
-                            <Border Style="{StaticResource Ws.InfoPanel}"
-                                    Visibility="{Binding TipDllMissing, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Style="{StaticResource Ws.Caption}"
-                                           Text="This build does not include the component (WordStripTip.dll is missing from the install folder), so this option is unavailable here." />
-                            </Border>
 
                             <TextBlock Style="{StaticResource Ws.Caption}" Margin="0,12,0,0"
                                        Text="Suggestions only, for now: autocorrect and personal learning stay on the Notepad-style path until a later update." />

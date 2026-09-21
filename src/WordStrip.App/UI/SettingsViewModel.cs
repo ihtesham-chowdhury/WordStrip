@@ -8,6 +8,26 @@ using WordStrip.Core.Settings;
 
 namespace WordStrip.App.UI;
 
+/// <summary>
+/// What an optional part of WordStrip is currently doing, for the status rows on the Settings pages.
+/// Deliberately four plain states rather than a sentence per case: the user's first question is always
+/// "is this on?", and a paragraph makes that harder to answer, not easier.
+/// </summary>
+public enum FeatureState
+{
+    /// <summary>Not installed, or not set up at all.</summary>
+    Off,
+
+    /// <summary>Installed and available, but not currently doing anything.</summary>
+    Ready,
+
+    /// <summary>On and working.</summary>
+    Active,
+
+    /// <summary>Set up, but something is stopping it from working — and the user can fix it.</summary>
+    Attention,
+}
+
 /// <summary>One row in the theme picker.</summary>
 public sealed record ThemeChoice(BarTheme Id, string Name, string Description);
 
@@ -132,6 +152,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             Persist();
             OnPropertyChanged();
             OnPropertyChanged(nameof(LearnedDataLabel));
+            OnPropertyChanged(nameof(LearnedHeadline));
         }
     }
 
@@ -139,6 +160,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// Plain-language account of what has been learned. Shown because a feature that quietly records how
     /// someone types should be able to say exactly how much it has recorded.
     /// </summary>
+    /// <summary>The one number worth leading with, separate from the breakdown underneath it.</summary>
+    public string LearnedHeadline
+    {
+        get
+        {
+            if (_personalLearning is null) return string.Empty;
+            return _personalLearning.UnigramCount == 0
+                ? "Nothing learned yet"
+                : $"{_personalLearning.UnigramCount:N0} words remembered";
+        }
+    }
+
     public string LearnedDataLabel
     {
         get
@@ -158,7 +191,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(LearnedDataLabel));
     }
 
-    public void RefreshLearnedDataLabel() => OnPropertyChanged(nameof(LearnedDataLabel));
+    public void RefreshLearnedDataLabel()
+    {
+        OnPropertyChanged(nameof(LearnedDataLabel));
+        OnPropertyChanged(nameof(LearnedHeadline));
+    }
 
     // --- Neural model -------------------------------------------------------------------------------
 
@@ -213,6 +250,26 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool CanDownloadNeuralModel => _neuralModelStore is not null && !_neuralBusy && !IsNeuralModelDownloaded;
 
     public bool CanDeleteNeuralModel => _neuralModelStore is not null && !_neuralBusy && IsNeuralModelDownloaded;
+
+    /// <summary>The model's own state, independent of whether the switch above it is on.</summary>
+    public FeatureState NeuralState =>
+        !IsNeuralModelDownloaded ? FeatureState.Off
+        : NeuralRerankingEnabled ? FeatureState.Active
+        : FeatureState.Ready;
+
+    public string NeuralStateLabel => NeuralState switch
+    {
+        FeatureState.Active => "Active",
+        FeatureState.Ready => "Ready",
+        _ => "Not installed",
+    };
+
+    public string NeuralStateDetail => NeuralState switch
+    {
+        FeatureState.Active => "Loaded on this computer and reordering suggestions.",
+        FeatureState.Ready => "Downloaded and on this computer, but switched off above.",
+        _ => $"{NeuralModel.DownloadMegabytes} MB download. WordStrip works fully without it.",
+    };
 
     public bool NeuralRerankingEnabled
     {
@@ -276,6 +333,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             : _settings.NeuralRerankingEnabled
                 ? "Downloaded and in use."
                 : "Downloaded, but switched off above.";
+
+        OnPropertyChanged(nameof(NeuralState));
+        OnPropertyChanged(nameof(NeuralStateLabel));
+        OnPropertyChanged(nameof(NeuralStateDetail));
     }
 
     public IReadOnlyList<ThemeChoice> Themes { get; } =
@@ -603,6 +664,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(TipRegistered));
         OnPropertyChanged(nameof(TipRegisteredLabel));
         OnPropertyChanged(nameof(TipNotSelected));
+        OnPropertyChanged(nameof(IntegrationState));
+        OnPropertyChanged(nameof(IntegrationStateLabel));
+        OnPropertyChanged(nameof(IntegrationStateDetail));
     }
 
     /// <summary>
@@ -619,6 +683,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(TipNotSelected));
         OnPropertyChanged(nameof(TipRegisteredLabel));
+        OnPropertyChanged(nameof(IntegrationState));
+        OnPropertyChanged(nameof(IntegrationStateLabel));
+        OnPropertyChanged(nameof(IntegrationStateDetail));
     }
 
     /// <summary>
@@ -633,6 +700,32 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     /// <summary>Inverse of <see cref="TipDllPresent"/>, so the XAML can bind a Visibility without a value converter — nothing in this codebase uses one.</summary>
     public bool TipDllMissing => !TipDllPresent;
+
+    /// <summary>
+    /// Registered is not the same as working: a text service that is not in the user's keyboard list is
+    /// never loaded by Windows, which is exactly the state that made browsers stop getting suggestions
+    /// while Settings cheerfully reported "Enabled".
+    /// </summary>
+    public FeatureState IntegrationState =>
+        !TipDllPresent || !TipRegistered ? FeatureState.Off
+        : TipNotSelected ? FeatureState.Attention
+        : FeatureState.Active;
+
+    public string IntegrationStateLabel => IntegrationState switch
+    {
+        FeatureState.Active => "Enabled",
+        FeatureState.Attention => "Needs attention",
+        _ => "Not enabled",
+    };
+
+    public string IntegrationStateDetail => IntegrationState switch
+    {
+        FeatureState.Active => "Chrome, Edge, Brave, Electron apps and Word get suggestions.",
+        FeatureState.Attention => "Installed, but WordStrip is not one of your keyboards, so Windows never loads it.",
+        _ => !TipDllPresent
+            ? "This build does not include the component, so it cannot be enabled here."
+            : "Notepad and classic Windows text boxes work; browsers and Office do not yet.",
+    };
 
     public string TipRegisteredLabel => !TipRegistered ? "Not enabled" : TipNotSelected ? "Installed, but switched off" : "Enabled";
 
@@ -685,6 +778,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(TipRegistered));
             OnPropertyChanged(nameof(TipRegisteredLabel));
             OnPropertyChanged(nameof(TipNotSelected));
+            OnPropertyChanged(nameof(IntegrationState));
+            OnPropertyChanged(nameof(IntegrationStateLabel));
+            OnPropertyChanged(nameof(IntegrationStateDetail));
             OnPropertyChanged(nameof(CanRegisterTip));
             OnPropertyChanged(nameof(CanUnregisterTip));
         }

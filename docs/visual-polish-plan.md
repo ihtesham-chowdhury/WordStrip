@@ -41,7 +41,7 @@ does not match either Windows or the bar.
 
 Phases run in order; each ends with build, unit tests, real-typing regression, and a screenshot pass.
 
-Status: A to F are done. G next (vocabulary, learning, model status, integrations pages).
+Status: A to G are done. H next (accessibility, reduced motion, high-DPI polish).
 
 - **A — Tokens.** One small token layer (`UI/Design/DesignTokens.cs` + `Tokens.xaml`): typography, geometry,
   motion, control metrics, focus. No new framework; it exists so B–G stop inventing numbers.
@@ -74,7 +74,13 @@ Status: A to F are done. G next (vocabulary, learning, model status, integration
   chosen one. The preview shows four states at once — passive and Tab-selected, over a light page and a dark
   app — because the passive state is what the user actually looks at all day and the old preview never showed
   it. Everything updates as the theme, thickness, tint and word count change.
-- **G — Personal vocabulary, learning/privacy, model status, integrations pages.**
+- **G — Personal vocabulary, learning/privacy, model status, integrations.** Done. A shared `FeatureState`
+  (Off / Ready / Active / Attention) in the view model drives a status row said three ways — shape, word and
+  colour, never colour alone. The model page reads "Active / Ready / Not installed" with the action beside
+  it and the technical detail behind "Details"; Integrations leads with the state and then lists which
+  applications it actually covers, which is the honest answer since the two input paths differ. The word
+  list shows its count, reveals Remove on the row being pointed at (still keyboard-reachable), and says what
+  to do when empty. Learning leads with a state and a number, with what-is-stored behind an expander.
 - **H — Accessibility, reduced motion, regression and high-DPI polish.**
 
 ### Decisions taken during the audit
