@@ -12,6 +12,7 @@ using Orientation = System.Windows.Controls.Orientation;
 using Panel = System.Windows.Controls.Panel;
 using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 using VerticalAlignment = System.Windows.VerticalAlignment;
+using Button = System.Windows.Controls.Button;
 
 namespace WordStrip.App.UI;
 
@@ -20,6 +21,9 @@ public partial class SettingsWindow : Window
     private static readonly string[] PreviewWords = { "is", "issues", "issue", "island", "islands", "isolated", "issued" };
 
     private readonly AppSettings _settings;
+
+    /// <summary>The gallery's tiles, kept so the selected one can be marked without rebuilding them all.</summary>
+    private readonly List<(BarTheme Id, Button Tile, TextBlock Check)> _themeTiles = new();
 
     public SettingsWindow(SettingsViewModel viewModel, AppSettings settings)
     {
@@ -32,6 +36,7 @@ public partial class SettingsWindow : Window
         MaxHeight = Math.Max(420, SystemParameters.WorkArea.Height - 60);
 
         ApplyPalette();
+        BuildThemeGallery();
         BuildShortcutList();
         ShowSection(0);
 
@@ -57,11 +62,29 @@ public partial class SettingsWindow : Window
     {
         var theme = ThemeCatalog.Get(_settings.Theme);
 
-        PreviewLight.Content = BuildStrip(theme, GlassAppearance.OverLight);
-        PreviewDark.Content = BuildStrip(theme, GlassAppearance.OverDark);
+        // Both states, over both backdrops. The passive one is what the user looks at all day; the selected
+        // one is what a key press does. A preview that only ever showed the selected state made every theme
+        // look busier than it is.
+        PreviewLight.Content = BuildStrip(theme, GlassAppearance.OverLight, selected: false);
+        PreviewLightActive.Content = BuildStrip(theme, GlassAppearance.OverLight, selected: true);
+        PreviewDark.Content = BuildStrip(theme, GlassAppearance.OverDark, selected: false);
+        PreviewDarkActive.Content = BuildStrip(theme, GlassAppearance.OverDark, selected: true);
+
+        UpdateGallerySelection();
     }
 
-    private UIElement BuildStrip(ThemeDefinition theme, GlassAppearance appearance)
+    /// <param name="selected">
+    /// Whether to draw the selection surface. False is the passive strip — informational, no candidate
+    /// claimed — and true is the strip straight after Tab.
+    /// </param>
+    /// <param name="scale">Overrides the user's bar thickness, for the miniature strips in the gallery.</param>
+    /// <param name="slots">Overrides how many words are shown, for the same reason.</param>
+    private UIElement BuildStrip(
+        ThemeDefinition theme,
+        GlassAppearance appearance,
+        bool selected = true,
+        double? scale = null,
+        int? slots = null)
     {
         // The preview's own cards are the backdrop, so their luminance is known exactly: the separation
         // floor is applied here too, and the preview shows what the bar will actually do over a white page
@@ -72,14 +95,14 @@ public partial class SettingsWindow : Window
             highContrast: SystemAppearance.HighContrast,
             backdropLuminance: appearance == GlassAppearance.OverDark ? 0.10 : 1.0);
 
-        var metrics = GlassMetrics.ForScale(_settings.BarScale, theme.CornerRadius, theme.ShowIndicator);
+        var metrics = GlassMetrics.ForScale(scale ?? _settings.BarScale, theme.CornerRadius, theme.ShowIndicator);
 
-        var count = Math.Clamp(_settings.SuggestionCount, AppSettings.MinSuggestionCount, AppSettings.MaxSuggestionCount);
+        var count = slots ?? Math.Clamp(_settings.SuggestionCount, AppSettings.MinSuggestionCount, AppSettings.MaxSuggestionCount);
         var chips = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
 
         for (var i = 0; i < count && i < PreviewWords.Length; i++)
         {
-            var selected = i == 0;
+            var isFirst = i == 0;
             chips.Children.Add(new Border
             {
                 Padding = new Thickness(metrics.ChipPaddingX, metrics.ChipPaddingY, metrics.ChipPaddingX, metrics.ChipPaddingY),
@@ -91,8 +114,11 @@ public partial class SettingsWindow : Window
                     Text = PreviewWords[i],
                     FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"),
                     FontSize = metrics.FontSize,
-                    FontWeight = selected ? FontWeights.SemiBold : FontWeights.Medium,
-                    Foreground = new SolidColorBrush(selected ? brushes.SelectedTextColor : brushes.TextColor),
+                    // The same rule the bar follows: the first slot carries the weight, and the selection
+                    // never changes it, so nothing re-measures when the selection moves.
+                    FontWeight = isFirst ? FontWeights.SemiBold : FontWeights.Normal,
+                    Opacity = isFirst ? 1.0 : Design.DesignTokens.Type.AlternateOpacity,
+                    Foreground = new SolidColorBrush(isFirst && selected ? brushes.SelectedTextColor : brushes.TextColor),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                 },
@@ -112,6 +138,7 @@ public partial class SettingsWindow : Window
         // The lens is positioned once layout has measured the first chip, mirroring how the bar places it.
         var lens = new SelectionLens
         {
+            Visibility = selected ? Visibility.Visible : Visibility.Collapsed,
             Fill = brushes.Pill,
             Rim = brushes.PillRim,
             Indicator = brushes.ShowIndicator ? brushes.Indicator : null,
@@ -150,6 +177,120 @@ public partial class SettingsWindow : Window
         layers.SizeChanged += (_, _) => PlaceLens(lens, chips);
 
         return layers;
+    }
+
+    // --- Theme gallery ------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Every theme as a tile showing a real miniature strip over its own backdrop, rather than a drop-down
+    /// list of names. Choosing a theme is a visual decision, and "Raycast Floating" tells you nothing about
+    /// what it looks like.
+    ///
+    /// <para>The tiles are drawn by <see cref="BuildStrip"/> — the renderers the bar itself uses — at a
+    /// fixed small size and three words. Fixed on purpose: a tile is a picture of the theme, not of the
+    /// user's current thickness and word count, and the preview column already shows those.</para>
+    /// </summary>
+    private void BuildThemeGallery()
+    {
+        foreach (var choice in ViewModel.Themes)
+        {
+            var theme = ThemeCatalog.Get(choice.Id);
+            var overDark = IsDarkTile(theme);
+
+            var strip = new Border
+            {
+                Background = new SolidColorBrush(overDark
+                    ? System.Windows.Media.Color.FromRgb(0x1C, 0x1D, 0x21)
+                    : System.Windows.Media.Color.FromRgb(0xFF, 0xFF, 0xFF)),
+                CornerRadius = new CornerRadius(7),
+                Height = 52,
+                Margin = new Thickness(0, 0, 0, 8),
+                ClipToBounds = true,
+                Child = BuildStrip(
+                    theme,
+                    overDark ? GlassAppearance.OverDark : GlassAppearance.OverLight,
+                    selected: true,
+                    scale: 0.72,
+                    slots: 3),
+            };
+
+            var name = new TextBlock
+            {
+                Text = choice.Name,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (System.Windows.Media.Brush)FindResource("Ws.Text"),
+            };
+
+            var check = new TextBlock
+            {
+                Text = "",
+                FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+                FontSize = 13,
+                Foreground = (System.Windows.Media.Brush)FindResource("Ws.Accent"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = Visibility.Collapsed,
+            };
+
+            var header = new DockPanel();
+            DockPanel.SetDock(check, Dock.Right);
+            header.Children.Add(check);
+            header.Children.Add(name);
+
+            var body = new StackPanel();
+            body.Children.Add(strip);
+            body.Children.Add(header);
+            body.Children.Add(new TextBlock
+            {
+                Text = choice.Description,
+                FontSize = 11.5,
+                Foreground = (System.Windows.Media.Brush)FindResource("Ws.Text.Muted"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 2, 0, 0),
+                Height = 32,
+            });
+
+            // A button, so it is reachable by keyboard and announced as something that can be chosen.
+            var tile = new Button
+            {
+                Width = 224,
+                Margin = new Thickness(0, 0, 10, 10),
+                Padding = new Thickness(10),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Top,
+                Background = (System.Windows.Media.Brush)FindResource("Ws.Card"),
+                Content = body,
+                Tag = choice,
+            };
+
+            System.Windows.Automation.AutomationProperties.SetName(tile, $"{choice.Name}. {choice.Description}");
+            tile.Click += (_, _) => ViewModel.SelectedTheme = choice;
+
+            _themeTiles.Add((choice.Id, tile, check));
+            ThemeGallery.Items.Add(tile);
+        }
+
+        UpdateGallerySelection();
+    }
+
+    /// <summary>
+    /// Which backdrop a tile shows the theme over. A theme authored to sit on dark surfaces is unrecognisable
+    /// on a white tile, so each one is shown where it belongs.
+    /// </summary>
+    private static bool IsDarkTile(ThemeDefinition theme) =>
+        theme.Id is BarTheme.RaycastFloating or BarTheme.FluentDepth;
+
+    private void UpdateGallerySelection()
+    {
+        foreach (var (id, tile, check) in _themeTiles)
+        {
+            var isSelected = id == _settings.Theme;
+
+            tile.BorderBrush = (System.Windows.Media.Brush)FindResource(isSelected ? "Ws.Accent" : "Ws.Card.Border");
+            tile.BorderThickness = new Thickness(isSelected ? 2 : 1);
+            tile.Padding = new Thickness(isSelected ? 9 : 10);
+            check.Visibility = isSelected ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private static void PlaceLens(SelectionLens lens, Panel chips)
@@ -214,12 +355,15 @@ public partial class SettingsWindow : Window
         // again once the window is built.
         if (PageAppearance is null) return;
 
-        var pages = new[] { PageAppearance, PageSuggestions, PageWords, PageLearning, PageModel, PageIntegrations, PageGeneral };
+        var pages = new FrameworkElement[]
+        {
+            PageAppearance, PageSuggestions, PageWords, PageLearning, PageModel, PageIntegrations, PageGeneral,
+        };
 
         for (var i = 0; i < pages.Length; i++)
             pages[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
 
-        if (index >= 0 && index < pages.Length) pages[index].ScrollToTop();
+        if (index >= 0 && index < pages.Length && pages[index] is ScrollViewer scroller) scroller.ScrollToTop();
     }
 
     /// <summary>The keys, as keys. A table of sentences describing keystrokes is harder to scan than the keycaps.</summary>

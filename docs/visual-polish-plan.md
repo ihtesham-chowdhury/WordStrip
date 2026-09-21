@@ -41,7 +41,7 @@ does not match either Windows or the bar.
 
 Phases run in order; each ends with build, unit tests, real-typing regression, and a screenshot pass.
 
-Status: A to E are done. F next (theme gallery and sticky preview).
+Status: A to F are done. G next (vocabulary, learning, model status, integrations pages).
 
 - **A — Tokens.** One small token layer (`UI/Design/DesignTokens.cs` + `Tokens.xaml`): typography, geometry,
   motion, control metrics, focus. No new framework; it exists so B–G stop inventing numbers.
@@ -68,7 +68,12 @@ Status: A to E are done. F next (theme gallery and sticky preview).
   through DynamicResource, so the window follows the system's app mode, including its title bar. Discrete
   choices (words shown, light/dark, placement, motion) are segmented controls rather than sliders and radio
   lists. Keyboard shortcuts are shown as keycaps.
-- **F — Theme gallery and sticky live preview** on the Appearance page.
+- **F — Theme gallery and sticky live preview.** Done. The Appearance page is split: settings scroll on the
+  left, the preview holds still on the right. Seven tiles, each a real miniature strip drawn by the bar's own
+  renderers over the backdrop that theme was authored for, with name, one-line description and a check on the
+  chosen one. The preview shows four states at once — passive and Tab-selected, over a light page and a dark
+  app — because the passive state is what the user actually looks at all day and the old preview never showed
+  it. Everything updates as the theme, thickness, tint and word count change.
 - **G — Personal vocabulary, learning/privacy, model status, integrations pages.**
 - **H — Accessibility, reduced motion, regression and high-DPI polish.**
 
