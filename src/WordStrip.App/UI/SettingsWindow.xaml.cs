@@ -27,9 +27,13 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         DataContext = viewModel;
 
-        // Cap the height to the desktop so the window can never grow past the bottom of the screen; the
-        // scroll viewer takes over from there.
+        // Cap the height to the desktop so the window can never open taller than the screen; each page
+        // scrolls from there.
         MaxHeight = Math.Max(420, SystemParameters.WorkArea.Height - 60);
+
+        ApplyPalette();
+        BuildShortcutList();
+        ShowSection(0);
 
         viewModel.PropertyChanged += (_, _) => RebuildPreview();
         RebuildPreview();
@@ -160,7 +164,114 @@ public partial class SettingsWindow : Window
         lens.LensHeight = first.ActualHeight;
     }
 
-    private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+    // --- Chrome and navigation ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Follows the system's app mode, because this is an ordinary application window and every other one on
+    /// the desktop does. Only the palette dictionary is swapped: each style reads its colours through
+    /// DynamicResource, so nothing else has to know which one is loaded. The bar is deliberately unaffected —
+    /// it follows what is behind it, which is a different question with a different answer.
+    /// </summary>
+    private void ApplyPalette()
+    {
+        if (!SystemAppearance.AppsUseDarkTheme) return;
+
+        var dark = new ResourceDictionary { Source = new Uri("UI/Design/Palette.Dark.xaml", UriKind.Relative) };
+        var merged = Resources.MergedDictionaries;
+
+        for (var i = 0; i < merged.Count; i++)
+        {
+            if (merged[i].Source?.OriginalString.EndsWith("Palette.Light.xaml", StringComparison.Ordinal) != true) continue;
+            merged[i] = dark;
+            break;
+        }
+
+        // The title bar is drawn by Windows, not by WPF, so it has to be told separately or a dark window
+        // keeps a white caption.
+        SourceInitialized += (_, _) =>
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            var on = 1;
+            Interop.DwmNativeMethods.DwmSetWindowAttribute(
+                hwnd, Interop.DwmNativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref on, sizeof(int));
+        };
+    }
+
+    private void OnSectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ListBox { SelectedIndex: >= 0 } list) ShowSection(list.SelectedIndex);
+    }
+
+    /// <summary>
+    /// One page visible at a time. Kept as plain visibility rather than a tab control so that every page's
+    /// bindings stay live: the preview on the Appearance page is driven by the view model, and a page that
+    /// had been unloaded would rebuild itself from scratch each time it was selected.
+    /// </summary>
+    private void ShowSection(int index)
+    {
+        // The rail's SelectedIndex is coerced as its items are parsed, so its SelectionChanged fires from
+        // inside InitializeComponent - before the pages below it exist as fields. The constructor calls this
+        // again once the window is built.
+        if (PageAppearance is null) return;
+
+        var pages = new[] { PageAppearance, PageSuggestions, PageWords, PageLearning, PageModel, PageIntegrations, PageGeneral };
+
+        for (var i = 0; i < pages.Length; i++)
+            pages[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+
+        if (index >= 0 && index < pages.Length) pages[index].ScrollToTop();
+    }
+
+    /// <summary>The keys, as keys. A table of sentences describing keystrokes is harder to scan than the keycaps.</summary>
+    private void BuildShortcutList()
+    {
+        (string Keys, string Does)[] shortcuts =
+        {
+            ("Space", "Finishes the word when WordStrip is sure"),
+            ("Tab", "Takes the first suggestion"),
+            ("Tab Tab", "Moves to the next suggestion"),
+            ("Shift+Tab", "Moves back one"),
+            ("Esc", "Puts the bar away"),
+        };
+
+        foreach (var (keys, does) in shortcuts)
+        {
+            var caps = new StackPanel { Orientation = Orientation.Horizontal, Width = 140 };
+            foreach (var key in keys.Split(' '))
+            {
+                caps.Children.Add(new Border
+                {
+                    Background = (System.Windows.Media.Brush)FindResource("Ws.Control"),
+                    BorderBrush = (System.Windows.Media.Brush)FindResource("Ws.Control.Border"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(8, 2, 8, 3),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Child = new TextBlock
+                    {
+                        Text = key,
+                        FontSize = 12,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (System.Windows.Media.Brush)FindResource("Ws.Text"),
+                    },
+                });
+            }
+
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+            DockPanel.SetDock(caps, Dock.Left);
+            row.Children.Add(caps);
+            row.Children.Add(new TextBlock
+            {
+                Text = does,
+                FontSize = 13,
+                Foreground = (System.Windows.Media.Brush)FindResource("Ws.Text.Muted"),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+            ShortcutList.Children.Add(row);
+        }
+    }
 
     // --- Personal vocabulary and learning -----------------------------------------------------------
 

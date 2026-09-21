@@ -54,6 +54,28 @@ public static class SystemAppearance
         }
     }
 
+    /// <summary>
+    /// Windows Settings → Personalisation → Colours → "Choose your mode". Read for the Settings window,
+    /// which is an ordinary application window and should follow the system the way every other one does.
+    /// The bar does not use this: it follows whatever is actually behind it, which is a different question.
+    /// </summary>
+    public static bool AppsUseDarkTheme
+    {
+        get
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                return false;
+            }
+        }
+    }
+
     /// <summary>High Contrast themes demand solid backgrounds and system-defined colours.</summary>
     public static bool HighContrast => SystemParameters.HighContrast;
 

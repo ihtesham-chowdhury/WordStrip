@@ -297,6 +297,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public string SelectedThemeDescription => SelectedTheme?.Description ?? string.Empty;
 
+    /// <summary>
+    /// The counts the bar can show, for the segmented control. A slider implied a range between the values;
+    /// there are five of them and each is a distinct choice.
+    /// </summary>
+    public IReadOnlyList<int> SuggestionCountOptions { get; } =
+        Enumerable.Range(AppSettings.MinSuggestionCount, AppSettings.MaxSuggestionCount - AppSettings.MinSuggestionCount + 1).ToList();
+
     public int MinSuggestionCount => AppSettings.MinSuggestionCount;
     public int MaxSuggestionCount => AppSettings.MaxSuggestionCount;
     public double MinGlassTint => AppSettings.MinGlassTint;
@@ -738,7 +745,42 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             NotifyAppearance();
             OnPropertyChanged();
             OnPropertyChanged(nameof(MotionSpeedLabel));
+            OnPropertyChanged(nameof(MotionSmooth));
+            OnPropertyChanged(nameof(MotionBalanced));
+            OnPropertyChanged(nameof(MotionSnappy));
+            OnPropertyChanged(nameof(MotionOff));
         }
+    }
+
+    // Four named settings rather than a continuous slider. The speed is still a double underneath, and the
+    // slider remains for anyone who wants it, but "Balanced" is an answer and "1.15" is a question.
+    private const double SmoothSpeed = 0.75;
+    private const double BalancedSpeed = 1.0;
+    private const double SnappySpeed = 1.7;
+
+    public bool MotionSmooth
+    {
+        get => MotionSpeed < (SmoothSpeed + BalancedSpeed) / 2;
+        set { if (value) MotionSpeed = SmoothSpeed; }
+    }
+
+    public bool MotionBalanced
+    {
+        get => !MotionSmooth && MotionSpeed < (BalancedSpeed + SnappySpeed) / 2;
+        set { if (value) MotionSpeed = BalancedSpeed; }
+    }
+
+    public bool MotionSnappy
+    {
+        get => !MotionSmooth && !MotionBalanced && !MotionOff;
+        set { if (value) MotionSpeed = SnappySpeed; }
+    }
+
+    /// <summary>The far end of the range means no animation at all, which is a setting rather than a speed.</summary>
+    public bool MotionOff
+    {
+        get => MotionProfile.ForSpeed(MotionSpeed).IsInstant;
+        set { if (value) MotionSpeed = AppSettings.MaxMotionSpeed; }
     }
 
     public string MotionSpeedLabel

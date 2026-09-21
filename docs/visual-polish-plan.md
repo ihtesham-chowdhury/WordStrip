@@ -41,7 +41,7 @@ does not match either Windows or the bar.
 
 Phases run in order; each ends with build, unit tests, real-typing regression, and a screenshot pass.
 
-Status: A, B, C and D are done. E next (the Settings rewrite).
+Status: A to E are done. F next (theme gallery and sticky preview).
 
 - **A — Tokens.** One small token layer (`UI/Design/DesignTokens.cs` + `Tokens.xaml`): typography, geometry,
   motion, control metrics, focus. No new framework; it exists so B–G stop inventing numbers.
@@ -61,7 +61,13 @@ Status: A, B, C and D are done. E next (the Settings rewrite).
   was authored for found nine of the fourteen below the floor — a pale theme over a white page was not a
   surface at all — so all seven themes were re-authored to clear it themselves, with sheen, bezel and shadow
   pulled back per theme. A test asserts the rescue path never runs for an authored theme.
-- **E — Settings structure.** Navigation rail, section pages, live-apply, no footer.
+- **E — Settings structure.** Done. A navigation rail with seven pages replaces one long scroll; the pinned
+  "Done" footer is gone (settings were always applied live, so it only ever overlaid the content it sat on).
+  `UI/Design/Controls.xaml` templates every control the window uses — toggle switches, segmented controls,
+  sliders, buttons, text boxes, scrollbars, lists — against `Palette.Light.xaml` / `Palette.Dark.xaml`
+  through DynamicResource, so the window follows the system's app mode, including its title bar. Discrete
+  choices (words shown, light/dark, placement, motion) are segmented controls rather than sliders and radio
+  lists. Keyboard shortcuts are shown as keycaps.
 - **F — Theme gallery and sticky live preview** on the Appearance page.
 - **G — Personal vocabulary, learning/privacy, model status, integrations pages.**
 - **H — Accessibility, reduced motion, regression and high-DPI polish.**
