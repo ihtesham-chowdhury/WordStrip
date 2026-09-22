@@ -59,7 +59,7 @@ public static class ThemeCatalog
         MotionFactor = 1.0,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xD5, 0xDD, 0xEA), SurfaceOpacity = 0.86,
+            Surface = Rgb(0xD1, 0xD9, 0xE7), SurfaceOpacity = 0.86,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.72,
             SheenStrength = 0.26, BezelStrength = 0.16,
             SelectedSurface = Rgb(0x2F, 0x7C, 0xE0), SelectedOpacity = 1.0,
@@ -84,55 +84,63 @@ public static class ThemeCatalog
     };
 
     // --- 2. Spatial Glass ----------------------------------------------------------------------------
-    // The premium light theme: a milky white panel, the largest radius here, no dividers at all, and a
-    // capsule selection in soft grey rather than white. The reference had it the way round this now is -
-    // white material, grey selection - which reads far better than white-on-white, and leaves the type as
-    // the thing with the contrast.
+    // The luminous one, and the closest thing here to the glass Apple's platforms use: a bright frosted
+    // body with a specular top edge, a lensed rim, the largest radius in the catalogue, no dividers, and a
+    // wide soft shadow that lifts it off the page.
+    //
+    // Its dark variant used to be a pale veil with dark text, which over a dark application looked like a
+    // sheet of tracing paper someone had dropped on the screen. Dark glass is *dark*: a deep translucent
+    // body, light text, and a selection that is a brighter piece of the same material rather than a white
+    // slab. That is the version that survives a dark editor.
     private static ThemeDefinition SpatialGlass() => new()
     {
         Id = BarTheme.SpatialGlass,
         Name = "Spatial Glass",
-        Personality = "Light and luminous",
+        Personality = "Luminous and spatial",
         Blur = BackdropBlur.Full,
-        RadiusFactor = 1.45,
-        DensityBias = 1.10,
-        RhythmFactor = 1.35,
+        RadiusFactor = 1.6,
+        DensityBias = 1.12,
+        RhythmFactor = 1.4,
         Selection = SelectionStyle.SoftCapsule,
         DividerStrength = 0.0,
         FontFamily = SystemSans,
         PrimaryWeight = FontWeights.SemiBold,
-        MotionFactor = 1.15,
+        MotionFactor = 1.2,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xDF, 0xE1, 0xE6), SurfaceOpacity = 0.84,
+            Surface = Rgb(0xD3, 0xD8, 0xE3), SurfaceOpacity = 0.86,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.95,
-            SheenStrength = 0.30, BezelStrength = 0.18,
-            SelectedSurface = Rgb(0x9A, 0x9E, 0xA8), SelectedOpacity = 0.55,
-            SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.55,
-            Text = Rgb(0x23, 0x26, 0x2C), SelectedText = Rgb(0x0E, 0x10, 0x14),
-            Indicator = Rgb(0x6E, 0x74, 0x80),
-            ShadowOpacity = 0.22, ShadowBlur = 32, ShadowDepth = 7,
-            HoverBrightness = 0.05,
+            SheenStrength = 0.48, BezelStrength = 0.34,
+            SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.80,
+            SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.95,
+            Text = Rgb(0x21, 0x24, 0x2B), SelectedText = Rgb(0x0C, 0x0E, 0x13),
+            Indicator = Rgb(0x4C, 0x8D, 0xFF),
+            ShadowOpacity = 0.24, ShadowBlur = 36, ShadowDepth = 9,
+            HoverBrightness = 0.06,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0xEC, 0xEE, 0xF3), SurfaceOpacity = 0.50,
-            Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.50,
-            SheenStrength = 0.28, BezelStrength = 0.20,
-            SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.72,
-            SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.55,
-            Text = Rgb(0xF7, 0xF9, 0xFC), SelectedText = Rgb(0x16, 0x19, 0x20),
-            Indicator = Rgb(0xC3, 0xC9, 0xD4),
-            ShadowOpacity = 0.44, ShadowBlur = 36, ShadowDepth = 8,
-            HoverBrightness = 0.07,
+            Surface = Rgb(0x41, 0x47, 0x54), SurfaceOpacity = 0.70,
+            Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.38,
+            SheenStrength = 0.40, BezelStrength = 0.34,
+            SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 0.22,
+            SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.50,
+            Text = Rgb(0xF4, 0xF6, 0xFB), SelectedText = Rgb(0xFF, 0xFF, 0xFF),
+            Indicator = Rgb(0x8F, 0xBC, 0xFF),
+            ShadowOpacity = 0.46, ShadowBlur = 38, ShadowDepth = 10,
+            HoverBrightness = 0.09,
         },
     };
 
     // --- 3. Command ----------------------------------------------------------------------------------
-    // Rebuilt to the Raycast Compact reference: a deep near-black slab with a generous radius for how
-    // compact it is, a selected candidate raised a shade out of the surface, and a short coral rule under
-    // it. Dense, quiet, and the fastest of the surfaced themes - this is the theme for people who cycle
-    // Tab all day.
+    // The dense instrument, built to the Raycast Compact reference: a slab, the selected word raised a
+    // shade out of it, and a short coral rule beneath. Compact, quiet, and the fastest of the surfaced
+    // themes - this is the theme for people who cycle Tab all day.
+    //
+    // Both variants are instruments rather than glass; what changes is which way up. Over a dark editor it
+    // is the near-black panel it has always been. Over a white page it is the same design in daylight -
+    // a cool grey slab with a white raised key - because a black bar over a white document is a hole in
+    // the page, however handsome it looks on its own.
     private static ThemeDefinition Command() => new()
     {
         Id = BarTheme.Command,
@@ -149,19 +157,19 @@ public static class ThemeCatalog
         MotionFactor = 0.62,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0x17, 0x1A, 0x21), SurfaceOpacity = 0.98,
-            Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.10,
-            SheenStrength = 0.0, BezelStrength = 0.06,
-            SelectedSurface = Rgb(0x2B, 0x30, 0x3A), SelectedOpacity = 1.0,
-            SelectedBorder = Rgb(0xFF, 0xFF, 0xFF), SelectedBorderOpacity = 0.10,
-            Text = Rgb(0xC7, 0xCC, 0xD6), SelectedText = Rgb(0xFF, 0xFF, 0xFF),
-            Indicator = Rgb(0xFF, 0x4D, 0x4D),
-            ShadowOpacity = 0.32, ShadowBlur = 18, ShadowDepth = 4,
-            HoverBrightness = 0.07,
+            Surface = Rgb(0xD6, 0xD9, 0xE0), SurfaceOpacity = 0.97,
+            Border = Rgb(0x1A, 0x1D, 0x23), BorderOpacity = 0.14,
+            SheenStrength = 0.0, BezelStrength = 0.05,
+            SelectedSurface = Rgb(0xFF, 0xFF, 0xFF), SelectedOpacity = 1.0,
+            SelectedBorder = Rgb(0x1A, 0x1D, 0x23), SelectedBorderOpacity = 0.10,
+            Text = Rgb(0x26, 0x2A, 0x33), SelectedText = Rgb(0x10, 0x12, 0x17),
+            Indicator = Rgb(0xE0, 0x43, 0x3C),
+            ShadowOpacity = 0.20, ShadowBlur = 14, ShadowDepth = 3,
+            HoverBrightness = 0.04,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x23, 0x27, 0x2F), SurfaceOpacity = 0.98,
+            Surface = Rgb(0x2C, 0x31, 0x3A), SurfaceOpacity = 0.98,
             Border = Rgb(0xFF, 0xFF, 0xFF), BorderOpacity = 0.12,
             SheenStrength = 0.0, BezelStrength = 0.08,
             SelectedSurface = Rgb(0x39, 0x3F, 0x4A), SelectedOpacity = 1.0,
@@ -219,17 +227,17 @@ public static class ThemeCatalog
 
     // --- 5. Paper & Ink ------------------------------------------------------------------------------
     // Warm, soft and unruled: a cream sheet with a whisper of elevation, candidates separated by space
-    // alone, and a rust underline that reads as a pencil mark. Where Editorial is a ruled column, this is
-    // a page - the pair are deliberately opposite sides of the same craft.
+    // alone, a rounded silhouette and a rust mark that reads as a pencil line. Editorial is the ruled
+    // column on cool stock; this is the warm page.
     private static ThemeDefinition PaperInk() => new()
     {
         Id = BarTheme.PaperInk,
         Name = "Paper & Ink",
         Personality = "Warm and soft",
         Blur = BackdropBlur.None,
-        RadiusFactor = 0.8,
-        DensityBias = 1.04,
-        RhythmFactor = 1.25,
+        RadiusFactor = 0.9,
+        DensityBias = 1.06,
+        RhythmFactor = 1.3,
         Selection = SelectionStyle.Underline,
         DividerStrength = 0.0,
         FontFamily = SystemSans,
@@ -237,34 +245,38 @@ public static class ThemeCatalog
         MotionFactor = 0.8,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xEA, 0xDF, 0xCB), SurfaceOpacity = 1.0,
-            Border = Rgb(0x8A, 0x77, 0x5A), BorderOpacity = 0.18,
+            Surface = Rgb(0xEA, 0xDC, 0xC2), SurfaceOpacity = 1.0,
+            Border = Rgb(0x8A, 0x77, 0x5A), BorderOpacity = 0.16,
             SheenStrength = 0.0, BezelStrength = 0.0,
-            SelectedSurface = Rgb(0xEA, 0xDF, 0xCB), SelectedOpacity = 0.0,
+            SelectedSurface = Rgb(0xEA, 0xDC, 0xC2), SelectedOpacity = 0.0,
             SelectedBorder = Rgb(0x00, 0x00, 0x00), SelectedBorderOpacity = 0.0,
-            Text = Rgb(0x33, 0x2C, 0x21), SelectedText = Rgb(0x1A, 0x14, 0x0C),
-            Indicator = Rgb(0xA8, 0x4B, 0x2A),
-            ShadowOpacity = 0.14, ShadowBlur = 14, ShadowDepth = 3,
+            Text = Rgb(0x3A, 0x30, 0x22), SelectedText = Rgb(0x1E, 0x17, 0x0D),
+            Indicator = Rgb(0xB5, 0x50, 0x2C),
+            ShadowOpacity = 0.16, ShadowBlur = 16, ShadowDepth = 3,
             HoverBrightness = 0.03,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x3A, 0x33, 0x29), SurfaceOpacity = 1.0,
-            Border = Rgb(0xE8, 0xD9, 0xBC), BorderOpacity = 0.16,
+            Surface = Rgb(0x43, 0x39, 0x2C), SurfaceOpacity = 1.0,
+            Border = Rgb(0xE8, 0xD9, 0xBC), BorderOpacity = 0.14,
             SheenStrength = 0.0, BezelStrength = 0.0,
-            SelectedSurface = Rgb(0x3A, 0x33, 0x29), SelectedOpacity = 0.0,
+            SelectedSurface = Rgb(0x43, 0x39, 0x2C), SelectedOpacity = 0.0,
             SelectedBorder = Rgb(0x00, 0x00, 0x00), SelectedBorderOpacity = 0.0,
-            Text = Rgb(0xEF, 0xE4, 0xD2), SelectedText = Rgb(0xFF, 0xF8, 0xEC),
-            Indicator = Rgb(0xE8, 0x93, 0x64),
-            ShadowOpacity = 0.28, ShadowBlur = 16, ShadowDepth = 3,
+            Text = Rgb(0xF2, 0xE6, 0xD2), SelectedText = Rgb(0xFF, 0xF8, 0xEC),
+            Indicator = Rgb(0xEE, 0x9A, 0x66),
+            ShadowOpacity = 0.30, ShadowBlur = 18, ShadowDepth = 4,
             HoverBrightness = 0.05,
         },
     };
 
     // --- 6. Terminal Monospace -----------------------------------------------------------------------
-    // The radical one: OLED black, monospaced, nearly square, tight, and instant. Selection is a solid
-    // block with the text knocked out of it, which is what a terminal cursor is. No blur, no shadow worth
-    // the name, no rounding to speak of - the silhouette alone identifies it.
+    // The radical one: monospaced, nearly square, tight, and instant. Selection is a solid block with the
+    // text knocked out of it, which is what a terminal cursor is. No blur, no shadow worth the name, no
+    // rounding to speak of - the silhouette alone identifies it.
+    //
+    // Over a dark application it is the OLED black a terminal actually is. Over a white page that same
+    // black reads as a hole cut in the document, so the light variant is graphite: unmistakably a terminal,
+    // without the hard edge of pure black against paper.
     private static ThemeDefinition TerminalMono() => new()
     {
         Id = BarTheme.TerminalMono,
@@ -282,15 +294,15 @@ public static class ThemeCatalog
         MotionFactor = 0.0,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0x0B, 0x0D, 0x0E), SurfaceOpacity = 1.0,
-            Border = Rgb(0x3A, 0xE0, 0x9A), BorderOpacity = 0.30,
+            Surface = Rgb(0x26, 0x2B, 0x2E), SurfaceOpacity = 0.98,
+            Border = Rgb(0x35, 0xC9, 0x8C), BorderOpacity = 0.22,
             SheenStrength = 0.0, BezelStrength = 0.0,
-            SelectedSurface = Rgb(0x3A, 0xE0, 0x9A), SelectedOpacity = 1.0,
-            SelectedBorder = Rgb(0x3A, 0xE0, 0x9A), SelectedBorderOpacity = 0.0,
-            Text = Rgb(0xC8, 0xD6, 0xCE), SelectedText = Rgb(0x04, 0x0A, 0x07),
-            Indicator = Rgb(0x3A, 0xE0, 0x9A),
-            ShadowOpacity = 0.22, ShadowBlur = 8, ShadowDepth = 1,
-            HoverBrightness = 0.10,
+            SelectedSurface = Rgb(0x35, 0xC9, 0x8C), SelectedOpacity = 1.0,
+            SelectedBorder = Rgb(0x35, 0xC9, 0x8C), SelectedBorderOpacity = 0.0,
+            Text = Rgb(0xCD, 0xD8, 0xD2), SelectedText = Rgb(0x08, 0x12, 0x0C),
+            Indicator = Rgb(0x35, 0xC9, 0x8C),
+            ShadowOpacity = 0.18, ShadowBlur = 10, ShadowDepth = 2,
+            HoverBrightness = 0.09,
         },
         OverDark = new ThemeVariant
         {
@@ -357,18 +369,21 @@ public static class ThemeCatalog
     };
 
     // --- 8. Editorial --------------------------------------------------------------------------------
-    // A ruled column on ivory: a thin dark border all the way round, a rule between every candidate, square
-    // corners, and a heavy ink underline under the selected word. Flat by conviction - no blur, no sheen,
-    // no elevation worth the name. Paper & Ink is the warm unruled page; this is the set column.
+    // A ruled column: a dark keyline all the way round, a rule between every candidate, square corners and
+    // a heavy ink underline. Cool paper stock rather than Paper & Ink's warm cream, lighter type, tighter
+    // rhythm - the two share a craft and nothing else.
+    //
+    // The dark variant is a night edition of the same column, not an inverted one: deep ink, warm ivory
+    // type, ivory rules, ivory underline.
     private static ThemeDefinition Editorial() => new()
     {
         Id = BarTheme.Editorial,
         Name = "Editorial",
         Personality = "Ruled and typographic",
         Blur = BackdropBlur.None,
-        RadiusFactor = 0.22,
+        RadiusFactor = 0.18,
         DensityBias = 0.96,
-        RhythmFactor = 1.0,
+        RhythmFactor = 0.95,
         Selection = SelectionStyle.Underline,
         DividerStrength = 1.0,
         FontFamily = SystemSans,
@@ -376,26 +391,26 @@ public static class ThemeCatalog
         MotionFactor = 0.45,
         OverLight = new ThemeVariant
         {
-            Surface = Rgb(0xDD, 0xDA, 0xCF), SurfaceOpacity = 1.0,
-            Border = Rgb(0x1C, 0x1C, 0x1A), BorderOpacity = 0.85,
+            Surface = Rgb(0xDD, 0xDC, 0xD4), SurfaceOpacity = 1.0,
+            Border = Rgb(0x14, 0x14, 0x16), BorderOpacity = 0.90,
             SheenStrength = 0.0, BezelStrength = 0.0,
-            SelectedSurface = Rgb(0xDD, 0xDA, 0xCF), SelectedOpacity = 0.0,
+            SelectedSurface = Rgb(0xE2, 0xE1, 0xDA), SelectedOpacity = 0.0,
             SelectedBorder = Rgb(0x00, 0x00, 0x00), SelectedBorderOpacity = 0.0,
-            Text = Rgb(0x14, 0x14, 0x12), SelectedText = Rgb(0x00, 0x00, 0x00),
-            Indicator = Rgb(0x11, 0x11, 0x10),
-            ShadowOpacity = 0.06, ShadowBlur = 6, ShadowDepth = 1,
+            Text = Rgb(0x1A, 0x1A, 0x1C), SelectedText = Rgb(0x00, 0x00, 0x00),
+            Indicator = Rgb(0x0E, 0x0E, 0x10),
+            ShadowOpacity = 0.05, ShadowBlur = 5, ShadowDepth = 1,
             HoverBrightness = 0.03,
         },
         OverDark = new ThemeVariant
         {
-            Surface = Rgb(0x26, 0x26, 0x23), SurfaceOpacity = 1.0,
-            Border = Rgb(0xEC, 0xE7, 0xD8), BorderOpacity = 0.70,
+            Surface = Rgb(0x30, 0x30, 0x33), SurfaceOpacity = 1.0,
+            Border = Rgb(0xF2, 0xEC, 0xDC), BorderOpacity = 0.75,
             SheenStrength = 0.0, BezelStrength = 0.0,
-            SelectedSurface = Rgb(0x26, 0x26, 0x23), SelectedOpacity = 0.0,
+            SelectedSurface = Rgb(0x30, 0x30, 0x33), SelectedOpacity = 0.0,
             SelectedBorder = Rgb(0x00, 0x00, 0x00), SelectedBorderOpacity = 0.0,
-            Text = Rgb(0xF0, 0xEC, 0xE0), SelectedText = Rgb(0xFF, 0xFF, 0xFF),
-            Indicator = Rgb(0xF4, 0xF1, 0xE6),
-            ShadowOpacity = 0.20, ShadowBlur = 8, ShadowDepth = 1,
+            Text = Rgb(0xF2, 0xEC, 0xDC), SelectedText = Rgb(0xFF, 0xFC, 0xF4),
+            Indicator = Rgb(0xF6, 0xF1, 0xE4),
+            ShadowOpacity = 0.22, ShadowBlur = 8, ShadowDepth = 1,
             HoverBrightness = 0.05,
         },
     };

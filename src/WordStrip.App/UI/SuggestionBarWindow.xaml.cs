@@ -59,10 +59,11 @@ public partial class SuggestionBarWindow : Window
     private GlassAppearance _appearance = GlassAppearance.OverLight;
 
     /// <summary>
-    /// The backdrop's measured luminance, 0-1, or null when it has not been sampled — which is the whole
-    /// time the user has pinned light or dark, because that setting turns the probe off.
+    /// Settles the backdrop's measured brightness into one of a few bands. Reading the raw measurement was
+    /// what made the material drift over a long session: every sample differs a little, and every difference
+    /// used to produce a slightly different surface.
     /// </summary>
-    private double? _backdropLuminance;
+    private readonly BackdropTracker _backdrop = new();
     private System.Windows.Threading.DispatcherTimer? _probePauseTimer;
     private bool _probeInFlight;
     private SlotPanel? _slots;
@@ -279,11 +280,11 @@ public partial class SuggestionBarWindow : Window
         };
 
         // The variant is one decision; how far the surface has to stand off this particular backdrop is
-        // another, and it changes within a variant - a white page and a light grey editor are both "light"
-        // and need different amounts of separation. Retinting for a small drift would undo the hysteresis,
-        // so only a real change in brightness counts.
-        var brightnessMoved = _backdropLuminance is not { } previous || Math.Abs(previous - luminance.Value) > 0.05;
-        _backdropLuminance = luminance;
+        // another. That second one used to follow the raw measurement, and since no two samples of a page
+        // being typed into are identical, the material drifted: a little more opaque here, a shade cooler
+        // there, over and over for as long as the session lasted. The tracker settles it into bands, so the
+        // palette is rebuilt only when the backdrop has genuinely changed.
+        var brightnessMoved = _backdrop.Update(luminance.Value);
 
         if (next == _appearance && !brightnessMoved) return;
 
@@ -696,7 +697,7 @@ public partial class SuggestionBarWindow : Window
             _theme, _appearance, _settings.GlassTint,
             allowTransparency: SystemAppearance.TransparencyEnabled,
             highContrast: SystemAppearance.HighContrast,
-            backdropLuminance: _backdropLuminance);
+            backdropLuminance: _backdrop.Settled);
 
         _restingTextBrush = new SolidColorBrush(_brushes.TextColor);
         _selectedTextBrush = new SolidColorBrush(_brushes.SelectedTextColor);

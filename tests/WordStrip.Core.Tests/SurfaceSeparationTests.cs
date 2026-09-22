@@ -99,19 +99,7 @@ public class SurfaceSeparationTests
     [InlineData(1.0)]
     public void Every_theme_clears_the_floor_over_every_backdrop(double backdrop)
     {
-        // One surface per theme variant in the catalogue, light and dark, as authored.
-        (byte R, byte G, byte B, double A)[] surfaces =
-        {
-            (0xD0, 0xD4, 0xDD, 0.84), (0x3B, 0x3E, 0x45, 0.80),   // Fluent Acrylic
-            (0xD8, 0xD8, 0xDD, 0.95), (0x35, 0x38, 0x40, 0.95),   // Mica
-            (0x3A, 0x3F, 0x49, 0.90), (0x38, 0x3D, 0x47, 0.88),   // Fluent Depth
-            (0xD4, 0xD4, 0xDC, 0.80), (0x3F, 0x3F, 0x45, 0.76),   // Apple Frosted
-            (0x20, 0x22, 0x26, 0.96), (0x33, 0x35, 0x3B, 0.97),   // Raycast
-            (0xD0, 0xD5, 0xE0, 0.82), (0xE8, 0xEC, 0xF4, 0.48),   // visionOS
-            (0xDA, 0xD5, 0xE6, 0.98), (0x36, 0x32, 0x3F, 0.98),   // Material 3
-        };
-
-        foreach (var (r, g, b, a) in surfaces)
+        foreach (var (r, g, b, a) in AllSurfaces)
         {
             var adjusted = SurfaceSeparation.Ensure(new SurfaceTint(r, g, b, a), backdrop);
 
@@ -121,26 +109,20 @@ public class SurfaceSeparationTests
     }
 
     /// <summary>
-    /// The floor is a safety net, not the designer. Every theme is authored to clear it over the backdrop
-    /// it was drawn for, so the rescue path never runs in ordinary use and each theme looks as intended.
-    /// Nine of the fourteen variants failed this when it was first written.
+    /// The floor is a safety net, not the designer. Every theme is authored to clear it over the backdrop it
+    /// was drawn for, so the rescue path does not run in ordinary use and each theme looks as intended. Nine
+    /// of the fourteen variants failed this when it was first written.
+    ///
+    /// <para>Two variants are listed as deliberate exceptions below, and they are the interesting ones: a
+    /// theme whose whole identity is "barely there" and one whose identity is "as black as the editor behind
+    /// it" can only exist because the floor will lift them when the backdrop makes them unreadable. The
+    /// exception list is the contract - a third entry appearing here means a theme was authored carelessly,
+    /// not that the rule changed.</para>
     /// </summary>
     [Fact]
     public void No_theme_needs_rescuing_over_the_backdrop_it_was_authored_for()
     {
-        // Light variants over a white page, dark variants over a near-black editor, at the default thickness.
-        (byte R, byte G, byte B, double A, double Backdrop)[] authored =
-        {
-            (0xD0, 0xD4, 0xDD, 0.84, 1.0), (0x3B, 0x3E, 0x45, 0.80, 0.06),
-            (0xD8, 0xD8, 0xDD, 0.95, 1.0), (0x35, 0x38, 0x40, 0.95, 0.06),
-            (0x3A, 0x3F, 0x49, 0.90, 1.0), (0x38, 0x3D, 0x47, 0.88, 0.06),
-            (0xD4, 0xD4, 0xDC, 0.80, 1.0), (0x3F, 0x3F, 0x45, 0.76, 0.06),
-            (0x20, 0x22, 0x26, 0.96, 1.0), (0x33, 0x35, 0x3B, 0.97, 0.06),
-            (0xD0, 0xD5, 0xE0, 0.82, 1.0), (0xE8, 0xEC, 0xF4, 0.48, 0.06),
-            (0xDA, 0xD5, 0xE6, 0.98, 1.0), (0x36, 0x32, 0x3F, 0.98, 0.06),
-        };
-
-        foreach (var (r, g, b, a, backdrop) in authored)
+        foreach (var (r, g, b, a, backdrop) in Authored)
         {
             // The thickness setting scales the authored opacity; 0.62 is the default.
             var tint = new SurfaceTint(r, g, b, Math.Min(1.0, a * (0.55 + (0.62 * 0.75))));
@@ -148,4 +130,55 @@ public class SurfaceSeparationTests
             Assert.Equal(tint, SurfaceSeparation.Ensure(tint, backdrop));
         }
     }
+
+    [Fact]
+    public void The_two_themes_that_rely_on_the_floor_are_rescued_by_it()
+    {
+        foreach (var (r, g, b, a, backdrop) in FloorDependent)
+        {
+            var tint = new SurfaceTint(r, g, b, Math.Min(1.0, a * (0.55 + (0.62 * 0.75))));
+            var adjusted = SurfaceSeparation.Ensure(tint, backdrop);
+
+            Assert.NotEqual(tint, adjusted);
+            Assert.True(SeparationOf(adjusted, backdrop) >= SurfaceSeparation.Floor - 0.001);
+        }
+    }
+
+    /// <summary>Every surface in the catalogue, light variant then dark, in catalogue order.</summary>
+    private static readonly (byte R, byte G, byte B, double A)[] AllSurfaces =
+    {
+        (0xD1, 0xD9, 0xE7, 0.86), (0x39, 0x3F, 0x4A, 0.82),   // Fluent Surface
+        (0xD3, 0xD8, 0xE3, 0.86), (0x41, 0x47, 0x54, 0.70),   // Spatial Glass
+        (0xD6, 0xD9, 0xE0, 0.97), (0x2C, 0x31, 0x3A, 0.98),   // Command
+        (0xDA, 0xD5, 0xE6, 0.98), (0x36, 0x32, 0x3F, 0.98),   // Material You
+        (0xEA, 0xDC, 0xC2, 1.00), (0x43, 0x39, 0x2C, 1.00),   // Paper & Ink
+        (0xDD, 0xDC, 0xD4, 1.00), (0x30, 0x30, 0x33, 1.00),   // Editorial
+        (0x26, 0x2B, 0x2E, 0.98), (0x14, 0x17, 0x18, 1.00),   // Terminal
+        (0xEE, 0xF0, 0xF4, 0.38), (0x24, 0x27, 0x2D, 0.42),   // Prism Rail
+    };
+
+    /// <summary>The variants that stand on their own: light over a white page, dark over a near-black editor.</summary>
+    private static readonly (byte R, byte G, byte B, double A, double Backdrop)[] Authored =
+    {
+        (0xD1, 0xD9, 0xE7, 0.86, 1.0), (0x39, 0x3F, 0x4A, 0.82, 0.06),
+        (0xD3, 0xD8, 0xE3, 0.86, 1.0), (0x41, 0x47, 0x54, 0.70, 0.06),
+        (0xD6, 0xD9, 0xE0, 0.97, 1.0), (0x2C, 0x31, 0x3A, 0.98, 0.06),
+        (0xDA, 0xD5, 0xE6, 0.98, 1.0), (0x36, 0x32, 0x3F, 0.98, 0.06),
+        (0xEA, 0xDC, 0xC2, 1.00, 1.0), (0x43, 0x39, 0x2C, 1.00, 0.06),
+        (0xDD, 0xDC, 0xD4, 1.00, 1.0), (0x30, 0x30, 0x33, 1.00, 0.06),
+        (0x26, 0x2B, 0x2E, 0.98, 1.0),
+    };
+
+    /// <summary>
+    /// The deliberate exceptions. Prism Rail is a wash by design - it is meant to be barely there, and the
+    /// floor is what keeps its words readable over a photograph. Terminal's dark variant is OLED black over
+    /// an OLED editor, which is the one case where "the same colour as the thing behind it" is the intent
+    /// and the floor's lift is the only thing that keeps it from vanishing.
+    /// </summary>
+    private static readonly (byte R, byte G, byte B, double A, double Backdrop)[] FloorDependent =
+    {
+        (0x14, 0x17, 0x18, 1.00, 0.06),   // Terminal, dark
+        (0xEE, 0xF0, 0xF4, 0.38, 1.0),    // Prism Rail, light
+        (0x24, 0x27, 0x2D, 0.42, 0.06),   // Prism Rail, dark
+    };
 }

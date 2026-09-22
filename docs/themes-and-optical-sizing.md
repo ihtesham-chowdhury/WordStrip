@@ -17,8 +17,8 @@ Two problems were being solved.
 | Theme | Material | Density | Selection | Motion | Typeface |
 |---|---|---|---|---|---|
 | Fluent Surface | Windows translucent, tonal | Balanced | Filled accent pill, white text | Smooth | System sans |
-| Spatial Glass | Luminous white, roomiest | Comfortable | Soft grey capsule | Softest spring | System sans |
-| Command | Dark matte, near-opaque | Compact | Raised key + coral rule | Fast | System sans |
+| Spatial Glass | Frosted glass, specular edge, widest radius | Roomiest | Soft capsule of the same material | Softest spring | System sans |
+| Command | Matte instrument — grey by day, near-black at night | Compact | Raised key + coral rule | Fast | System sans |
 | Material You | Tonal, colour-forward | Balanced | Filled tonal container | Smooth | System sans |
 | Paper & Ink | Warm cream, unruled | Balanced | Rust underline | Restrained | System sans |
 | Editorial | Ivory, ruled, square, bordered | Balanced | Heavy ink underline | Nearly none | System sans |
@@ -43,6 +43,30 @@ automated.
 **Merged themes keep their stored numbers.** `BarTheme` is persisted as an integer, so the three that were
 merged remain in the enum as `Legacy…` members and `AppSettingsStore.Migrate` maps them to their successors.
 A user who chose Mica gets Fluent Surface, not a silent reset to the default. Numbers are never reused.
+
+## Two rules learned from using it
+
+**A dark variant is not a pale variant.** Spatial Glass's dark variant was a pale veil with dark text, which
+over a dark editor read as tracing paper dropped on the screen. Dark glass is dark: a deep translucent body,
+light text, and a selection that is a brighter piece of the same material. The same applies to Editorial,
+whose night edition is deep ink with ivory type rather than an inverted page.
+
+**A theme's two variants may be different designs, not one design at two brightnesses.** Command is a matte
+instrument either way, but over a white page it is a cool grey slab with a white raised key, because a
+near-black bar over a white document is a hole cut in the page. Terminal keeps OLED black over a dark editor
+and moves to graphite over paper, for the same reason.
+
+## The material must not drift
+
+The backdrop is sampled whenever typing pauses, and no two samples of a page being typed into are identical:
+a line scrolls under the sample points, a cursor blinks, a page repaints a shade lighter. Feeding those raw
+numbers to the separation floor recomputed the surface slightly differently every time, which over a long
+session is exactly the "it keeps subtly changing opacity and colour" the owner reported.
+
+`Core/Presentation/BackdropTracker.cs` quantises the measurement into bands 0.20 wide and only leaves a band
+when a sample clears its edge by 0.05. The floor therefore sees a handful of discrete values rather than a
+continuum: the material is either what it was, or visibly and deliberately different. `BackdropTrackerTests`
+asserts the negative case — a wobbling measurement changes nothing at all.
 
 ## Optical sizing
 
