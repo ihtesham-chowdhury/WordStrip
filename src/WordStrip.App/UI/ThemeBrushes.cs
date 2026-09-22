@@ -57,6 +57,12 @@ public sealed class ThemeBrushes
     /// <summary>The theme's selection language, which the lens draws and the preview mirrors.</summary>
     public required SelectionStyle Selection { get; init; }
 
+    /// <summary>The unlit part of the rail, for the one theme whose selection lives below the words.</summary>
+    public required Brush Track { get; init; }
+
+    /// <summary>The lit part of that rail: a gradient running into the accent, so the travel reads as motion.</summary>
+    public required Brush TrackFill { get; init; }
+
     /// <param name="backdropLuminance">
     /// What the screen behind the bar actually measured, 0-1, or null when nothing was sampled — which is
     /// the case whenever the user has pinned light or dark, since that setting means "stop changing".
@@ -122,6 +128,8 @@ public sealed class ThemeBrushes
             ShadowDepth = v.ShadowDepth,
             ShowIndicator = theme.ShowIndicator,
             Selection = theme.Selection,
+            Track = Solid(v.Text, 0.16),
+            TrackFill = HorizontalGradient(v.RailFrom, v.RailTo),
         };
     }
 
@@ -147,12 +155,24 @@ public sealed class ThemeBrushes
         ShadowDepth = 0,
         ShowIndicator = true,
         Selection = SelectionStyle.BlockCursor,
+        Track = Solid(Color.FromRgb(0xFF, 0xFF, 0xFF), 0.5),
+        TrackFill = Solid(Color.FromRgb(0xFF, 0xFF, 0x00), 1.0),
     };
 
     private static Brush Solid(Color color, double opacity)
     {
         var brush = new SolidColorBrush(Color.FromArgb(
             (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255), color.R, color.G, color.B));
+        brush.Freeze();
+        return brush;
+    }
+
+    /// <summary>Left to right, for the rail. Two stops: the whole point is the travel between them.</summary>
+    private static Brush HorizontalGradient(Color from, Color to)
+    {
+        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        brush.GradientStops.Add(new GradientStop(from, 0));
+        brush.GradientStops.Add(new GradientStop(to, 1));
         brush.Freeze();
         return brush;
     }

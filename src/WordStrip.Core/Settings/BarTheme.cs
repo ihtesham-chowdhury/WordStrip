@@ -38,4 +38,10 @@ public enum BarTheme
 
     /// <summary>OLED-black, monospaced and instant, with a terminal's block cursor.</summary>
     TerminalMono = 8,
+
+    /// <summary>No surface at all: candidates on the page, with a lit rail beneath them tracking the selection.</summary>
+    PrismRail = 9,
+
+    /// <summary>Ivory, ruled and square, with a heavy ink underline. Flat by conviction.</summary>
+    Editorial = 10,
 }

@@ -106,12 +106,17 @@
                                  difference between a saved address staying recognisable and becoming
                                  anonymous.
 
-                                 The emoji font has to be named explicitly. A TextBlock reaches it through
-                                 the system's font-linking chain, but ElidedText draws with an explicit
-                                 Typeface, and that path only falls back within this list - leave it out and
-                                 every emoji suggestion renders as an empty slot. -->
+                                 The family comes from the theme, which is what makes the terminal theme
+                                 monospaced. It was hard-coded here until 0.16, so every theme rendered in
+                                 Segoe UI however loudly the catalogue said otherwise.
+
+                                 The emoji font has to be named explicitly, and every theme's list therefore
+                                 ends with it. A TextBlock reaches it through the system's font-linking
+                                 chain, but ElidedText draws with an explicit Typeface, and that path only
+                                 falls back within this list - leave it out and every emoji suggestion
+                                 renders as an empty slot. -->
                             <ui:ElidedText Text="{Binding Word}"
-                                           FontFamily="Segoe UI Variable Text, Segoe UI, Segoe UI Emoji"
+                                           FontFamily="{Binding FontFamily}"
                                            FontSize="{Binding FontSize}"
                                            FontWeight="{Binding FontWeight}"
                                            Foreground="{Binding Foreground}"

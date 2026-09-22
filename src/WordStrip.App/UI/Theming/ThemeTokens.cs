@@ -28,6 +28,13 @@ public enum SelectionStyle
 
     /// <summary>A solid block the width of the word, with the text knocked out of it. A terminal cursor.</summary>
     BlockCursor,
+
+    /// <summary>
+    /// A rail under the whole strip, lit from its left end to a travelling dot that sits under the selected
+    /// word. Nothing is drawn behind the word itself, which is what lets this theme have no surface at all:
+    /// the rail carries both the selection and the sense of where it is in the list.
+    /// </summary>
+    RailDot,
 }
 
 /// <summary>
@@ -64,6 +71,12 @@ public sealed record ThemeVariant
 
     /// <summary>The accent: an underline, a block cursor, or the mark beneath a tonal selection.</summary>
     public required Color Indicator { get; init; }
+
+    /// <summary>Where the rail's gradient starts, for the one theme that has a rail. Ignored by the rest.</summary>
+    public Color RailFrom { get; init; } = Color.FromRgb(0x3B, 0xC9, 0xF0);
+
+    /// <summary>Where it ends. The dot sits at this colour, so it is the one the eye follows.</summary>
+    public Color RailTo { get; init; } = Color.FromRgb(0xF0, 0x40, 0x88);
 
     public required double ShadowOpacity { get; init; }
     public required double ShadowBlur { get; init; }
@@ -111,6 +124,13 @@ public sealed record ThemeDefinition
     /// <summary>How wide the gaps between candidates are, relative to the density's own gap.</summary>
     public required double RhythmFactor { get; init; }
 
+    /// <summary>
+    /// How much wider this theme's columns need to be than the type alone suggests. One for every
+    /// proportional theme; more for the monospaced one, whose glyphs are all as wide as its widest, so the
+    /// usual estimate from the font size leaves "forward to" shortened when it would have fitted.
+    /// </summary>
+    public double SlotWidthFactor { get; init; } = 1.0;
+
     public required SelectionStyle Selection { get; init; }
 
     /// <summary>How visible the rules between candidates are, 0 to 1. Zero leaves spacing to do the work.</summary>
@@ -131,6 +151,10 @@ public sealed record ThemeDefinition
     public ThemeVariant For(GlassAppearance appearance) =>
         appearance == GlassAppearance.OverDark ? OverDark : OverLight;
 
-    /// <summary>Whether this theme draws a mark beneath the selected word.</summary>
-    public bool ShowIndicator => Selection is SelectionStyle.NativeTonal or SelectionStyle.Underline;
+    /// <summary>Whether this theme draws a mark beneath the selected word, and so must reserve room for one.</summary>
+    public bool ShowIndicator =>
+        Selection is SelectionStyle.NativeTonal
+            or SelectionStyle.Underline
+            or SelectionStyle.RaisedTonal
+            or SelectionStyle.RailDot;
 }

@@ -1161,7 +1161,7 @@ predicts or how keys are routed. `docs/visual-polish-plan.md` holds the audit an
 | Contrast floor | `Core/Presentation/SurfaceSeparation.cs` | Minimum 0.12 composited luminance difference from the measured backdrop. It is a safety net: every theme is authored to clear it unaided, and a test asserts the rescue path never runs for an authored theme. |
 | Selection states | `SuggestionBarWindow.ApplySelectionStrength` | Armed (Space would commit) draws the selection surface at 0.62 without the indicator; a Tab cycle draws it at full strength with it. `SelectionLens.OnRender` must not skip drawing at zero opacity — the lens is positioned while transparent, and Opacity never re-runs OnRender. |
 
-### Themes and optical sizing (2026-09-22)
+### Themes and optical sizing (2026-09-22, extended for eight themes)
 
 Engine locked again for this phase. `docs/themes-and-optical-sizing.md` has the reasoning; the rules that
 will bite someone later are here.
@@ -1175,6 +1175,9 @@ will bite someone later are here.
 | Automatic sizing must not twitch | `OpticalSizer` requires a 12% change in caret height *and* a 3-unit change in resulting height. A lost caret changes nothing. Re-applying appearance re-renders the last update, so `AdaptToTextSize` guards against re-entry. |
 | A theme may lean on density and motion, never override the user | `DensityBias` applies only to automatic sizing; `MotionFactor` divides the user's speed and is clamped just below "off", so only a theme declaring itself instant (factor 0) or the user choosing Off actually disables animation. |
 | `SelectionLens.Selection`, not `Style` | `FrameworkElement.Style` already exists; naming the property `Style` compiles with a warning and shadows it. |
+| The bar's typeface must be **bound**, not written into the XAML | `SuggestionBarWindow.xaml` hard-coded Segoe UI until 0.16, so the monospaced theme silently rendered proportional however loudly the catalogue said otherwise. Every theme's family list must end with `Segoe UI Emoji`: `ElidedText` draws with an explicit Typeface and only falls back within the list. |
+| A selection that **is** the mark must survive the armed state | `ApplySelectionStrength` suppresses the indicator for themes with a surface behind the word, because there the surface carries the armed state. For `Underline` and `RailDot` the mark is the whole selection, so suppressing it left them with no selection at all when Space was armed. |
+| Monospaced themes need `SlotWidthFactor` | Column width is estimated from the font size, which assumes proportional glyphs. Terminal sets 1.2, without which "forward to" was shortened in a column it would have fitted. |
 
 ### Testing expectations
 

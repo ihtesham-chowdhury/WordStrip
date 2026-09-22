@@ -193,11 +193,14 @@ public partial class SettingsWindow : Window
             Selection = theme.Selection,
             Fill = brushes.Pill,
             Rim = brushes.PillRim,
+            Track = brushes.Track,
+            TrackFill = brushes.TrackFill,
             Indicator = brushes.ShowIndicator ? brushes.Indicator : null,
             CornerRadius = metrics.ChipRadius,
             IndicatorThickness = metrics.IndicatorThickness,
             IndicatorWidthFactor = metrics.IndicatorWidthFactor,
             IndicatorGap = Math.Max(2, metrics.IndicatorReserve * 0.45),
+            TrackInset = metrics.Inset + metrics.RimThickness + metrics.ChipMarginX,
             Opacity = 1,
         };
 

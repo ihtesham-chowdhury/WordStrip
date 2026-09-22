@@ -366,7 +366,14 @@ public partial class SuggestionBarWindow : Window
     /// </summary>
     private void ApplySelectionStrength()
     {
-        Lens.Indicator = _brushes.ShowIndicator && _selectionIsActive ? _brushes.Indicator : null;
+        // Themes whose selection *is* the mark - an editorial underline, a lit rail - keep it in both
+        // states, because suppressing it would leave them with no selection at all when Space is armed.
+        // The ones with a surface behind the word drop the mark and let the surface carry the armed state.
+        var markIsTheSelection = _theme.Selection is SelectionStyle.Underline or SelectionStyle.RailDot;
+
+        Lens.Indicator = _brushes.ShowIndicator && (_selectionIsActive || markIsTheSelection)
+            ? _brushes.Indicator
+            : null;
 
         var target = _selectionIsActive ? DesignTokens.Selection.ActiveOpacity : DesignTokens.Selection.ArmedOpacity;
         if (Lens.Opacity <= 0.01) return;  // not on screen: MovePillTo will fade it in to the right strength
@@ -480,6 +487,7 @@ public partial class SuggestionBarWindow : Window
         Lens.IndicatorThickness = _metrics.IndicatorThickness;
         Lens.IndicatorWidthFactor = _metrics.IndicatorWidthFactor;
         Lens.IndicatorGap = Math.Max(2, _metrics.IndicatorReserve * 0.45);
+        Lens.TrackInset = _metrics.Inset + _metrics.RimThickness + _metrics.ChipMarginX;
 
         ApplyFixedWidth();
         ApplyPalette();
@@ -554,7 +562,7 @@ public partial class SuggestionBarWindow : Window
     private double PreferredSlotWidth() =>
         Math.Max(
             _metrics.MinSlotWidth,
-            (_metrics.FontSize * 4.2) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2));
+            (_metrics.FontSize * 4.2 * _theme.SlotWidthFactor) + (_metrics.ChipPaddingX * 2) + (_metrics.ChipMarginX * 2));
 
     /// <summary>
     /// How many slots the strip can carry: what the user asked for, capped by how many can still be read.
@@ -702,6 +710,8 @@ public partial class SuggestionBarWindow : Window
 
         Lens.Fill = _brushes.Pill;
         Lens.Rim = _brushes.PillRim;
+        Lens.Track = _brushes.Track;
+        Lens.TrackFill = _brushes.TrackFill;
         ApplySelectionStrength();
 
         Plate.Effect = _brushes.ShadowOpacity > 0

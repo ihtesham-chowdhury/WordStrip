@@ -55,12 +55,23 @@ public readonly record struct GlassMetrics
         var plateRadius = Math.Round(density.OuterRadius * theme.RadiusFactor);
 
         // The indicator is part of the selection language, not decoration: only the themes whose selection
-        // is a mark beneath the word reserve room for one.
+        // is a mark beneath the word reserve room for one, and each of those wants a different mark. An
+        // editorial underline is heavy and short; a rail is a hairline that needs room for its dot.
         var showsIndicator = theme.ShowIndicator;
+        var markWeight = theme.Selection switch
+        {
+            SelectionStyle.Underline => 3.0,
+            SelectionStyle.RailDot => 2.0,
+            _ => 2.0,
+        };
+
         var indicatorThickness = showsIndicator
-            ? Math.Max(2, Math.Round((theme.Selection == SelectionStyle.Underline ? 2.5 : 2.0) * density.IndicatorScale))
+            ? Math.Max(2, Math.Round(markWeight * density.IndicatorScale))
             : 0;
-        var indicatorReserve = showsIndicator ? Math.Round(6 * density.IndicatorScale) : 0;
+
+        // The rail's dot stands proud of the rail, so that theme reserves more room beneath the words.
+        var reserveFactor = theme.Selection == SelectionStyle.RailDot ? 11.0 : 6.0;
+        var indicatorReserve = showsIndicator ? Math.Round(reserveFactor * density.IndicatorScale) : 0;
 
         // A block cursor is a rectangle by definition; a capsule is as round as it can be without the ends
         // meeting. Everything else stays concentric with the plate.
@@ -85,8 +96,16 @@ public readonly record struct GlassMetrics
             EdgeGap = Math.Round(14 * (0.8 + (density.ShadowScale * 0.2))),
             IndicatorReserve = indicatorReserve,
             IndicatorThickness = indicatorThickness,
-            IndicatorWidthFactor = theme.Selection == SelectionStyle.Underline ? 0.86 : 0.42,
-            MinSlotWidth = Math.Round(density.CandidateMinWidth * theme.RhythmFactor),
+            IndicatorWidthFactor = theme.Selection switch
+            {
+                // Long enough to read as a rule drawn under the word, not as a tick beside it.
+                SelectionStyle.Underline => 0.78,
+
+                // The rail spans the strip, so this is unused; the dot is placed from the lens geometry.
+                SelectionStyle.RailDot => 1.0,
+                _ => 0.42,
+            },
+            MinSlotWidth = Math.Round(density.CandidateMinWidth * theme.RhythmFactor * theme.SlotWidthFactor),
             ShadowScale = density.ShadowScale,
         };
     }

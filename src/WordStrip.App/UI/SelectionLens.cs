@@ -30,6 +30,26 @@ public sealed class SelectionLens : FrameworkElement
     /// shapes are the same two rectangles underneath — a surface and a mark — so one element draws them all
     /// rather than the bar carrying four.
     /// </summary>
+    public static readonly DependencyProperty TrackProperty =
+        DependencyProperty.Register(nameof(Track), typeof(Brush), typeof(SelectionLens),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty TrackFillProperty =
+        DependencyProperty.Register(nameof(TrackFill), typeof(Brush), typeof(SelectionLens),
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty TrackInsetProperty =
+        DependencyProperty.Register(nameof(TrackInset), typeof(double), typeof(SelectionLens), RenderOnly(0));
+
+    /// <summary>How far in from the strip's edges the rail starts, so it lines up with the candidates.</summary>
+    public double TrackInset { get => (double)GetValue(TrackInsetProperty); set => SetValue(TrackInsetProperty, value); }
+
+    /// <summary>The unlit rail, drawn the full width of the strip.</summary>
+    public Brush? Track { get => (Brush?)GetValue(TrackProperty); set => SetValue(TrackProperty, value); }
+
+    /// <summary>The lit part of the rail, from its left end to the dot.</summary>
+    public Brush? TrackFill { get => (Brush?)GetValue(TrackFillProperty); set => SetValue(TrackFillProperty, value); }
+
     public static readonly DependencyProperty SelectionProperty =
         DependencyProperty.Register(
             nameof(Selection), typeof(Theming.SelectionStyle), typeof(SelectionLens),
@@ -122,6 +142,10 @@ public sealed class SelectionLens : FrameworkElement
                 DrawBlock(drawingContext);
                 return;
 
+            case Theming.SelectionStyle.RailDot:
+                DrawRail(drawingContext);
+                return;
+
             default:
                 DrawSurface(drawingContext);
                 return;
@@ -180,6 +204,47 @@ public sealed class SelectionLens : FrameworkElement
                 LensY + LensHeight + IndicatorGap,
                 width,
                 IndicatorThickness));
+    }
+
+    /// <summary>
+    /// A rail beneath the whole strip, lit from its left end to a dot sitting under the selected word.
+    ///
+    /// <para>Nothing is drawn behind the word itself. That is what lets the theme this belongs to have no
+    /// surface at all: the rail carries the selection and, because the lit length grows as the selection
+    /// moves right, also says where in the list it is. It is the only selection language here that is about
+    /// the strip rather than about one candidate.</para>
+    /// </summary>
+    private void DrawRail(DrawingContext drawingContext)
+    {
+        if (Track is null || IndicatorThickness <= 0) return;
+
+        var thickness = Math.Max(2, IndicatorThickness);
+        var radius = thickness / 2;
+        var y = LensY + LensHeight + IndicatorGap;
+
+        // The rail spans the strip's own width, inset to line up with the candidates rather than running
+        // out to the window's edge - which, on a layered window, means running past the visible surface.
+        var left = TrackInset;
+        var right = Math.Max(ActualWidth - TrackInset, LensX + LensWidth);
+        if (right <= left) return;
+
+        drawingContext.DrawRoundedRectangle(
+            Track, null, new Rect(left, y, right - left, thickness), radius, radius);
+
+        // Lit from the rail's start to the middle of the selected word, which is where the dot sits.
+        var centre = LensX + (LensWidth / 2);
+        var litWidth = Math.Clamp(centre - left, thickness, right - left);
+
+        if (TrackFill is not null)
+        {
+            drawingContext.DrawRoundedRectangle(
+                TrackFill, null, new Rect(left, y, litWidth, thickness), radius, radius);
+        }
+
+        // The dot is the thing the eye follows, so it is drawn last and a little larger than the rail.
+        var dotRadius = thickness * 1.9;
+        drawingContext.DrawEllipse(
+            Indicator ?? TrackFill, null, new Point(left + litWidth, y + radius), dotRadius, dotRadius);
     }
 
     /// <summary>

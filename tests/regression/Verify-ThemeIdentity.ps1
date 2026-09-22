@@ -7,7 +7,7 @@
     and an em dash becomes two bytes that break the parser. The same note is on Verify-PersistentBar.ps1.
 
 .DESCRIPTION
-    Six themes are only worth having if they are different from each other. The rule this enforces is the
+    Eight themes are only worth having if they are different from each other. The rule this enforces is the
     one the design brief sets: every pair must differ in at least three of the dimensions a theme has, and
     must still be told apart with the colour taken away - which means differing in something other than hue.
 
@@ -83,7 +83,7 @@ foreach ($block in $blocks) {
 }
 
 Write-Host ("Themes found: {0}" -f $themes.Count)
-if ($themes.Count -ne 6) { Write-Host "  FAIL  expected six themes" -ForegroundColor Red; exit 1 }
+if ($themes.Count -ne 8) { Write-Host "  FAIL  expected eight themes" -ForegroundColor Red; exit 1 }
 
 $themes | Format-Table Name, Lightness, Opacity, Selection, Radius, Density, Rhythm, Dividers, Motion, Blur -AutoSize |
     Out-String | Write-Host
@@ -129,4 +129,4 @@ for ($i = 0; $i -lt $themes.Count; $i++) {
 
 if ($failed) { Write-Host "`nTwo or more themes are too alike." -ForegroundColor Red; exit 1 }
 
-Write-Host "`nAll fifteen pairs are distinguishable." -ForegroundColor Green
+Write-Host ("`nAll {0} pairs are distinguishable." -f ($themes.Count * ($themes.Count - 1) / 2)) -ForegroundColor Green

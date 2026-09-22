@@ -16,12 +16,25 @@ Two problems were being solved.
 
 | Theme | Material | Density | Selection | Motion | Typeface |
 |---|---|---|---|---|---|
-| Fluent Surface | Windows translucent, tonal | Balanced | Tonal block + accent mark | Smooth | System sans |
-| Spatial Glass | Luminous, milky, roomiest | Comfortable | Soft capsule | Softest spring | System sans |
-| Command | Dark matte, near-opaque | Compact | Raised tonal key | Fast | System sans |
+| Fluent Surface | Windows translucent, tonal | Balanced | Filled accent pill, white text | Smooth | System sans |
+| Spatial Glass | Luminous white, roomiest | Comfortable | Soft grey capsule | Softest spring | System sans |
+| Command | Dark matte, near-opaque | Compact | Raised key + coral rule | Fast | System sans |
 | Material You | Tonal, colour-forward | Balanced | Filled tonal container | Smooth | System sans |
-| Paper & Ink | Warm opaque sheet, no glass | Balanced | Ink underline only | Nearly none | System sans |
+| Paper & Ink | Warm cream, unruled | Balanced | Rust underline | Restrained | System sans |
+| Editorial | Ivory, ruled, square, bordered | Balanced | Heavy ink underline | Nearly none | System sans |
 | Terminal | OLED black, square | Compact | Block cursor, text knocked out | Instant | Cascadia / Consolas |
+| Prism Rail | Barely there — a wash, no panel | Comfortable | Lit rail with a travelling dot | Most fluid | System sans |
+
+**Prism Rail is the odd one.** Its selection is not on the candidate at all: a hairline rail runs under the
+whole strip, lit from its left end to a dot beneath the selected word, so the lit length also says where in
+the list the selection sits. That is why it can afford to have almost no surface — the rail is the interface.
+A faint wash remains so the words survive a photograph or a saturated page, and the separation floor lifts it
+further when the backdrop demands.
+
+**Paper & Ink and Editorial are deliberately opposite readings of print.** One is a warm unruled page with a
+rust pencil mark and soft elevation; the other is a ruled ivory column with a dark border, square corners and
+a heavy ink rule. They differ in radius, rhythm, dividers, density and motion, which is what keeps them apart
+in the identity check.
 
 `tests\regression\Verify-ThemeIdentity.ps1` enforces the table: it reads the catalogue's tokens and fails if
 any pair of themes differs in fewer than three dimensions, or differs mostly by hue — the grayscale test,
